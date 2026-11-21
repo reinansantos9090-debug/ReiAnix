@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.FileObserver
 import com.reianix.reianix_local.MainActivity
+import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiState
@@ -299,9 +300,12 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             .build()
         try {
             appContext.startActivity(
-                Intent(Intent.ACTION_VIEW, commandUri)
-                    .setClass(appContext, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                NativeInternalIntentGuard.stamp(
+                    appContext,
+                    Intent(Intent.ACTION_VIEW, commandUri)
+                        .setClass(appContext, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                ),
             )
             scope.launch {
                 stateMutex.withLock {
