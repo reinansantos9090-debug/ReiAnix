@@ -70,9 +70,11 @@ import coil.compose.AsyncImage
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import com.reianix.reianix_local.data.anilist.AniListResult
-import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
-import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
+import com.reianix.reianix_local.data.personal.validCharacterAniListId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.withContext
 import com.reianix.reianix_local.data.personal.ReiAnixLocalRecommendation
 import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeService
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
@@ -520,9 +522,9 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
 }
 
 /**
- * Display characters directly after the synopsis with other metadata.
- * This is an independent, lazily composed Details-only effect, never part of
- * library scanning, cover discovery or the existing AniList metadata client mutex.
+ * Characters are prefetched after a confirmed AniList association and cached
+ * separately from the existing metadata/artwork pipelines. Details reuses the
+ * same process cache, including its in-flight request, without slowing covers.
  */
 @Composable
 fun ReiAnixMetadataCharacters(
@@ -531,25 +533,52 @@ fun ReiAnixMetadataCharacters(
 ) {
     val context = LocalContext.current
     val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
-    val charactersRepository = remember(dependencies) {
-        ReiAnixCharacterCache(context, ReiAnixAniListClient())
-    }
+    val charactersRepository = remember(dependencies) { dependencies.characterCache }
     var characters by remember(animeId) { mutableStateOf<List<ReiAnixAnimeCharacter>>(emptyList()) }
+    var displayedAssociation by remember(animeId) { mutableStateOf<Int?>(null) }
 
-    LaunchedEffect(animeId, metadataRevision) {
+    LaunchedEffect(animeId, metadataRevision, charactersRepository) {
         try {
-            val associatedId = dependencies.sqliteLibraryRepository.getAnime(animeId)?.anilistId
-                ?.takeIf { it > 0 && it <= Int.MAX_VALUE.toLong() }?.toInt()
+            val associatedId = withContext(Dispatchers.IO) {
+                validCharacterAniListId(dependencies.sqliteLibraryRepository.getAnime(animeId)?.anilistId)
+            }
+            if (associatedId != displayedAssociation) {
+                characters = emptyList()
+                displayedAssociation = associatedId
+            }
             if (associatedId != null) {
                 when (val result = charactersRepository.load(associatedId)) {
                     is AniListResult.Success -> characters = result.value
-                    is AniListResult.Failure -> Unit // do not impact Details when AniList is unavailable
+                    is AniListResult.Failure -> Unit // never hold back existing Details
                 }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            // This metadata enrichment is optional, never blocks the synopsis.
+            // Character enrichment is optional and does not block the synopsis.
+        }
+    }
+
+    // If Details opened before auto-match completed, the background prefetch
+    // publishes its successful result and the visible section updates at once.
+    LaunchedEffect(animeId, charactersRepository) {
+        charactersRepository.updates.collect { changedAniListId ->
+            try {
+                val associatedId = withContext(Dispatchers.IO) {
+                    validCharacterAniListId(dependencies.sqliteLibraryRepository.getAnime(animeId)?.anilistId)
+                }
+                if (associatedId == changedAniListId) {
+                    val result = charactersRepository.load(associatedId)
+                    if (result is AniListResult.Success) {
+                        displayedAssociation = associatedId
+                        characters = result.value
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Ignore transient supplemental cache/association failures.
+            }
         }
     }
 

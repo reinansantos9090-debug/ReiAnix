@@ -2077,6 +2077,10 @@ class ReiAnixLibraryViewModel(
         // enter the per-anime stream before thumbnails published during startup.
         viewModelScope.launch {
             refreshNativeCatalog()
+            // Supplemental AniList characters are warmed only after the canonical
+            // library projection is ready; the worker itself waits before network.
+            // This must never delay scanning, covers or metadata publication.
+            appDependencies?.characterPrefetcher?.scheduleExistingAssociationsBackfill()
             for (publication in traceMoePublicationQueue) {
                 processPublishedEpisodeThumbnail(publication)
             }

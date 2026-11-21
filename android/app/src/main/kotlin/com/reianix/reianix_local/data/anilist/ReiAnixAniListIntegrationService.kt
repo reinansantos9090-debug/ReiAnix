@@ -246,6 +246,8 @@ class ReiAnixAniListIntegrationService(
     private val candidateMetadataPublisher: ((Long, AniListAnime) -> Unit)? = null,
     private val explicitArtworkPublisher: ((Long) -> Unit)? = null,
     private val prepareRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
+    // Non-blocking supplemental enrichment after core metadata and artwork signals.
+    private val characterPrefetchPublisher: ((Int) -> Unit)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -278,6 +280,10 @@ class ReiAnixAniListIntegrationService(
         prepareRepairArtwork = { animeId, remote ->
             ReiAnixAppDependencies.existingOrNull(context.applicationContext)?.artworkService
                 ?.prepareExplicitRepairArtwork(animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl)
+        },
+        characterPrefetchPublisher = { anilistId ->
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.characterPrefetcher?.scheduleConfirmedAssociation(anilistId)
         },
         metadataCommitPublisher = { animeId, requestArtwork ->
             if (requestArtwork) {
@@ -1561,6 +1567,13 @@ class ReiAnixAniListIntegrationService(
                 explicitArtworkPublisher?.invoke(updated.id)
             }
             enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled && prepared == null)
+            // Characters are supplemental: enqueue only AFTER the existing
+            // canonical metadata/cover flow has published. Never await network.
+            try {
+                characterPrefetchPublisher?.invoke(remote.id)
+            } catch (error: Exception) {
+                Log.w(TAG, "Character prefetch could not be scheduled", error)
+            }
             AniListResult.Success(updated)
         } catch (cancelled: CancellationException) {
             throw cancelled

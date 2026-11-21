@@ -5,6 +5,8 @@ import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
+import com.reianix.reianix_local.data.personal.ReiAnixCharacterPrefetcher
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
 import com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProvider
@@ -182,6 +184,16 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixAniListClient()
     }
 
+    // Supplemental-only lane: never shares the metadata client's request mutex
+    // and never modifies the artwork/metadata fetch or publication paths.
+    val characterCache: ReiAnixCharacterCache by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixCharacterCache(appContext, ReiAnixAniListClient())
+    }
+
+    val characterPrefetcher: ReiAnixCharacterPrefetcher by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixCharacterPrefetcher(characterCache, sqliteDatabase, sqliteSettingsRepository)
+    }
+
     val aniListIntegrationService: ReiAnixAniListIntegrationService by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
@@ -201,6 +213,9 @@ class ReiAnixAppDependencies(context: Context) {
                 artworkService.prepareExplicitRepairArtwork(
                     animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl,
                 )
+            },
+            characterPrefetchPublisher = { anilistId ->
+                characterPrefetcher.scheduleConfirmedAssociation(anilistId)
             },
             explicitArtworkPublisher = { animeId ->
                 artworkService.requestAnimeArtwork(animeId, force = true)
