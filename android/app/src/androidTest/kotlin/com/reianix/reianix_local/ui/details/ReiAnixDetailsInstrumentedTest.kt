@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -249,6 +250,89 @@ class ReiAnixDetailsInstrumentedTest {
         synopsis.assertExists()
         composeRule.onNodeWithTag("details-tracemoe-identify-button", useUnmergedTree = true)
             .assertDoesNotExist()
+    }
+
+    @Test
+    fun synopsisExpandsByTappingTheTextWithoutMoreButton() {
+        val description = (1..12).joinToString(" ") {
+            "When Marin and Wakana meet, they discover new cosplay adventures together."
+        } + " (Source: Crunchyroll)"
+        val initial = detailsStateWithEpisodes(1)
+        val state = initial.copy(anime = initial.anime!!.copy(description = description))
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-synopsis-text"))
+        composeRule.onNodeWithText("mais").assertDoesNotExist()
+        composeRule.onNodeWithText("menos").assertDoesNotExist()
+        composeRule.onNodeWithTag("details-synopsis-text")
+            .assert(hasStateDescription("Sinopse resumida"))
+            .performClick()
+        composeRule.onNodeWithTag("details-synopsis-text")
+            .assert(hasStateDescription("Sinopse completa"))
+            .performClick()
+        composeRule.onNodeWithTag("details-synopsis-text")
+            .assert(hasStateDescription("Sinopse resumida"))
+    }
+
+    @Test
+    fun simplifiedDetailsKeepEpisodesAndRecommendationsWithoutProgressOrInfoBlocks() {
+        val initial = detailsStateWithEpisodes(2)
+        val state = initial.copy(
+            anime = initial.anime!!.copy(
+                description = "Descrição de teste.",
+                studio = "CloverWorks",
+                seasonLabel = "SUMMER",
+                aliases = listOf("Outro título"),
+                genres = listOf(
+                    ReiAnixGenreUiModel("romance", "Romance"),
+                    ReiAnixGenreUiModel("comedy", "Comedy"),
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            ReiAnixComposeRoot {
+                ReiAnixDetailsScreen(
+                    state = state,
+                    onBack = {},
+                    onRetry = {},
+                    onWatch = {},
+                    onToggleFavorite = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Progresso do anime").assertDoesNotExist()
+        composeRule.onNodeWithText("Continuar • E01").assertDoesNotExist()
+        composeRule.onNodeWithText("Informações").assertDoesNotExist()
+        composeRule.onNodeWithText("Estúdio").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Abrir seção Sobre").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Abrir seção Episódios").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-genres"))
+        composeRule.onNodeWithText("Romance").assertIsDisplayed()
+        composeRule.onNodeWithText("Comedy").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasTestTag("details-recommendations"))
+        composeRule.onNodeWithText("Recomendações para você").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("details-episode-list")
+            .performScrollToNode(hasText("E01 • Episode 1"))
+        composeRule.onNodeWithText("E01 • Episode 1").assertIsDisplayed()
     }
 
     @Test
