@@ -269,6 +269,12 @@ class ReiAnixWallpaperCardsInstrumentedTest {
                 composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
                 composeRule.onAllNodesWithTag("profile-frame-animation-" + frame, useUnmergedTree = true)
                     .assertCountEquals(2)
+                if (frame == "cat_ears") {
+                    composeRule.onAllNodesWithTag("profile-frame-cat-left-ear", useUnmergedTree = true)
+                        .assertCountEquals(2)
+                    composeRule.onAllNodesWithTag("profile-frame-cat-right-ear", useUnmergedTree = true)
+                        .assertCountEquals(2)
+                }
             }
             composeRule.onNodeWithTag("profile-frame-option-white")
                 .performScrollTo().performClick()
@@ -290,6 +296,8 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             "galaxy" to R.drawable.profile_frame_galaxy,
             "cat_ears" to R.drawable.profile_frame_cat_ears,
             "headset" to R.drawable.profile_frame_headset,
+            "cat_left_ear" to R.drawable.profile_frame_cat_left_ear,
+            "cat_right_ear" to R.drawable.profile_frame_cat_right_ear,
         )
         art.forEach { (name, drawableId) ->
             assertTrue("$name should be illustrated", isIllustratedProfileFrame(name))
@@ -300,6 +308,11 @@ class ReiAnixWallpaperCardsInstrumentedTest {
                 assertTrue("$name must have transparency", bitmap.hasAlpha())
                 val centerPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
                 assertTrue("$name obscures the profile photo", AndroidColor.alpha(centerPixel) < 64)
+                if (name == "gold" || name == "headset") {
+                    // There should be no heavy full-circle ornament under the portrait.
+                    val bottomPixel = bitmap.getPixel(bitmap.width / 2, bitmap.height * 9 / 10)
+                    assertTrue("$name must not have a bottom ring", AndroidColor.alpha(bottomPixel) < 64)
+                }
             } finally {
                 bitmap.recycle()
             }
