@@ -88,11 +88,19 @@ class ReiAnixWallpaperStore private constructor(context: Context, private val is
     companion object {
         @Volatile private var instance: ReiAnixWallpaperStore? = null
         @Volatile private var bannerInstance: ReiAnixWallpaperStore? = null
-        fun banner(context: Context): ReiAnixWallpaperStore = bannerInstance ?: synchronized(this) {
-            bannerInstance ?: ReiAnixWallpaperStore(context, true).also { bannerInstance = it }
+        fun banner(context: Context): ReiAnixWallpaperStore {
+            val appContext = context.applicationContext
+            return bannerInstance?.takeIf { it.app === appContext } ?: synchronized(this) {
+                bannerInstance?.takeIf { it.app === appContext }
+                    ?: ReiAnixWallpaperStore(appContext, true).also { bannerInstance = it }
+            }
         }
-        fun from(context: Context): ReiAnixWallpaperStore = instance ?: synchronized(this) {
-            instance ?: ReiAnixWallpaperStore(context).also { instance = it }
+        fun from(context: Context): ReiAnixWallpaperStore {
+            val appContext = context.applicationContext
+            return instance?.takeIf { it.app === appContext } ?: synchronized(this) {
+                instance?.takeIf { it.app === appContext }
+                    ?: ReiAnixWallpaperStore(appContext).also { instance = it }
+            }
         }
     }
 }
