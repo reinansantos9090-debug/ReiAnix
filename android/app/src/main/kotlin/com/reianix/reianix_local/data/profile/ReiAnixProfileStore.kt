@@ -150,8 +150,12 @@ class ReiAnixProfileStore private constructor(context: Context) {
 
     companion object {
         @Volatile private var instance: ReiAnixProfileStore? = null
-        fun from(context: Context): ReiAnixProfileStore = instance ?: synchronized(this) {
-            instance ?: ReiAnixProfileStore(context).also { instance = it }
+        fun from(context: Context): ReiAnixProfileStore {
+            val appContext = context.applicationContext
+            return instance?.takeIf { it.app === appContext } ?: synchronized(this) {
+                instance?.takeIf { it.app === appContext }
+                    ?: ReiAnixProfileStore(appContext).also { instance = it }
+            }
         }
     }
 }
