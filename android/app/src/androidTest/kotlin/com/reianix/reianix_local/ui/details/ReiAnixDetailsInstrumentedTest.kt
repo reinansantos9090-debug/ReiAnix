@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import java.io.File
 import androidx.test.platform.app.InstrumentationRegistry
 
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
