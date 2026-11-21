@@ -576,9 +576,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
         }
     }
 
-    var selectedSection by rememberSaveable(anime.id) {
-        mutableStateOf(DetailsSection.ABOUT)
-    }
     val listState = rememberSaveable(
         anime.id,
         saver = LazyListState.Saver,
@@ -587,8 +584,8 @@ private fun ColumnScope.ReiAnixDetailsReady(
     }
     val coroutineScope = rememberCoroutineScope()
     val hasSeasons = anime.seasons.isNotEmpty()
-    val aboutIndex = 2
-    val episodeHeadingIndex = if (hasSeasons) 4 else 3
+    // Hero and recommendations precede the season/episode list.
+    val episodeHeadingIndex = if (hasSeasons) 3 else 2
 
     fun scrollToDetailsSection(index: Int) {
         coroutineScope.launch {
@@ -623,8 +620,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
             DetailsHero(
                 anime = anime,
                 associationRevision = associationRevision,
-                currentEpisode = currentEpisode,
-                nextEpisode = nextEpisode,
                 onBack = onBack,
                 onRefresh = onRefresh,
                 onWatch = onWatch,
@@ -642,31 +637,12 @@ private fun ColumnScope.ReiAnixDetailsReady(
             )
         }
 
+        // Recommendations replace Sobre/Episódios and Informações, just below playback.
         item(
-            key = "details-tabs:" + anime.stableKey,
-            contentType = "details-tabs",
+            key = "details-recommendations:" + anime.stableKey,
+            contentType = "details-recommendations",
         ) {
-            DetailsSectionTabs(
-                selectedSection = selectedSection,
-                onAbout = {
-                    selectedSection = DetailsSection.ABOUT
-                    scrollToDetailsSection(aboutIndex)
-                },
-                onEpisodes = {
-                    selectedSection = DetailsSection.EPISODES
-                    scrollToDetailsSection(episodeHeadingIndex)
-                },
-            )
-        }
-
-        item(
-            key = "details-about:" + anime.stableKey,
-            contentType = "details-about",
-        ) {
-            Column {
-                DetailsAboutSection(anime = anime)
-                ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
-            }
+            ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
         }
 
         if (hasSeasons) {
@@ -681,7 +657,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     selectedSeasonKey = selectedSeasonKey,
                     onSeasonSelected = ::selectSeason,
                     onViewEpisodes = {
-                        selectedSection = DetailsSection.EPISODES
                         scrollToDetailsSection(episodeHeadingIndex)
                     },
                 )
@@ -807,46 +782,6 @@ private fun ColumnScope.ReiAnixDetailsReady(
     }
 }
 
-private enum class DetailsSection {
-    ABOUT,
-    EPISODES,
-}
-
-@Composable
-private fun DetailsSectionTabs(
-    selectedSection: DetailsSection,
-    onAbout: () -> Unit,
-    onEpisodes: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(
-                horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
-                vertical = ReiAnixTokens.Spacing.sm,
-            ),
-        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-    ) {
-        ReiAnixChip(
-            text = "Sobre",
-            selected = selectedSection == DetailsSection.ABOUT,
-            onClick = onAbout,
-            modifier = Modifier.semantics {
-                contentDescription = "Abrir seção Sobre"
-            },
-        )
-        ReiAnixChip(
-            text = "Episódios",
-            selected = selectedSection == DetailsSection.EPISODES,
-            onClick = onEpisodes,
-            modifier = Modifier.semantics {
-                contentDescription = "Abrir seção Episódios"
-            },
-        )
-    }
-}
-
 /** Secondary header actions; canonical pin and identification states remain owned by the caller. */
 @Composable
 internal fun DetailsOverflowActions(
@@ -960,8 +895,6 @@ internal fun DetailsAniListAction(
 private fun DetailsHero(
     anime: ReiAnixDetailsAnimeUiModel,
     associationRevision: Long,
-    currentEpisode: ReiAnixEpisodeUiModel?,
-    nextEpisode: ReiAnixEpisodeUiModel?,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
@@ -1009,10 +942,6 @@ private fun DetailsHero(
         anime.durationMinutes?.takeIf { it > 0 }?.let { add("$it min/ep") }
     }.joinToString(" • ")
 
-    val allEpisodes = remember(anime.seasons, anime.specials, anime.mediaFiles) {
-        buildList { anime.seasons.forEach { addAll(it.episodes) }; addAll(anime.specials); addAll(anime.mediaFiles) }
-    }
-    val overallProgress = remember(allEpisodes) { detailsProgressFraction(allEpisodes) }
     val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxWidth().background(reiAnixScreenBackground())) {
@@ -1240,9 +1169,29 @@ private fun DetailsHero(
             )
         }
         if (anime.genres.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.sm),
-                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                anime.genres.forEach { genre -> ReiAnixBadge(text = genre.name, tone = ReiAnixBadgeTone.Primary) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(
+                        start = responsive.horizontalPadding,
+                        end = responsive.horizontalPadding,
+                        top = ReiAnixTokens.Spacing.xl,
+                        bottom = ReiAnixTokens.Spacing.sm,
+                    )
+                    .testTag("details-genres"),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xl),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                anime.genres.forEach { genre ->
+                    Text(
+                        text = genre.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
@@ -1320,76 +1269,23 @@ private fun DetailsHero(
                 }
             }
         }
-        if (overallProgress > 0f) {
-            Column(modifier = Modifier.fillMaxWidth().padding(
-                start = responsive.horizontalPadding,
-                top = ReiAnixTokens.Spacing.md,
-                end = responsive.horizontalPadding,
-            ),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "Progresso do anime", style = ReiAnixTokens.TypographyTokens.label, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                    Text(text = "${(overallProgress * 100f).toInt()}%", style = ReiAnixTokens.TypographyTokens.metadata, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                ReiAnixProgressIndicator(progress = overallProgress, visible = true, announceProgress = false)
-            }
+        if (anime.userTags.isNotEmpty()) {
+            Text(
+                text = "Tags: " + anime.userTags.joinToString(" • "),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        currentEpisode?.let { current ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = responsive.horizontalPadding,
-                        vertical = ReiAnixTokens.Spacing.md,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                ) {
-                    Text(
-                        text = "Continuar • ${formatEpisodeNumber(current.number)}",
-                        style = ReiAnixTokens.TypographyTokens.label,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "${(current.progressFraction * 100f).toInt()}%",
-                        style = ReiAnixTokens.TypographyTokens.metadata,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Text(
-                    text = current.displayTitle,
-                    style = ReiAnixTokens.TypographyTokens.cardTitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "${formatElapsedSeconds(current.progressSeconds)} / ${formatDurationLabel(current.durationSeconds ?: 0.0)}",
-                    style = ReiAnixTokens.TypographyTokens.metadata,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                ReiAnixProgressIndicator(
-                    progress = current.progressFraction,
-                    visible = current.progressFraction > 0f,
-                    announceProgress = false,
-                )
-                nextEpisode?.takeIf { it.id != current.id }?.let { next ->
-                    Text(
-                        text = "Próximo: ${formatEpisodeNumber(next.number)} • ${next.displayTitle}",
-                        style = ReiAnixTokens.TypographyTokens.metadata,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+        anime.personalNote?.takeIf(String::isNotBlank)?.let { note ->
+            Text(
+                text = note,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Row(
             modifier = Modifier
@@ -1411,24 +1307,6 @@ private fun DetailsHero(
                 onClick = onOpenMarathon,
                 enabled = hasMarathonContent,
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-marathon-action"),
-            )
-        }
-        if (anime.userTags.isNotEmpty()) {
-            Text(
-                text = "Tags: " + anime.userTags.joinToString(" • "),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        anime.personalNote?.takeIf(String::isNotBlank)?.let { note ->
-            Text(
-                text = note,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         if (showTagsEditor) {
@@ -1515,73 +1393,40 @@ private fun DetailsHeroIcon(
 @Composable
 private fun DetailsExpandableSynopsis(description: String) {
     var expanded by rememberSaveable(description) { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = ReiAnixTokens.Spacing.md),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs)) {
-        Text(text = "Sinopse", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
-        Text(text = description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface,
-            maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis)
-        ReiAnixCompactButton(
-            text = if (expanded) "menos" else "mais",
-            onClick = { expanded = !expanded },
-            contentPadding = PaddingValues(ReiAnixTokens.Spacing.none),
+    var truncated by remember(description) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = ReiAnixTokens.Spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
+    ) {
+        Text(
+            text = "Sinopse",
+            style = ReiAnixTokens.TypographyTokens.sectionTitle,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+            onTextLayout = { result ->
+                if (!expanded) truncated = result.hasVisualOverflow
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("details-synopsis-text")
+                .then(
+                    if (expanded || truncated) {
+                        Modifier.clickable(role = Role.Button) { expanded = !expanded }
+                            .semantics {
+                                stateDescription = if (expanded) "Sinopse completa" else "Sinopse resumida"
+                            }
+                    } else {
+                        Modifier
+                    },
+                ),
         )
     }
-}
-
-@Composable
-private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
-        val knownTitles = sequenceOf(
-            anime.title,
-            anime.romajiTitle,
-            anime.englishTitle,
-            anime.nativeTitle,
-        ).mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-            .map { it.lowercase(Locale.ROOT) }
-            .toSet()
-        val alternateTitles = anime.aliases.asSequence()
-            .map { it.trim() }
-            .filter(String::isNotEmpty)
-            .filter { it.lowercase(Locale.ROOT) !in knownTitles }
-            .distinctBy { it.lowercase(Locale.ROOT) }
-            .toList()
-        val details = buildList {
-            anime.studio?.trim()?.takeIf { it.isNotBlank() }?.let { add("Estúdio" to it) }
-            anime.seasonLabel?.trim()?.takeIf { it.isNotBlank() }?.let { add("Temporada" to seasonLabel(it)) }
-            alternateTitles.takeIf { it.isNotEmpty() }?.let { add("Títulos alternativos" to it.joinToString(" • ")) }
-        }
-        if (details.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
-                Text(text = "Informações", style = ReiAnixTokens.TypographyTokens.sectionTitle, color = MaterialTheme.colorScheme.onBackground)
-                details.forEach { (label, value) ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.lg)) {
-                        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(ReiAnixTokens.Dimensions.detailsInfoLabelWidth))
-                        Text(text = value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-
-    }
-}
-
-private fun detailsProgressFraction(episodes: List<ReiAnixEpisodeUiModel>): Float {
-    var totalDuration = 0.0
-    var watchedDuration = 0.0
-    episodes.forEach { episode ->
-        val duration = episode.durationSeconds?.takeIf { it.isFinite() && it > 0.0 } ?: return@forEach
-        totalDuration += duration
-        watchedDuration += if (episode.isCompleted) duration else (episode.progressSeconds ?: 0.0).coerceIn(0.0, duration)
-    }
-    if (totalDuration <= 0.0) return 0f
-    return (watchedDuration / totalDuration).coerceIn(0.0, 1.0).toFloat()
-}
-
-private fun formatElapsedSeconds(seconds: Double?): String {
-    val value = seconds?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
-    if (value == 0.0) return "0:00"
-    return formatDurationLabel(value)
 }
 
 @Composable
