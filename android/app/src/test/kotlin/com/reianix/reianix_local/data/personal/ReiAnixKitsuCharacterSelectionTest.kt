@@ -59,6 +59,19 @@ class ReiAnixKitsuCharacterSelectionTest {
     }
 
     @Test
+    fun sameKitsuPosterIdRemainsTrustedAcrossImageSizeVariants() {
+        val candidate = kitsu(
+            "1", "Cowboy Bebop",
+            "https://media.kitsu.app/anime/poster_images/1/original.jpg",
+        )
+        val result = selectKitsuCastCandidate(
+            42L, identity, listOf(candidate), ReiAnixExternalCatalogIds(),
+            setOf("https://media.kitsu.app/anime/poster_images/1/large.jpg"),
+        )
+        assertEquals("1", result?.ids?.kitsuId)
+    }
+
+    @Test
     fun unanchoredTitleOnlyMatchCannotAttachPotentiallyWrongKitsuCast() {
         val candidate = kitsu("2", "Cowboy Bebop", "https://media.kitsu.app/poster-2.jpg")
         assertNull(selectKitsuCastCandidate(

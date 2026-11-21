@@ -394,9 +394,11 @@ internal fun selectKitsuCastCandidate(
     ).value?.remote
     if (verified != null) return verified
     if (readyKitsuPosterUrls.isEmpty()) return null
+    val posterIds = readyKitsuPosterUrls.mapNotNull(::kitsuAnimeIdFromPosterUrl).toSet()
     return candidates.filter { candidate ->
         candidate.source == ReiAnixCatalogSource.KITSU &&
-            candidate.coverUrl in readyKitsuPosterUrls &&
+            (candidate.coverUrl in readyKitsuPosterUrls ||
+                candidate.ids.kitsuId in posterIds) &&
             ReiAnixCatalogIdentityMatcher.evaluate(
                 animeId, identity, candidate, knownIds,
             ).decision in setOf(
