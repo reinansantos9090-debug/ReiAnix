@@ -18,6 +18,7 @@ import com.reianix.reianix_local.ui.theme.WallpaperFrame
 import com.reianix.reianix_local.ui.theme.WallpaperImage
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -105,7 +106,10 @@ class ReiAnixLibraryInstrumentedTest {
         }
 
         composeRule.onNodeWithText("Example Anime").assertIsDisplayed()
-        composeRule.onNodeWithText("1 episódio").assertIsDisplayed()
+        // The episode count belongs in the text under the poster, not in a black
+        // chip overlapping the artwork.
+        composeRule.onNodeWithText("2026 • 1 episódio").assertIsDisplayed()
+        composeRule.onNodeWithText("1 episódio").assertDoesNotExist()
         composeRule.onNodeWithText("Action").assertIsDisplayed()
     }
 
