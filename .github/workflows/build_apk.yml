@@ -22,47 +22,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-
-      - name: Bundle seven approved slim profile-frame PNG layers
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 407 && github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        env:
-          ART_GOLD: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F29ae7508-189f-4a84-b2a7-5e5071943892/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAGKzhNnACW0RrorfDmiq6MrQc61WXbZPyB0EficN6TJ-&exp=1795258945&osig=AAAAAAAAAAAAAAAAAAAAAHq_-DYxUn-L6ztPvRtp0jpLhUMSuaaPuRbo96qVPowv&signer=media-rpc&token=AAIAAU0AJDI5YWU3NTA4LTE4OWYtNGE4NC1iMmE3LTVlNTA3MTk0Mzg5MgAAAAABof3FjeguegZbvBBXEjyGXoirEz8WfjclP7gwtrTcHglBWug6TA&x-canva-quality=thumbnail'
-          ART_NEON: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F7eefd1a6-b37e-4453-8afc-122023ac4d29/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAHBJsunjYaC4NERhosZiXNQiWbJCARqt_PtySNp7hck-&exp=1795256496&osig=AAAAAAAAAAAAAAAAAAAAAMzq1Hn6ZONLHXBkwNfPBEYTeLkiL5ofubpTZFz_jgGi&signer=media-rpc&token=AAIAAU0AJDdlZWZkMWE2LWIzN2UtNDQ1My04YWZjLTEyMjAyM2FjNGQyOQAAAAABof2gL4CQyOdrDDMqPcizv6zsv1QOmyAy_vFGMSa4EQWGTtmlOA&x-canva-quality=thumbnail'
-          ART_GALAXY: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F78792d34-ccef-4276-8f95-546b3f7ebf2b/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAOq8VWRj0BEo5je79AdDAb0m0VqSG5bVtQugGB9pmR1R&exp=1795257195&osig=AAAAAAAAAAAAAAAAAAAAAMrTop6kZIX0P9SyvcmhDfz1F9JuBV5J7l-rQY6nNa1B&signer=media-rpc&token=AAIAAU0AJDc4NzkyZDM0LWNjZWYtNDI3Ni04Zjk1LTU0NmIzZjdlYmYyYgAAAAABof2q2fgT2gpRiDfGzVed5-hMfVxw_jjvGt_NyupPid7Vgcd1tw&x-canva-quality=thumbnail'
-          ART_HEADSET: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F435b7a4e-d4b1-4cb7-91e3-87f1f30bf416/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAADFHZQP32ZXibx5D-mLToXDc1Cv7l_bS7iaZHWymoOun&exp=1795256675&osig=AAAAAAAAAAAAAAAAAAAAAI4Ppf98QYSd_mXlhZq9kD3bQeOzUHU2NahP_KiVy68I&signer=media-rpc&token=AAIAAU0AJDQzNWI3YTRlLWQ0YjEtNGNiNy05MWUzLTg3ZjFmMzBiZjQxNgAAAAABof2i6rg_s_gO2HUJOG2WxfsW0eNv9eYWmZcBFjOFJ5nczUMXkA&x-canva-quality=thumbnail'
-          ART_CAT_EARS: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F427254a9-4f9a-4ab0-aef3-c76d158d1deb/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAC5rPWs7CwB3Vzh2nPUiWkobJ23HZMQq4rm5638JNpnQ&exp=1795258549&osig=AAAAAAAAAAAAAAAAAAAAADasJJiLhKGsEBfGGSge10WdmWt8SlI5lKnr5xevB1Jt&signer=media-rpc&token=AAIAAU0AJDQyNzI1NGE5LTRmOWEtNGFiMC1hZWYzLWM3NmQxNThkMWRlYgAAAAABof2_gwi6yw4f6NuH7yiql0gf2wIKZOKgv2uDWU2b-lBaipZWXw&x-canva-quality=thumbnail'
-          ART_CAT_LEFT_EAR: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F6a21d8aa-faa3-4149-a718-c46cad919a6e/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAAKh-2oxc4nHkQmIrmDFO8ecX_Wbkp8TH0fR3jYWWicP8&exp=1795256061&osig=AAAAAAAAAAAAAAAAAAAAAEX2Z1MR3XUGYsksorr99iWih-QP9LSvY1fPtpnhZMJZ&signer=media-rpc&token=AAIAAU0AJDZhMjFkOGFhLWZhYTMtNDE0OS1hNzE4LWM0NmNhZDkxOWE2ZQAAAAABof2ZjEhbKs-cAxK8Nmo0Q0CVnN-JJPDyB9IdRkxIG124NHU2LQ&x-canva-quality=thumbnail'
-          ART_CAT_RIGHT_EAR: 'https://media.canva.com/v2/image-resize/format:PNG/height:200/quality:100/uri:ifs%3A%2F%2FM%2F62483620-10af-421b-96d8-1ab551cb7541/watermark:F/width:200?csig=AAAAAAAAAAAAAAAAAAAAABsV0o4pcqoSQivD2-S5Isj_V8abe_KUM7PiAp9SGF3V&exp=1795258426&osig=AAAAAAAAAAAAAAAAAAAAABc6mRjrm5JHroJu-mDt_UAOvCHwV9FG5XqfFEBNbNcD&signer=media-rpc&token=AAIAAU0AJDYyNDgzNjIwLTEwYWYtNDIxYi05NmQ4LTFhYjU1MWNiNzU0MQAAAAABof29opA8aT_ztDMyIOtqlAAyJlkD_IAq2vwA5lLePT2b4AkbEQ&x-canva-quality=thumbnail'
-        run: |
-          set -euo pipefail
-          branch="${{ github.event.pull_request.head.ref }}"
-          git fetch --no-tags origin "$branch"
-          git checkout -B "$branch" "origin/$branch"
-          dest=android/app/src/main/res/drawable-nodpi
-          mkdir -p "$dest"
-          if [[ -s "$dest/profile_frame_cat_left_ear.png" && -s "$dest/profile_frame_cat_right_ear.png" ]]; then
-            echo "Refined premium artwork already bundled in this PR."
-            exit 0
-          fi
-          for name in gold neon galaxy headset cat_ears cat_left_ear cat_right_ear; do
-            var_name="ART_${name^^}"
-            url="${!var_name}"
-            target="$dest/profile_frame_${name}.png"
-            big="${url/height:200/height:320}"
-            big="${big/width:200/width:320}"
-            if ! curl --fail --location --silent --show-error --max-time 25 "$big" --output "$target"; then
-              curl --fail --location --silent --show-error --max-time 30 "$url" --output "$target"
-            fi
-            file "$target"
-            if ! file -b "$target" | grep -q "PNG image data"; then echo "::error::Invalid PNG for $name"; exit 1; fi
-          done
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$dest"/profile_frame_gold.png "$dest"/profile_frame_neon.png "$dest"/profile_frame_galaxy.png "$dest"/profile_frame_headset.png "$dest"/profile_frame_cat_ears.png "$dest"/profile_frame_cat_left_ear.png "$dest"/profile_frame_cat_right_ear.png
-          git commit -m "Replace thick profile frames with approved slim art and independently moving cat ears"
-          git push origin "HEAD:refs/heads/$branch"
-
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
