@@ -54,7 +54,7 @@ class ReiAnixProfileStore private constructor(context: Context) {
         bio = prefs.getString("bio", "").orEmpty(),
         avatar = prefs.getString("avatar", DEFAULT_PROFILE_AVATAR_ID) ?: DEFAULT_PROFILE_AVATAR_ID,
         photo = prefs.getString("photo", null),
-        frame = prefs.getString("frame", "none").orEmpty(),
+        frame = prefs.getString("frame", "none").orEmpty().takeUnless { it == "headset" } ?: "none",
         color = prefs.getString("color", "blue").orEmpty(),
         featuredAnimeId = prefs.getLong("featured", 0L).takeIf { it > 0L },
     )
@@ -125,7 +125,11 @@ class ReiAnixProfileStore private constructor(context: Context) {
     suspend fun update(change: (ReiAnixProfile) -> ReiAnixProfile) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val profile = change(current.value)
-            val clean = profile.copy(name = profile.name.trim().take(40), bio = profile.bio.trim().take(160))
+            val clean = profile.copy(
+                name = profile.name.trim().take(40),
+                bio = profile.bio.trim().take(160),
+                frame = profile.frame.takeUnless { it == "headset" } ?: "none",
+            )
             require(clean.photo == null || image(clean.photo)?.isFile == true) { "Foto indisponível." }
             val old = current.value
             val obsolete = prefs.getString("banner", null)
