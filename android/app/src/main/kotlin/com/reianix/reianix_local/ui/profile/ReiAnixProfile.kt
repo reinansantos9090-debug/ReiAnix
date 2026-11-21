@@ -113,17 +113,17 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
         else -> Color.Transparent
     }
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
-        // Space for frame ornaments; photo and built-in avatar remain circular and clipped.
+        // Royal and Cat are TOP accessories, not circular rings. Their art is
+        // cropped and anchored to the upper edge of these carefully placed portraits.
+        // Keep an actual round photo (not an oval) and don't move other frame styles.
+        val portraitModifier = when (profile.frame) {
+            "gold" -> Modifier.size(size * 0.72f).offset(y = size * 0.13f)
+            "cat_ears" -> Modifier.size(size * 0.77f).offset(y = size * 0.115f)
+            "neon", "galaxy" -> Modifier.fillMaxSize().padding(size * 0.11f)
+            else -> Modifier.fillMaxSize().padding(if (animated) size * 0.11f else 0.dp)
+        }
         Box(
-            Modifier.fillMaxSize()
-                .padding(when (profile.frame) {
-                    // The crown sits above the portrait; no heavy frame should shrink the face.
-                    "gold" -> size * 0.105f
-                    "neon", "galaxy" -> size * 0.11f
-                    // Keep the approved cat-bow/paw composition and Sakura unchanged.
-                    "cat_ears" -> size * 0.11f
-                    else -> if (animated) size * 0.11f else 0.dp
-                })
+            portraitModifier
                 .then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface),
