@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
@@ -230,14 +232,45 @@ class ReiAnixWallpaperCardsInstrumentedTest {
             composeRule.onNodeWithText("Escolher foto da galeria").assertDoesNotExist()
             composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
-            composeRule.onNodeWithText("Dourada").assertIsDisplayed().performClick()
+            composeRule.onNodeWithText("Dourada royal").assertIsDisplayed().performClick()
             composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "gold" }
             assertEquals(original.color, store.state.value.color)
             composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             composeRule.onNodeWithText("Editar perfil").assertIsDisplayed()
             assertEquals("Otaku automático", store.state.value.name)
             assertEquals("Minha biblioteca", store.state.value.bio)
-            composeRule.onNodeWithText("Dourada").assertDoesNotExist()
+            composeRule.onNodeWithText("Dourada royal").assertDoesNotExist()
+        } finally {
+            runBlocking { store.save(original) }
+        }
+    }
+
+    @Test
+    fun animatedProfileFramesCanBeSelectedAndSavedWithoutSeparateAnimationSetting() {
+        val store = ReiAnixProfileStore.from(composeRule.activity)
+        val original = store.state.value
+        try {
+            runBlocking { store.save(original.copy(frame = "none")) }
+            composeRule.setContent {
+                ReiAnixComposeTheme(themeMode = "dark") {
+                    ProfileCustomization(store, emptyList(), onBack = {})
+                }
+            }
+            composeRule.onNodeWithText("Moldura").performScrollTo().performClick()
+            composeRule.onNodeWithTag("profile-frame-preview").assertIsDisplayed()
+            for (frame in listOf("neon", "sakura", "gold", "galaxy")) {
+                composeRule.onNodeWithTag("profile-frame-option-" + frame)
+                    .performScrollTo().performClick()
+                composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == frame }
+                composeRule.onAllNodesWithTag("profile-frame-animation-" + frame, useUnmergedTree = true)
+                    .assertCountEquals(2)
+            }
+            composeRule.onNodeWithTag("profile-frame-option-white")
+                .performScrollTo().performClick()
+            composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "white" }
+            composeRule.onNodeWithTag("profile-frame-option-none")
+                .performScrollTo().performClick()
+            composeRule.waitUntil(timeoutMillis = 5000) { store.state.value.frame == "none" }
         } finally {
             runBlocking { store.save(original) }
         }

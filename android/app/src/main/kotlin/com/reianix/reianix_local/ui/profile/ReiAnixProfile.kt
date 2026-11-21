@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
@@ -105,24 +106,36 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
     val preset = avatarPresetFor(profile.avatar)
     val photo = store.image(profile.photo)
     var photoFailed by remember(photo) { mutableStateOf(false) }
+    val animated = isAnimatedProfileFrame(profile.frame)
     val ring = when (profile.frame) {
         "accent" -> accent(profile)
-        "gold" -> Color(0xFFFFC768)
         "white" -> Color.White
         else -> Color.Transparent
     }
-    Box(
-        modifier.size(size).then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
-            .clip(CircleShape).background(MaterialTheme.colorScheme.surface),
-        contentAlignment = Alignment.Center,
-    ) {
-        AsyncImage(
-            model = if (photo != null && !photoFailed) photo else preset.image,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            onError = { if (photo != null) photoFailed = true },
-        )
+    Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+        // Space for frame ornaments; photo and built-in avatar remain circular and clipped.
+        Box(
+            Modifier.fillMaxSize()
+                .padding(if (animated) size * 0.11f else 0.dp)
+                .then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = if (photo != null && !photoFailed) photo else preset.image,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                onError = { if (photo != null) photoFailed = true },
+            )
+        }
+        if (animated) {
+            AnimatedProfileFrame(
+                frame = profile.frame,
+                modifier = Modifier.fillMaxSize().testTag("profile-frame-animation-" + profile.frame),
+            )
+        }
     }
 }
 
@@ -723,17 +736,49 @@ internal fun ProfileCustomization(
                         }
                     }
                     "frame" -> {
-                        ProfileAvatar(profile, store, 112.dp)
-                        Text("Escolha a moldura da foto do perfil.", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        listOf("none" to "Sem moldura", "accent" to "Colorida", "gold" to "Dourada", "white" to "Branca").forEach { (key, label) ->
-                            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(enabled = !busy) {
-                                saveChange { it.copy(frame = key) }
-                            }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                ProfileAvatar(profile.copy(frame = key), store, 48.dp)
-                                Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                                RadioButton(selected = profile.frame == key, onClick = null)
+                        Box(
+                            Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp)
+                                .testTag("profile-frame-preview"),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ProfileAvatar(profile, store, 148.dp)
+                        }
+                        Text(
+                            "Escolha a moldura da foto do perfil.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        profileFrameOptions.forEach { option ->
+                            val selected = profile.frame == option.id
+                            val shape = RoundedCornerShape(18.dp)
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clip(shape)
+                                    .background(if (selected) Color(0xFF101C32) else Color.Transparent)
+                                    .border(
+                                        if (selected) 1.dp else 0.dp,
+                                        if (selected) Color(0xFF3E84FF) else Color.Transparent,
+                                        shape,
+                                    )
+                                    .clickable(enabled = !busy) { saveChange { it.copy(frame = option.id) } }
+                                    .testTag("profile-frame-option-" + option.id)
+                                    .heightIn(min = 76.dp)
+                                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                ProfileAvatar(profile.copy(frame = option.id), store, 58.dp)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(option.title, style = MaterialTheme.typography.bodyLarge)
+                                    Text(
+                                        option.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                RadioButton(selected = selected, onClick = null, enabled = !busy)
                             }
                         }
                     }
