@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -16,9 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.testTag
 import com.reianix.reianix_local.R
 import androidx.compose.ui.unit.dp
 
@@ -64,6 +68,11 @@ internal fun IllustratedProfileFrame(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.FillBounds,
         )
+        if (frame == "cat_ears") {
+            // Each ear is an independent PNG layer; only the ears move, never
+            // the face, bows, paws or the rest of the approved cat frame.
+            AnimatedCatEarLayers(Modifier.fillMaxSize())
+        }
         Canvas(Modifier.fillMaxSize()) {
             if (size.minDimension < 55.dp.toPx()) return@Canvas
             val radius = size.minDimension * 0.008f
@@ -115,4 +124,75 @@ private fun DrawScope.drawTinyFixedStar(
         strokeWidth = radius * 0.45f,
         cap = StrokeCap.Round,
     )
+}
+
+/**
+ * Independent occasional cat-ear twitches; each side has its own timing
+ * and pivots around its root, making a tiny organic movement followed by rest.
+ * There is no full-frame rotation and no additional user toggle.
+ */
+@Composable
+private fun AnimatedCatEarLayers(modifier: Modifier = Modifier) {
+    val motion = rememberInfiniteTransition(label = "cat-frame-independent-ear-twitches")
+    val leftTilt by motion.animateFloat(
+        initialValue = 0f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 4900
+                0f at 0
+                0f at 1100
+                -7.0f at 1220
+                3.8f at 1370
+                -2f at 1490
+                0f at 1630
+                0f at 4900
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "left-cat-ear-tilt",
+    )
+    val rightTilt by motion.animateFloat(
+        initialValue = 0f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 5800
+                0f at 0
+                0f at 2420
+                7f at 2540
+                -3.8f at 2700
+                1.6f at 2830
+                0f at 2970
+                0f at 5800
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "right-cat-ear-tilt",
+    )
+
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Image(
+            painter = painterResource(R.drawable.profile_frame_cat_left_ear),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(0.26f, 0.37f)
+                    rotationZ = leftTilt
+                }
+                .testTag("profile-frame-cat-left-ear"),
+            contentScale = ContentScale.FillBounds,
+        )
+        Image(
+            painter = painterResource(R.drawable.profile_frame_cat_right_ear),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(0.74f, 0.37f)
+                    rotationZ = rightTilt
+                }
+                .testTag("profile-frame-cat-right-ear"),
+            contentScale = ContentScale.FillBounds,
+        )
+    }
 }
