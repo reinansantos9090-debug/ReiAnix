@@ -1546,10 +1546,10 @@ private fun DetailsAboutSection(anime: ReiAnixDetailsAnimeUiModel) {
     val originalTitle = anime.nativeTitle?.trim()?.takeIf {
         it.isNotBlank() && !it.equals(anime.title, ignoreCase = true)
     }
-    val knownTitles = setOfNotNull(
+    val knownTitles = listOfNotNull(
         anime.title.lowercase(Locale.ROOT),
         originalTitle?.lowercase(Locale.ROOT),
-    )
+    ).toSet()
     val alternateTitles = sequenceOf(anime.romajiTitle, anime.englishTitle)
         .plus(anime.aliases.asSequence())
         .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
@@ -1636,7 +1636,7 @@ private fun DetailsCloudStreamMetadata(anime: ReiAnixDetailsAnimeUiModel, center
     val primary = buildList {
         add(if (anime.mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else "Anime")
         anime.year?.let { add(it.toString()) }
-        anime.score?.takeIf(Double::isFinite)?.let { add(formatScore(it) + "/10") }
+        anime.score?.takeIf { it.isFinite() }?.let { add(formatScore(it) + "/10") }
         anime.status?.trim()?.takeIf(String::isNotBlank)?.let { add(statusLabel(it)) }
         anime.format?.trim()?.takeIf(String::isNotBlank)?.let { add(formatLabel(it)) }
     }
