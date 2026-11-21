@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -17,12 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.platform.testTag
 import com.reianix.reianix_local.R
 import androidx.compose.ui.unit.dp
 
@@ -32,7 +28,7 @@ import androidx.compose.ui.unit.dp
  */
 internal fun isIllustratedProfileFrame(frame: String): Boolean =
     frame == "gold" || frame == "neon" || frame == "galaxy" ||
-        frame == "cat_ears" || frame == "headset"
+        frame == "cat_ears"
 
 @Composable
 internal fun IllustratedProfileFrame(
@@ -47,7 +43,6 @@ internal fun IllustratedProfileFrame(
         "neon" -> R.drawable.profile_frame_neon
         "galaxy" -> R.drawable.profile_frame_galaxy
         "cat_ears" -> R.drawable.profile_frame_cat_ears
-        "headset" -> R.drawable.profile_frame_headset
         else -> return
     }
 
@@ -68,11 +63,6 @@ internal fun IllustratedProfileFrame(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.FillBounds,
         )
-        if (frame == "cat_ears") {
-            // Each ear is an independent PNG layer; only the ears move, never
-            // the face, bows, paws or the rest of the approved cat frame.
-            AnimatedCatEarLayers(Modifier.fillMaxSize())
-        }
         Canvas(Modifier.fillMaxSize()) {
             if (size.minDimension < 55.dp.toPx()) return@Canvas
             val radius = size.minDimension * 0.008f
@@ -81,13 +71,13 @@ internal fun IllustratedProfileFrame(
                 "neon" -> Color(0xFF86E9FF)
                 "galaxy" -> Color(0xFFCDB9FF)
                 "cat_ears" -> Color(0xFFFFD3E8)
-                else -> Color(0xFF98EBFF)
+                else -> Color(0xFFFFD3E8)
             }
             val points = when (frame) {
                 "gold" -> listOf(0.13f to 0.31f, 0.86f to 0.30f, 0.71f to 0.83f)
                 "neon" -> listOf(0.23f to 0.16f, 0.80f to 0.76f, 0.18f to 0.71f)
                 "galaxy" -> listOf(0.19f to 0.31f, 0.79f to 0.25f, 0.65f to 0.83f)
-                "cat_ears" -> listOf(0.20f to 0.19f, 0.81f to 0.19f, 0.50f to 0.82f)
+                "cat_ears" -> listOf(0.50f to 0.82f)
                 else -> listOf(0.15f to 0.44f, 0.84f to 0.44f, 0.50f to 0.87f)
             }
             points.forEachIndexed { index, pair ->
@@ -124,75 +114,4 @@ private fun DrawScope.drawTinyFixedStar(
         strokeWidth = radius * 0.45f,
         cap = StrokeCap.Round,
     )
-}
-
-/**
- * Independent occasional cat-ear twitches; each side has its own timing
- * and pivots around its root, making a tiny organic movement followed by rest.
- * There is no full-frame rotation and no additional user toggle.
- */
-@Composable
-private fun AnimatedCatEarLayers(modifier: Modifier = Modifier) {
-    val motion = rememberInfiniteTransition(label = "cat-frame-independent-ear-twitches")
-    val leftTilt by motion.animateFloat(
-        initialValue = 0f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 4900
-                0f at 0
-                0f at 1100
-                -7.0f at 1220
-                3.8f at 1370
-                -2f at 1490
-                0f at 1630
-                0f at 4900
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "left-cat-ear-tilt",
-    )
-    val rightTilt by motion.animateFloat(
-        initialValue = 0f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 5800
-                0f at 0
-                0f at 2420
-                7f at 2540
-                -3.8f at 2700
-                1.6f at 2830
-                0f at 2970
-                0f at 5800
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "right-cat-ear-tilt",
-    )
-
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Image(
-            painter = painterResource(R.drawable.profile_frame_cat_left_ear),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize()
-                .graphicsLayer {
-                    transformOrigin = TransformOrigin(0.26f, 0.37f)
-                    rotationZ = leftTilt
-                }
-                .testTag("profile-frame-cat-left-ear"),
-            contentScale = ContentScale.FillBounds,
-        )
-        Image(
-            painter = painterResource(R.drawable.profile_frame_cat_right_ear),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize()
-                .graphicsLayer {
-                    transformOrigin = TransformOrigin(0.74f, 0.37f)
-                    rotationZ = rightTilt
-                }
-                .testTag("profile-frame-cat-right-ear"),
-            contentScale = ContentScale.FillBounds,
-        )
-    }
 }
