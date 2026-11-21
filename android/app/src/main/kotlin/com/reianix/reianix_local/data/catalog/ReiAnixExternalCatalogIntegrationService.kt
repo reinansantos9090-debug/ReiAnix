@@ -37,6 +37,7 @@ class ReiAnixExternalCatalogIntegrationService(
     private val identifierResolver: ReiAnixCatalogIdResolver? = null,
     private val candidateMetadataPublisher: ((Long, ReiAnixCatalogAnime) -> Unit)? = null,
     private val metadataCommitPublisher: ((Long) -> Unit)? = null,
+    private val charactersPublisher: ((Long, ReiAnixCatalogAnime) -> Unit)? = null,
 ) {
     private val enrichmentPassMutex = Mutex()
 
@@ -152,7 +153,7 @@ class ReiAnixExternalCatalogIntegrationService(
             // artwork timestamps, or the persisted supplemental catalog scan cursor.
             library.markCandidateMetadataRecoveryAttempt(target.animeId, now)
             val result = try {
-                provider.searchAnime(target.title, SEARCH_LIMIT)
+                provider.searchAnimeWithCharacters(target.title, SEARCH_LIMIT)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -355,7 +356,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val provider = providers.provider(source) ?: continue
             val resolution = try {
-                resolve(provider, anime, identity, ids)
+                resolve(provider, anime, identity, ids, includeCharacters = needsMetadata)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -385,6 +386,13 @@ class ReiAnixExternalCatalogIntegrationService(
                     } else {
                         try {
                             anime = library.mergeExternalCatalogMetadata(verified.match, verified.remote)
+                            // Included Kitsu cast is part of the SAME response.
+                            // Place it in memory before metadata is announced.
+                            try {
+                                charactersPublisher?.invoke(anime.id, verified.remote)
+                            } catch (error: Exception) {
+                                record(source, "CHARACTER_METADATA_CACHE_DEFERRED", anime.id, error)
+                            }
                             metadataCommitPublisher?.invoke(anime.id)
                             record(source, "VERIFIED_METADATA_MERGED", anime.id)
                         } catch (cancelled: CancellationException) {
@@ -460,10 +468,14 @@ class ReiAnixExternalCatalogIntegrationService(
         anime: ReiAnixAnimeRecord,
         identity: ReiAnixCatalogIdentity,
         ids: ReiAnixExternalCatalogIds,
+        includeCharacters: Boolean,
     ): Resolution {
         val knownId = ids.idFor(provider.source)
         if (!knownId.isNullOrBlank()) {
-            return when (val result = provider.getAnime(knownId)) {
+            return when (val result =
+                if (includeCharacters) provider.getAnimeWithCharacters(knownId)
+                else provider.getAnime(knownId)
+            ) {
                 is ReiAnixCatalogResult.Failure -> {
                     record(provider.source, "DETAIL_REQUEST_FAILED", anime.id)
                     Resolution(ReiAnixCatalogIdentityDecision.UNRESOLVED)
@@ -484,7 +496,10 @@ class ReiAnixExternalCatalogIntegrationService(
             .distinct().take(MAX_SEARCH_TERMS)
         ) {
             currentCoroutineContext().ensureActive()
-            when (val result = provider.searchAnime(query, SEARCH_LIMIT)) {
+            when (val result =
+                if (includeCharacters) provider.searchAnimeWithCharacters(query, SEARCH_LIMIT)
+                else provider.searchAnime(query, SEARCH_LIMIT)
+            ) {
                 is ReiAnixCatalogResult.Failure -> {
                     incompleteSearch = true
                     record(provider.source, "SEARCH_REQUEST_FAILED", anime.id)

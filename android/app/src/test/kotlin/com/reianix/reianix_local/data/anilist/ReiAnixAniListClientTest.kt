@@ -56,6 +56,39 @@ class ReiAnixAniListClientTest {
     }
 
     @Test
+    fun characterCastIsParsedFromTheSameGraphQlResponseAsYearAndCover() = runBlocking {
+        val transport = FakeTransport(AniListHttpResponse(200, """
+            {
+              "data": { "Page": { "media": [{
+                "id": 16498,
+                "title": {"romaji": "Example"},
+                "seasonYear": 2024,
+                "coverImage": {"large": "https://img.example/cover.jpg"},
+                "characters": {"edges": [
+                  {"role": "MAIN", "node": {
+                    "id": 55, "name": {"full": "Hero"},
+                    "image": {"medium": "https://img.example/hero.jpg"}
+                  }},
+                  {"role": "SUPPORTING", "node": {
+                    "id": 56, "name": {"full": "Friend"},
+                    "image": {"medium": "https://img.example/friend.jpg"}
+                  }}
+                ]}
+              }]}}
+            }
+        """.trimIndent()))
+        val result = ReiAnixAniListClient(transport, 0).searchAnime("Example", withCharacters = true)
+        val anime = (result as AniListResult.Success).value.single()
+        assertEquals(2024, anime.seasonYear)
+        assertEquals("https://img.example/cover.jpg", anime.coverLargeUrl)
+        assertEquals(listOf("Hero", "Friend"), anime.characters?.map { it.name })
+        assertEquals(listOf("Principal", "Secundário"), anime.characters?.map { it.role })
+        assertEquals("https://img.example/hero.jpg", anime.characters?.first()?.imageUrl)
+        assertTrue(transport.requestBody!!.getString("query").contains("characters(perPage: 10"))
+        assertEquals(1, transport.calls)
+    }
+
+    @Test
     fun cleartextExtraLargeCoverDoesNotHideSecureLargeVariant() = runBlocking {
         val transport = FakeTransport(AniListHttpResponse(200, """
             {"data":{"Media":{

@@ -246,6 +246,7 @@ class ReiAnixAniListIntegrationService(
     private val candidateMetadataPublisher: ((Long, AniListAnime) -> Unit)? = null,
     private val explicitArtworkPublisher: ((Long) -> Unit)? = null,
     private val prepareRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
+    private val charactersPublisher: ((Long, AniListAnime) -> Unit)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -278,6 +279,12 @@ class ReiAnixAniListIntegrationService(
         prepareRepairArtwork = { animeId, remote ->
             ReiAnixAppDependencies.existingOrNull(context.applicationContext)?.artworkService
                 ?.prepareExplicitRepairArtwork(animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl)
+        },
+        charactersPublisher = { animeId, remote ->
+            ReiAnixAppDependencies.existingOrNull(context.applicationContext)
+                ?.metadataCharactersStore?.publish(
+                    animeId, "anilist", remote.id.toString(), remote.characters,
+                )
         },
         metadataCommitPublisher = { animeId, requestArtwork ->
             if (requestArtwork) {
@@ -357,7 +364,7 @@ class ReiAnixAniListIntegrationService(
             )
             // All returned candidates are evaluated against every stored title.
             // The original name is a preference, not a mandatory match.
-            val candidates = when (val result = client.searchAnimeAliases(terms)) {
+            val candidates = when (val result = client.searchAnimeAliases(terms, withCharacters = true)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
@@ -432,7 +439,7 @@ class ReiAnixAniListIntegrationService(
         }
 
         val remoteResult = try {
-            client.getAnime(remoteId.toInt())
+            client.getAnime(remoteId.toInt(), withCharacters = true)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
@@ -478,7 +485,7 @@ class ReiAnixAniListIntegrationService(
         if (anilistId <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive."))
         val local = library.getAnime(animeId)
             ?: return AniListResult.Failure(AniListError.InvalidRequest("Local anime does not exist."))
-        val remote = when (val result = client.getAnime(anilistId)) {
+        val remote = when (val result = client.getAnime(anilistId, withCharacters = true)) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> return result
         } ?: return AniListResult.Failure(AniListError.InvalidResponse("AniList returned no anime for this ID."))
@@ -760,7 +767,7 @@ class ReiAnixAniListIntegrationService(
         if (local.anilistMatchManual == true || local.metadataSource == "manual" || local.metadataStatus == "manual") {
             return false
         }
-        val remote = when (val result = client.getAnime(consensus.anilistId)) {
+        val remote = when (val result = client.getAnime(consensus.anilistId, withCharacters = true)) {
             is AniListResult.Success -> result.value
             is AniListResult.Failure -> {
                 Log.w(TAG, "AniList detail lookup failed for Trace.moe ID=${consensus.anilistId}: ${result.error}")
@@ -990,7 +997,7 @@ class ReiAnixAniListIntegrationService(
         for ((termIndex, searchTerm) in searchTerms.withIndex()) {
             searchedTerms = searchTerms.take(termIndex + 1)
             val searchResult = try {
-                client.searchAnime(searchTerm, 10)
+                client.searchAnime(searchTerm, 10, withCharacters = true)
             } catch (cancelled: CancellationException) {
                 autoMatchAttempts.remove(animeId)
                 throw cancelled
@@ -1369,12 +1376,12 @@ class ReiAnixAniListIntegrationService(
             val local = library.getAnime(target.animeId) ?: continue
             val knownId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
             val candidate = if (knownId != null) {
-                when (val result = client.getAnime(knownId.toInt())) {
+                when (val result = client.getAnime(knownId.toInt(), withCharacters = true)) {
                     is AniListResult.Success -> result.value
                     is AniListResult.Failure -> null
                 }
             } else {
-                when (val result = client.searchAnime(target.title, 10)) {
+                when (val result = client.searchAnime(target.title, 10, withCharacters = true)) {
                     is AniListResult.Success -> {
                         val options = result.value
                         options.firstOrNull {
@@ -1559,6 +1566,14 @@ class ReiAnixAniListIntegrationService(
             }
             if (artworkEnabled && prepared == null && (manual || traceMoeConfirmed || explicitRepair)) {
                 explicitArtworkPublisher?.invoke(updated.id)
+            }
+            // Characters have already arrived in this SAME AniList metadata
+            // response. Publish their in-memory projection before telling the
+            // existing UI that the metadata commit is complete. No extra HTTP.
+            try {
+                charactersPublisher?.invoke(updated.id, remote)
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not publish embedded AniList characters", error)
             }
             enqueueMetadataCommit(updated.id, requestArtwork = artworkEnabled && prepared == null)
             AniListResult.Success(updated)

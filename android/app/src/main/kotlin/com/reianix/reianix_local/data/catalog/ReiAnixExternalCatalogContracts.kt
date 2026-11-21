@@ -205,6 +205,8 @@ data class ReiAnixCatalogAnime(
     val bannerVariant: String? = null,
     /** Raw provider fields lacking enough evidence for a canonical artwork type. */
     val unclassifiedArtworkFields: List<ReiAnixCatalogArtworkSourceField> = emptyList(),
+    /** Character entries included in the same Kitsu JSON:API metadata response. */
+    val characters: List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>? = null,
 ) {
     init {
         require(!source.resolvesIdentifiers)
@@ -273,6 +275,15 @@ interface ReiAnixAnimeCatalogProvider {
     val source: ReiAnixCatalogSource
     suspend fun searchAnime(query: String, limit: Int = 10): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>>
     suspend fun getAnime(externalId: String): ReiAnixCatalogResult<ReiAnixCatalogAnime?>
+
+    /** Metadata-only variant; artwork-only callers keep their original fast URL. */
+    suspend fun searchAnimeWithCharacters(
+        query: String, limit: Int = 10,
+    ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> = searchAnime(query, limit)
+
+    suspend fun getAnimeWithCharacters(
+        externalId: String,
+    ): ReiAnixCatalogResult<ReiAnixCatalogAnime?> = getAnime(externalId)
 }
 
 /**
@@ -385,6 +396,27 @@ class ReiAnixCatalogProviderRegistry(
             require(id.isNotEmpty()) { "External catalog ID cannot be blank." }
             return executeCached("id:$id", DEFAULT_DETAIL_CACHE_TTL_MILLIS) {
                 delegate.getAnime(id)
+            }
+        }
+
+        override suspend fun searchAnimeWithCharacters(
+            query: String,
+            limit: Int,
+        ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
+            val normalized = query.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
+            if (normalized.isEmpty()) return ReiAnixCatalogResult.Success(emptyList())
+            return executeCached("search:characters:$limit:$normalized", DEFAULT_SEARCH_CACHE_TTL_MILLIS) {
+                delegate.searchAnimeWithCharacters(query, limit)
+            }
+        }
+
+        override suspend fun getAnimeWithCharacters(
+            externalId: String,
+        ): ReiAnixCatalogResult<ReiAnixCatalogAnime?> {
+            val id = externalId.trim()
+            require(id.isNotEmpty()) { "External catalog ID cannot be blank." }
+            return executeCached("id:characters:$id", DEFAULT_DETAIL_CACHE_TTL_MILLIS) {
+                delegate.getAnimeWithCharacters(id)
             }
         }
     }

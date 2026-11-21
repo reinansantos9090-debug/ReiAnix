@@ -2,6 +2,7 @@ package com.reianix.reianix_local.data.catalog
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -18,6 +19,19 @@ class ReiAnixKitsuCatalogProvider(
     override suspend fun searchAnime(
         query: String,
         limit: Int,
+    ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> =
+        searchAnimeInternal(query, limit, includeCharacters = false)
+
+    override suspend fun searchAnimeWithCharacters(
+        query: String,
+        limit: Int,
+    ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> =
+        searchAnimeInternal(query, limit, includeCharacters = true)
+
+    private suspend fun searchAnimeInternal(
+        query: String,
+        limit: Int,
+        includeCharacters: Boolean,
     ): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
         val normalized = query.trim()
         if (normalized.isEmpty()) return ReiAnixCatalogResult.Success(emptyList())
@@ -27,7 +41,8 @@ class ReiAnixKitsuCatalogProvider(
             )
         }
         val encoded = encodeQuery(normalized)
-        val url = "$BASE_URL/anime?filter%5Btext%5D=$encoded&page%5Blimit%5D=$limit"
+        val url = "$BASE_URL/anime?filter%5Btext%5D=$encoded&page%5Blimit%5D=$limit" +
+            if (includeCharacters) CHARACTER_INCLUDE else ""
         return execute(url, SEARCH_CACHE_TTL_MILLIS) { root ->
             val data = root.optJSONArray("data")
                 ?: throw JSONException("Kitsu search response is missing the JSON:API data array.")
@@ -38,7 +53,7 @@ class ReiAnixKitsuCatalogProvider(
                     if (resourceId == null || !resourceId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
                         continue
                     }
-                    parseAnime(item)?.let(::add)
+                    parseAnime(item, root.optJSONArray("included"))?.let(::add)
                 }
             }
             if (data.length() > 0 && validResources.isEmpty()) {
@@ -48,18 +63,31 @@ class ReiAnixKitsuCatalogProvider(
         }
     }
 
-    override suspend fun getAnime(externalId: String): ReiAnixCatalogResult<ReiAnixCatalogAnime?> {
+    override suspend fun getAnime(externalId: String): ReiAnixCatalogResult<ReiAnixCatalogAnime?> =
+        getAnimeInternal(externalId, includeCharacters = false)
+
+    override suspend fun getAnimeWithCharacters(
+        externalId: String,
+    ): ReiAnixCatalogResult<ReiAnixCatalogAnime?> =
+        getAnimeInternal(externalId, includeCharacters = true)
+
+    private suspend fun getAnimeInternal(
+        externalId: String,
+        includeCharacters: Boolean,
+    ): ReiAnixCatalogResult<ReiAnixCatalogAnime?> {
         val id = externalId.trim()
         if (!id.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
             return ReiAnixCatalogResult.Failure(
                 ReiAnixCatalogError.InvalidRequest("Kitsu ID is invalid."),
             )
         }
-        return execute("$BASE_URL/anime/$id", DETAIL_CACHE_TTL_MILLIS) { root ->
+        val url = "$BASE_URL/anime/$id" +
+            if (includeCharacters) CHARACTER_INCLUDE.replaceFirst("&", "?") else ""
+        return execute(url, DETAIL_CACHE_TTL_MILLIS) { root ->
             if (!root.has("data") || root.isNull("data")) return@execute null
             val data = root.optJSONObject("data")
                 ?: throw JSONException("Kitsu detail response contains an invalid JSON:API data object.")
-            parseAnime(data)
+            parseAnime(data, root.optJSONArray("included"))
                 ?: throw JSONException("Kitsu detail resource is missing its ID or canonical title.")
         }
     }
@@ -91,7 +119,7 @@ class ReiAnixKitsuCatalogProvider(
         ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
     }
 
-    private fun parseAnime(resource: JSONObject): ReiAnixCatalogAnime? {
+    private fun parseAnime(resource: JSONObject, included: JSONArray?): ReiAnixCatalogAnime? {
         if (resource.catalogText("type")?.equals("anime", ignoreCase = true) != true) return null
         val id = resource.catalogText("id")
             ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,128}")) }
@@ -150,7 +178,59 @@ class ReiAnixKitsuCatalogProvider(
                 ?: attributes.catalogText("ageRating"),
             startDate = attributes.catalogText("startDate"),
             endDate = attributes.catalogText("endDate"),
+            characters = parseIncludedCharacters(resource, included),
         )
+    }
+
+    /**
+     * Kitsu JSON:API includes both relationship rows (mediaCharacters)
+     * and character resources in the SAME anime metadata response.
+     * Absence of included resources is different from a confirmed empty cast.
+     */
+    private fun parseIncludedCharacters(
+        resource: JSONObject,
+        included: JSONArray?,
+    ): List<ReiAnixAnimeCharacter>? {
+        val refs = resource.optJSONObject("relationships")
+            ?.optJSONObject("characters")?.optJSONArray("data") ?: return null
+        if (included == null && refs.length() > 0) return null
+        val resources = HashMap<String, JSONObject>()
+        if (included != null) {
+            for (index in 0 until included.length()) {
+                val entry = included.optJSONObject(index) ?: continue
+                val type = entry.catalogText("type") ?: continue
+                val id = entry.catalogText("id") ?: continue
+                resources["$type:$id"] = entry
+            }
+        }
+        return buildList {
+            for (index in 0 until refs.length()) {
+                val ref = refs.optJSONObject(index) ?: continue
+                val media = resources["mediaCharacters:${ref.catalogText("id")}"] ?: continue
+                val personRef = media.optJSONObject("relationships")
+                    ?.optJSONObject("character")?.optJSONObject("data") ?: continue
+                val character = resources["characters:${personRef.catalogText("id")}"] ?: continue
+                val id = character.catalogText("id")?.toIntOrNull()
+                    ?.takeIf { it > 0 } ?: continue
+                val attrs = character.optJSONObject("attributes") ?: continue
+                val name = attrs.catalogText("name") ?: continue
+                val image = attrs.optJSONObject("image")
+                    ?.let { picture ->
+                        listOf("medium", "small", "large", "original")
+                            .firstNotNullOfOrNull { variant ->
+                                picture.catalogText(variant)
+                                    ?.takeIf(::isValidCatalogArtworkUrl)
+                            }
+                    }
+                val role = when (media.optJSONObject("attributes")?.catalogText("role")?.lowercase(Locale.ROOT)) {
+                    "main" -> "Principal"
+                    "supporting" -> "Secundário"
+                    else -> "Figurante"
+                }
+                add(ReiAnixAnimeCharacter(id, name, role, image))
+                if (size >= CHARACTER_LIMIT) break
+            }
+        }.distinctBy { it.id }
     }
 
     private fun JSONArray.addStringValues(target: MutableSet<String>) {
@@ -195,6 +275,13 @@ class ReiAnixKitsuCatalogProvider(
     companion object {
         const val BASE_URL = "https://kitsu.io/api/edge"
         const val ACCEPT = "application/vnd.api+json, application/json"
+        private const val CHARACTER_LIMIT = 12
+        // Kitsu's characters relationship is mediaCharacters -> character.
+        // Include both in the existing request; keep only needed attributes.
+        private const val CHARACTER_INCLUDE =
+            "&include=characters.character" +
+                "&fields%5BmediaCharacters%5D=role,character" +
+                "&fields%5Bcharacters%5D=name,image"
         const val SEARCH_CACHE_TTL_MILLIS = 30L * 60L * 1000L
         const val DETAIL_CACHE_TTL_MILLIS = 24L * 60L * 60L * 1000L
     }

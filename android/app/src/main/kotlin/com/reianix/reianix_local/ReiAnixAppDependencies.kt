@@ -5,6 +5,7 @@ import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
+import com.reianix.reianix_local.data.personal.ReiAnixMetadataCharactersStore
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
 import com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProvider
@@ -125,7 +126,12 @@ class ReiAnixAppDependencies(context: Context) {
 
     // Catalog-only writes. This never requests or modifies artwork.
     val candidateMetadataService: ReiAnixCandidateMetadataService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        ReiAnixCandidateMetadataService(sqliteLibraryRepository)
+        ReiAnixCandidateMetadataService(
+            sqliteLibraryRepository,
+            charactersPublisher = { animeId, source, sourceId, characters ->
+                metadataCharactersStore.publish(animeId, source, sourceId, characters)
+            },
+        )
     }
 
     /** Shared executor/cache for supplemental public catalog lookups. */
@@ -171,6 +177,11 @@ class ReiAnixAppDependencies(context: Context) {
             metadataCommitPublisher = { animeId ->
                 candidateMetadataService.notifyVerifiedMetadataCommitted(animeId)
             },
+            charactersPublisher = { animeId, remote ->
+                metadataCharactersStore.publish(
+                    animeId, "kitsu", remote.ids.kitsuId.orEmpty(), remote.characters,
+                )
+            },
         )
     }
 
@@ -180,6 +191,12 @@ class ReiAnixAppDependencies(context: Context) {
 
     val aniListClient: ReiAnixAniListClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixAniListClient()
+    }
+
+    // Character fields come from the exact same AniList/Kitsu metadata payload.
+    // Publication is memory-only; cache writes never block cover or metadata UI.
+    val metadataCharactersStore: ReiAnixMetadataCharactersStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ReiAnixMetadataCharactersStore(appContext)
     }
 
     val aniListIntegrationService: ReiAnixAniListIntegrationService by lazy(
@@ -200,6 +217,11 @@ class ReiAnixAppDependencies(context: Context) {
             prepareRepairArtwork = { animeId, remote ->
                 artworkService.prepareExplicitRepairArtwork(
                     animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl,
+                )
+            },
+            charactersPublisher = { animeId, remote ->
+                metadataCharactersStore.publish(
+                    animeId, "anilist", remote.id.toString(), remote.characters,
                 )
             },
             explicitArtworkPublisher = { animeId ->

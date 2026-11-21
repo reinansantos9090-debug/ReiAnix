@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -520,9 +521,9 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
 }
 
 /**
- * Display characters directly after the synopsis with other metadata.
- * This is an independent, lazily composed Details-only effect, never part of
- * library scanning, cover discovery or the existing AniList metadata client mutex.
+ * Characters are part of the existing AniList/Kitsu metadata responses.
+ * Opening Details only renders that already-published data (or reads its disk
+ * cache); it NEVER triggers a separate network request for characters.
  */
 @Composable
 fun ReiAnixMetadataCharacters(
@@ -531,25 +532,17 @@ fun ReiAnixMetadataCharacters(
 ) {
     val context = LocalContext.current
     val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
-    val charactersRepository = remember(dependencies) {
-        ReiAnixCharacterCache(context, ReiAnixAniListClient())
-    }
-    var characters by remember(animeId) { mutableStateOf<List<ReiAnixAnimeCharacter>>(emptyList()) }
+    val store = remember(dependencies) { dependencies.metadataCharactersStore }
+    val entries by store.entries.collectAsState()
+    val characters = entries[animeId]?.characters.orEmpty()
 
-    LaunchedEffect(animeId, metadataRevision) {
+    LaunchedEffect(animeId, metadataRevision, store) {
         try {
-            val associatedId = dependencies.sqliteLibraryRepository.getAnime(animeId)?.anilistId
-                ?.takeIf { it > 0 && it <= Int.MAX_VALUE.toLong() }?.toInt()
-            if (associatedId != null) {
-                when (val result = charactersRepository.load(associatedId)) {
-                    is AniListResult.Success -> characters = result.value
-                    is AniListResult.Failure -> Unit // do not impact Details when AniList is unavailable
-                }
-            }
+            store.restore(animeId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            // This metadata enrichment is optional, never blocks the synopsis.
+            // An unreadable supplemental disk cache must not block metadata UI.
         }
     }
 

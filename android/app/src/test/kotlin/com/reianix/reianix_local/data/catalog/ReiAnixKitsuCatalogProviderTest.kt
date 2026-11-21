@@ -101,9 +101,66 @@ class ReiAnixKitsuCatalogProviderTest {
         assertEquals(listOf("posterImage", "coverImage"), candidates.map { it.originalField })
         assertTrue(transport.requestedUrl.orEmpty().contains("filter%5Btext%5D=Sample%20Anime%20%26%20More"))
         assertTrue(transport.requestedUrl.orEmpty().contains("page%5Blimit%5D=8"))
+        assertFalse(transport.requestedUrl.orEmpty().contains("include=characters"))
         assertTrue(transport.accept.orEmpty().contains("application/vnd.api+json"))
         val success = result as ReiAnixCatalogResult.Success
         assertTrue(success.expiresAtMillis!! > success.fetchedAtMillis)
+    }
+
+    @Test
+    fun includedKitsuCharactersArriveWithYearAndPosterInTheSameResponse() = runBlocking {
+        val transport = FakeTransport(ReiAnixCatalogHttpResponse(200, """
+            {
+              "data": [{
+                "id": "24", "type": "anime",
+                "attributes": {
+                  "canonicalTitle": "Example", "startDate": "2023-01-01",
+                  "posterImage": {"large": "https://media.kitsu.app/poster.jpg"}
+                },
+                "relationships": {
+                  "characters": {"data": [{"type": "mediaCharacters", "id": "55"}]}
+                }
+              }],
+              "included": [
+                {
+                  "type": "mediaCharacters", "id": "55",
+                  "attributes": {"role": "main"},
+                  "relationships": {"character": {
+                    "data": {"type": "characters", "id": "81"}
+                  }}
+                },
+                {
+                  "type": "characters", "id": "81",
+                  "attributes": {
+                    "name": "Protagonist",
+                    "image": {"medium": "https://media.kitsu.app/hero.jpg"}
+                  }
+                }
+              ]
+            }
+        """.trimIndent(), emptyMap()))
+        val result = ReiAnixKitsuCatalogProvider(transport).searchAnimeWithCharacters("Example", 1)
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        val anime = (result as ReiAnixCatalogResult.Success).value.single()
+        assertEquals(2023, anime.releaseYear)
+        assertEquals("https://media.kitsu.app/poster.jpg", anime.coverUrl)
+        assertEquals(listOf("Protagonist"), anime.characters?.map { it.name })
+        assertEquals(listOf("Principal"), anime.characters?.map { it.role })
+        assertEquals("https://media.kitsu.app/hero.jpg", anime.characters?.firstOrNull()?.imageUrl)
+        assertEquals(1, transport.calls)
+        assertTrue(transport.requestedUrl.orEmpty().contains("include=characters.character"))
+    }
+
+    @Test
+    fun kitsuCharactersMissingFromLegacyResponseRemainUnknownNotInvented() = runBlocking {
+        val transport = FakeTransport(
+            ReiAnixCatalogHttpResponse(200, """{
+              "data": {"id":"31","type":"anime","attributes":{"canonicalTitle":"No cast"}}
+            }""", emptyMap()),
+        )
+        val result = ReiAnixKitsuCatalogProvider(transport).getAnime("31")
+        val anime = (result as ReiAnixCatalogResult.Success).value!!
+        assertNull(anime.characters)
     }
 
     @Test

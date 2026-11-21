@@ -41,15 +41,18 @@ class ReiAnixAniListClient(
     private val requestMutex = Mutex()
     private var lastRequestAtMs = 0L
 
-    suspend fun searchAnime(term: String, limit: Int = 10): AniListResult<List<AniListAnime>> {
+    suspend fun searchAnime(
+        term: String, limit: Int = 10, withCharacters: Boolean = false,
+    ): AniListResult<List<AniListAnime>> {
         val query = term.trim()
         if (query.isEmpty()) return AniListResult.Success(emptyList())
         require(limit in 1..50) { "AniList result limit must be between 1 and 50." }
+        val mediaFields = if (withCharacters) MEDIA_FIELDS_WITH_CHARACTERS else MEDIA_FIELDS
         val gql = """
             query SearchAnime(${'$'}search: String, ${'$'}page: Int, ${'$'}perPage: Int) {
               Page(page: ${'$'}page, perPage: ${'$'}perPage) {
                 media(search: ${'$'}search, type: ANIME, sort: SEARCH_MATCH) {
-                  $MEDIA_FIELDS
+                  $mediaFields
                 }
               }
             }
@@ -82,16 +85,19 @@ class ReiAnixAniListClient(
 
     /** Explicit repair only: query a bounded set of aliases in one HTTP request.
      * The ordinary search API and its rate limiting remain unchanged. */
-    suspend fun searchAnimeAliases(terms: List<String>, limit: Int = 20): AniListResult<List<AniListAnime>> {
+    suspend fun searchAnimeAliases(
+        terms: List<String>, limit: Int = 20, withCharacters: Boolean = false,
+    ): AniListResult<List<AniListAnime>> {
         val searches = terms.map(String::trim).filter(String::isNotBlank).distinct().take(8)
         if (searches.isEmpty()) return AniListResult.Success(emptyList())
         require(limit in 1..20)
         val variables = JSONObject()
         val declarations = searches.indices.joinToString(", ") { i -> "$" + "term" + i + ": String!" }
+        val mediaFields = if (withCharacters) MEDIA_FIELDS_WITH_CHARACTERS else MEDIA_FIELDS
         val fields = searches.mapIndexed { i, term ->
             variables.put("term$i", term)
             "alias$i: Page(page: 1, perPage: $limit) { media(search: " +
-                "$" + "term" + i + ", type: ANIME, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS } }"
+                "$" + "term" + i + ", type: ANIME, format_not: MUSIC, sort: SEARCH_MATCH) { $mediaFields } }"
         }.joinToString("\n")
         return execute("query RepairAnime($declarations) { $fields }", variables) { data ->
             val results = linkedMapOf<Int, AniListAnime>()
@@ -108,11 +114,14 @@ class ReiAnixAniListClient(
         }
     }
 
-    suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
+    suspend fun getAnime(
+        id: Int, withCharacters: Boolean = false,
+    ): AniListResult<AniListAnime?> {
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
+        val mediaFields = if (withCharacters) MEDIA_FIELDS_WITH_CHARACTERS else MEDIA_FIELDS
         val gql = """
             query AnimeById(${'$'}id: Int) {
-              Media(id: ${'$'}id, type: ANIME) { $MEDIA_FIELDS }
+              Media(id: ${'$'}id, type: ANIME) { $mediaFields }
             }
         """.trimIndent()
         return execute(gql, JSONObject().put("id", id)) { data ->
@@ -369,7 +378,32 @@ class ReiAnixAniListClient(
             coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
             bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
             studios = studioNames,
+            // Populated from the very SAME GraphQL Media response as year/cover.
+            // Missing field in legacy fixtures is distinct from an empty cast.
+            characters = media.optJSONObject("characters")?.let(::parseCharacterConnection),
         )
+    }
+
+    private fun parseCharacterConnection(connection: JSONObject): List<ReiAnixAnimeCharacter> {
+        val edges = connection.optJSONArray("edges") ?: return emptyList()
+        return buildList {
+            for (index in 0 until minOf(edges.length(), EMBEDDED_CHARACTER_LIMIT)) {
+                val edge = edges.optJSONObject(index) ?: continue
+                val node = edge.optJSONObject("node") ?: continue
+                val characterId = node.optInt("id").takeIf { it > 0 } ?: continue
+                val name = node.optJSONObject("name")?.optString("full")
+                    ?.takeIf { it.isNotBlank() } ?: continue
+                val role = when (edge.optString("role")) {
+                    "MAIN" -> "Principal"
+                    "SUPPORTING" -> "Secundário"
+                    else -> "Figurante"
+                }
+                val image = validReiAnixArtworkHttpUrl(
+                    node.optJSONObject("image")?.optString("medium"),
+                )
+                add(ReiAnixAnimeCharacter(characterId, name, role, image))
+            }
+        }.distinctBy { it.id }
     }
 
     private fun JSONObject.nonNegativeIntOrNull(key: String): Int? =
@@ -390,6 +424,13 @@ class ReiAnixAniListClient(
     companion object {
         const val ENDPOINT = "https://graphql.anilist.co"
         const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        private const val EMBEDDED_CHARACTER_LIMIT = 10
+        private const val CHARACTER_FIELDS = """
+            characters(perPage: 10, sort: [ROLE, FAVOURITES_DESC]) {
+                edges { role node { id name { full } image { medium } } }
+            }
+        """
+        private const val MEDIA_FIELDS_WITH_CHARACTERS = MEDIA_FIELDS + CHARACTER_FIELDS
         private const val MEDIA_FIELDS = """
             id title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
@@ -437,6 +478,8 @@ data class AniListAnime(
     val coverExtraLargeUrl: String?,
     val bannerUrl: String?,
     val studios: List<String>,
+    /** Cast included in the same metadata response, null for legacy responses. */
+    val characters: List<ReiAnixAnimeCharacter>? = null,
 ) {
     /** Secure, de-duplicated variants ordered by preferred image quality. */
     internal val coverCandidates: List<ReiAnixAniListCoverCandidate>

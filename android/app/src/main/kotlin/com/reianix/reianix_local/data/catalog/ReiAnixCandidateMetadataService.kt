@@ -21,6 +21,11 @@ import kotlinx.coroutines.launch
  */
 class ReiAnixCandidateMetadataService(
     private val library: ReiAnixSqliteLibraryRepository,
+    // Characters from the same provider response, committed alongside
+    // supplementary metadata gaps (never a second API call).
+    private val charactersPublisher: ((
+        Long, String, String, List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>?
+    ) -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutableUpdates = MutableSharedFlow<Long>(extraBufferCapacity = 128)
@@ -45,6 +50,8 @@ class ReiAnixCandidateMetadataService(
                 score = remote.averageScore,
                 format = remote.format,
             ),
+            sourceId = remote.ids.kitsuId.orEmpty(),
+            characters = remote.characters,
         )
     }
 
@@ -64,16 +71,29 @@ class ReiAnixCandidateMetadataService(
                 studio = remote.studios.joinToString(", ").takeIf(String::isNotBlank),
                 genres = remote.genres,
             ),
+            sourceId = remote.id.toString(),
+            characters = remote.characters,
         )
     }
 
-    private fun queue(animeId: Long, candidate: ReiAnixCandidateMetadata) {
+    private fun queue(
+        animeId: Long,
+        candidate: ReiAnixCandidateMetadata,
+        sourceId: String,
+        characters: List<com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter>?,
+    ) {
         if (animeId <= 0L) return
         scope.launch {
             try {
                 if (library.mergeCandidateMetadataGaps(animeId, candidate)) {
+                    // The same candidate supplied metadata such as year and its cast.
+                    // Publish the cast before UI observers see the metadata update.
+                    try {
+                        charactersPublisher?.invoke(animeId, candidate.source, sourceId, characters)
+                    } catch (_: Exception) {
+                        // A malformed supplemental cast may not hold back metadata.
+                    }
                     mutableUpdates.tryEmit(animeId)
-
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
