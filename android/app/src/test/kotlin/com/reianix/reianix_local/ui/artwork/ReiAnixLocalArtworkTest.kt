@@ -194,4 +194,41 @@ class ReiAnixLocalArtworkTest {
             artworkCandidates("https://img/a.jpg", "https://img/b.jpg", null, "file://invalid-remote"),
         )
     }
+
+    @Test
+    fun recentRemoteArtworkFailureSkipsOnlyTheFailedFallbackWithoutDelayingFirstAttempt() {
+        var now = 1_000L
+        val failures = ArtworkRemoteFailureCooldown(retryAfterMillis = 15_000L, nowMillis = { now })
+        val sources = listOf("/cache/local.jpg", "https://cdn/a.jpg", "https://cdn/b.jpg")
+        assertEquals(0, failures.nextCandidateIndex(sources, 0))
+        assertEquals(1, failures.nextCandidateIndex(sources, 1))
+
+        failures.recordFailure(sources[1])
+        assertEquals(2, failures.nextCandidateIndex(sources, 1))
+        assertEquals(0, failures.nextCandidateIndex(sources, 0))
+        now += 14_999L
+        assertEquals(2, failures.nextCandidateIndex(sources, 1))
+        now += 1L
+        assertEquals(1, failures.nextCandidateIndex(sources, 1))
+    }
+
+    @Test
+    fun lastRemoteCandidateCanBeRetriedAndSuccessClearsCooldown() {
+        var now = 10L
+        val failures = ArtworkRemoteFailureCooldown(retryAfterMillis = 100L, maxEntries = 1, nowMillis = { now })
+        val first = "https://cdn/first.jpg"
+        val second = "https://cdn/second.jpg"
+        failures.recordFailure(first)
+        assertEquals(0, failures.nextCandidateIndex(listOf(first), 0))
+        failures.recordFailure(second)
+        // Bounded cache evicts the first failure, so the first URL remains eligible.
+        assertEquals(0, failures.nextCandidateIndex(listOf(first, second), 0))
+        failures.recordFailure(first)
+        assertEquals(1, failures.nextCandidateIndex(listOf(first, second), 0))
+        failures.recordSuccess(first)
+        assertEquals(0, failures.nextCandidateIndex(listOf(first, second), 0))
+        failures.recordFailure(first)
+        now += 100L
+        assertEquals(0, failures.nextCandidateIndex(listOf(first, second), 0))
+    }
 }

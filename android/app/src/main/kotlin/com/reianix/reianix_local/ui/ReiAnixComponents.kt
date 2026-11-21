@@ -676,11 +676,11 @@ fun ReiAnixAnimeCard(
             anime.year?.let { add(it.toString()) }
             anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
         },
-        progress = anime.contentEpisodes
-            .firstOrNull { it.progressFraction > 0f && !it.isCompleted }
-            ?.progressFraction,
+        // This summary is already cached per immutable anime. Rewalking every
+        // episode while a lazy grid card enters composition adds work on the UI thread.
+        progress = anime.resumeProgressFraction,
         favorite = anime.favorite,
-        watched = anime.contentEpisodes.any { it.isWatched },
+        watched = anime.hasWatchedEpisode,
         watching = anime.isWatching,
         completed = anime.isCompleted,
         modifier = modifier,

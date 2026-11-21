@@ -1,6 +1,8 @@
 package com.reianix.reianix_local
 
 import com.reianix.reianix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.storage.FailedThumbnailCooldown
+import com.reianix.reianix_local.storage.ValidatedThumbnailFiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
@@ -51,17 +53,44 @@ class VideoThumbnailExtractorTest {
     }
 
     @Test
-    fun frameCandidatesAvoidTheZeroTimestampAndStayWithinAnEpisode() {
+    fun frameCandidatesForAnimeStayInMinutesOneToFiveWithOnlyOneBackup() {
         val durationMs = 24L * 60L * 1_000L
-        val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs)
+        val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "episode:12")
 
-        assertEquals(10, candidates.size)
-        assertTrue(candidates.all { it > 0L && it < durationMs * 1_000L })
-        assertTrue(candidates.zipWithNext().all { (first, second) -> first < second })
-        // Candidate coverage must extend well beyond the first third: some local
-        // videos have a black opening or long intro before the actual scene.
-        assertTrue(candidates.last() > durationMs * 900L)
-        assertTrue(VideoThumbnailExtractor.frameCandidateTimestampsUs(0L).size <= 10)
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.distinct().size == candidates.size)
+        assertTrue(candidates.all { it in 60_000_000L..300_000_000L })
+        assertTrue(candidates.all { it < durationMs * 1_000L })
+    }
+
+    @Test
+    fun chosenFrameIsStableForOneEpisodeButVariesAcrossEpisodes() {
+        val durationMs = 24L * 60L * 1_000L
+        val first = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "anime-1:episode-1")
+        val again = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "anime-1:episode-1")
+        val differentEpisodes = (1..12).map {
+            VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "anime-1:episode-$it").first()
+        }
+
+        assertEquals(first, again)
+        assertTrue(differentEpisodes.distinct().size > 1)
+    }
+
+    @Test
+    fun shortVideosAndUnavailableDurationUseSafeBoundedPositions() {
+        val oneMinuteDuration = 60_000L
+        val shortCandidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(oneMinuteDuration, "short-episode")
+        assertTrue(shortCandidates.isNotEmpty())
+        assertTrue(shortCandidates.size <= 2)
+        assertTrue(shortCandidates.all { it > 0L && it < oneMinuteDuration * 1_000L })
+
+        val tiny = VideoThumbnailExtractor.frameCandidateTimestampsUs(50L, "tiny")
+        assertEquals(1, tiny.size)
+        assertTrue(tiny.single() in 1L..49_999L)
+
+        val unknown = VideoThumbnailExtractor.frameCandidateTimestampsUs(0L, "unknown")
+        assertTrue(unknown.isNotEmpty() && unknown.size <= 2)
+        assertTrue(unknown.all { it in 60_000_000L..300_000_000L })
     }
 
     @Test
@@ -159,5 +188,49 @@ class VideoThumbnailExtractorTest {
             VideoThumbnailExtractor.frameQualityScore(detailed) >
                 VideoThumbnailExtractor.frameQualityScore(flat),
         )
+    }
+
+    @Test
+    fun failedDecoderCooldownIsShortAndScopedToOneSourceRevision() {
+        var clock = 1_000L
+        val failures = FailedThumbnailCooldown(retryAfterMillis = 15_000L, nowMillis = { clock })
+        val first = VideoThumbnailExtractor.cacheKey("episode-1", 1024L, 10L)
+        val replaced = VideoThumbnailExtractor.cacheKey("episode-1", 2048L, 20L)
+        assertFalse(failures.isCoolingDown(first))
+        failures.recordFailure(first)
+        assertTrue(failures.isCoolingDown(first))
+        assertFalse(failures.isCoolingDown(replaced))
+        clock += 14_999L
+        assertTrue(failures.isCoolingDown(first))
+        clock += 1L
+        assertFalse(failures.isCoolingDown(first))
+        failures.recordFailure(first)
+        failures.recordSuccess(first)
+        assertFalse(failures.isCoolingDown(first))
+    }
+
+    @Test
+    fun verifiedThumbnailMemoizationInvalidatesWhenFileChanges() {
+        val file = java.io.File.createTempFile("reianix-verified-thumbnail-", ".jpg")
+        val validated = ValidatedThumbnailFiles(maxEntries = 2)
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            assertFalse(validated.isVerified(file))
+            validated.recordVerified(file)
+            assertTrue(validated.isVerified(file))
+
+            file.appendBytes(byteArrayOf(4, 5))
+            assertFalse(validated.isVerified(file))
+            validated.recordVerified(file)
+            assertTrue(validated.isVerified(file))
+
+            file.setLastModified(file.lastModified() + 2_000L)
+            assertFalse(validated.isVerified(file))
+            validated.recordVerified(file)
+            validated.clear()
+            assertFalse(validated.isVerified(file))
+        } finally {
+            file.delete()
+        }
     }
 }

@@ -97,6 +97,55 @@ internal class ArtworkLastSuccessfulMemoryKeys(private val maxEntries: Int = 128
 private val lastSuccessfulArtworkKeys = ArtworkLastSuccessfulMemoryKeys()
 
 /**
+ * Skips recently failed remote URLs only when another artwork candidate exists.
+ * The first request is always immediate; a failed URL becomes eligible again
+ * after a short cooldown. Local files are never suppressed.
+ */
+internal class ArtworkRemoteFailureCooldown(
+    private val retryAfterMillis: Long = 15_000L,
+    private val maxEntries: Int = 128,
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
+) {
+    init {
+        require(retryAfterMillis > 0)
+        require(maxEntries > 0)
+    }
+    private val failedAt = object : LinkedHashMap<String, Long>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean =
+            size > maxEntries
+    }
+
+    @Synchronized
+    fun recordFailure(source: String) {
+        if (artworkSourceKind(source) == "remote_http") failedAt[source] = nowMillis()
+    }
+
+    @Synchronized
+    fun recordSuccess(source: String) {
+        failedAt.remove(source)
+    }
+
+    @Synchronized
+    fun nextCandidateIndex(candidates: List<String>, fromIndex: Int): Int? {
+        var fallback: Int? = null
+        for (index in fromIndex.coerceAtLeast(0) until candidates.size) {
+            if (fallback == null) fallback = index
+            val source = candidates[index]
+            val failedTime = failedAt[source] ?: return index
+            val elapsed = nowMillis() - failedTime
+            if (elapsed >= retryAfterMillis || elapsed < 0L) {
+                failedAt.remove(source)
+                return index
+            }
+        }
+        // Preserve the ability to recover even if every candidate recently failed.
+        return fallback
+    }
+}
+
+private val recentRemoteArtworkFailures = ArtworkRemoteFailureCooldown()
+
+/**
  * One process-wide Coil loader for Compose artwork.
  *
  * ReiAnixArtworkService owns persistent artwork materialization for Compose.
@@ -174,7 +223,7 @@ fun ReiAnixLocalArtwork(
             ?: candidates.firstOrNull().orEmpty()
     }
     var candidateIndex by remember(stableIdentity, candidates) {
-        mutableIntStateOf(0)
+        mutableIntStateOf(recentRemoteArtworkFailures.nextCandidateIndex(candidates, 0) ?: 0)
     }
     val source = candidates.getOrNull(candidateIndex)
     var isMissing by remember(stableIdentity, candidates) {
@@ -278,6 +327,7 @@ fun ReiAnixLocalArtwork(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 onSuccess = {
+                    recentRemoteArtworkFailures.recordSuccess(source)
                     // The same source may become readable after its revision
                     // changes. A prior terminal failure must not keep the
                     // "Sem poster" overlay above a successfully decoded image.
@@ -291,15 +341,20 @@ fun ReiAnixLocalArtwork(
                     )
                 },
                 onError = { state ->
-                    Log.w(
-                        TAG,
-                        "Artwork candidate failed candidateIndex=" + candidateIndex,
-                        state.result.throwable,
-                    )
+                    val error = state.result.throwable
+                    recentRemoteArtworkFailures.recordFailure(source)
+                    if (generateSequence(error) { it.cause }.any { it is java.net.SocketTimeoutException }) {
+                        // A timeout is expected to be recoverable by another candidate.
+                        // Avoid emitting an entire OkHttp stack trace for every recycled grid item.
+                        Log.w(TAG, "Artwork candidate timed out candidateIndex=" + candidateIndex)
+                    } else {
+                        Log.w(TAG, "Artwork candidate failed candidateIndex=" + candidateIndex, error)
+                    }
 
-                    if (candidateIndex < candidates.lastIndex) {
+                    val next = recentRemoteArtworkFailures.nextCandidateIndex(candidates, candidateIndex + 1)
+                    if (next != null) {
                         isMissing = false
-                        candidateIndex += 1
+                        candidateIndex = next
                     } else {
                         isMissing = true
                     }
