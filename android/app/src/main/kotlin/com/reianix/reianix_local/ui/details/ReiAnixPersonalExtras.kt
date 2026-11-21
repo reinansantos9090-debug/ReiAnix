@@ -556,7 +556,9 @@ fun ReiAnixMetadataCharacters(
     if (characters.isNotEmpty()) {
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth(),
+            // Synopsis already has 4.dp bottom padding; another 16.dp here
+            // matches the 20.dp gap between characters and genres.
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
         ) {
             items(characters, key = { it.id }) { character ->
                 Column(
