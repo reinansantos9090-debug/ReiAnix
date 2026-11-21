@@ -39,16 +39,13 @@ internal val profileFrameOptions = listOf(
     ProfileFrameOption("none", "Sem moldura", "Usar a foto do perfil sem efeitos."),
     ProfileFrameOption("neon", "Neon azul", "Armadura luminosa, cristais e LED pulsante.", true),
     ProfileFrameOption("sakura", "Sakura mágica", "Pétalas rosadas flutuando ao redor da foto.", true),
-    ProfileFrameOption("cat_ears", "Gatinho mágico", "Orelhinhas felinas com brilho de cristais e pingente.", true),
     ProfileFrameOption("gold", "Dourada royal", "Coroa imperial, safiras e ouro ornamentado.", true),
     ProfileFrameOption("galaxy", "Galáxia", "Cristais celestes, ametistas e estrelas cintilantes.", true),
-    ProfileFrameOption("accent", "Colorida", "Contorno na cor escolhida para o perfil."),
     ProfileFrameOption("white", "Branca", "Contorno branco clássico."),
 )
 
 internal fun isAnimatedProfileFrame(frame: String) =
-    frame == "neon" || frame == "sakura" || frame == "gold" || frame == "galaxy" ||
-        frame == "cat_ears"
+    frame == "neon" || frame == "sakura" || frame == "gold" || frame == "galaxy"
 
 /**
  * Canvas renders a small bounded number of primitives; the portrait stays in its own
@@ -56,8 +53,8 @@ internal fun isAnimatedProfileFrame(frame: String) =
  */
 @Composable
 internal fun AnimatedProfileFrame(frame: String, modifier: Modifier = Modifier) {
-    // Preserve Sakura exactly as originally approved. The other five
-    // use original painted transparent overlays instead of geometric rings.
+    // Sakura keeps its originally approved animation. Remaining premium
+    // frames use local illustrated assets rather than geometric rings.
     if (isIllustratedProfileFrame(frame)) {
         IllustratedProfileFrame(frame, modifier)
         return
