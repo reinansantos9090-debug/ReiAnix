@@ -2174,7 +2174,13 @@ class MainActivity : ComponentActivity() {
         lastObservedMediaAccess = currentMediaAccess
         lastObservedBroadAccess = currentBroadAccess
 
-        publishStorageStatus()
+        // publishStorageStatus reads persisted volume metadata and writes several
+        // fsync-backed mailbox events. On returning from the player, running it
+        // on the Activity thread can block the first library frame. Preserve the
+        // complete status/inventory contract but publish it on the IO dispatcher.
+        lifecycleScope.launch(Dispatchers.IO) {
+            publishStorageStatus()
+        }
 
         // A permission transition is an explicit capability change. Ordinary
         // foreground/background transitions never initiate a library scan.
