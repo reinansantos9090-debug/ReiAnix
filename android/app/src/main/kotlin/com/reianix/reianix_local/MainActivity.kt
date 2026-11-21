@@ -4,6 +4,7 @@ import com.reianix.reianix_local.bridge.GoogleIdentity
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.player.NativePlayerRequest
 import com.reianix.reianix_local.bridge.NativeRequestState
+import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import com.reianix.reianix_local.player.DeviceInteractionProfile
 import com.reianix.reianix_local.player.SystemUiController
 import com.reianix.reianix_local.scanner.BroadStorageScanner
@@ -245,8 +246,11 @@ class MainActivity : ComponentActivity() {
                 builder.appendQueryParameter("trigger_request_id", it)
             }
             if (normalized == "release_tree") builder.appendQueryParameter("native_folder_config_owner", "true")
-            return Intent(Intent.ACTION_VIEW, builder.build(), context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            return NativeInternalIntentGuard.stamp(
+                context,
+                Intent(Intent.ACTION_VIEW, builder.build(), context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            )
         }
         private const val STATE_LAST_NATIVE_REQUEST_ID = "reianix.lastNativeRequestId"
         private const val STATE_PENDING_LIFECYCLE_ACTION = "reianix.pendingLifecycleAction"
@@ -1368,6 +1372,10 @@ class MainActivity : ComponentActivity() {
             "backup_integrity", "backup_reconcile",
         )
         if (action == null || action !in nativeActions) return
+        if (!NativeInternalIntentGuard.isTrusted(this, intent)) {
+            Log.w(tag, "Rejected untrusted native settings/backup command")
+            return
+        }
 
         // Consume the one-shot request before opening UI or starting asynchronous work.
         intent.removeExtra(ReiAnixSettingsFileService.EXTRA_ACTION)
@@ -2651,6 +2659,10 @@ class MainActivity : ComponentActivity() {
         val data = intent?.data ?: return
         if (data.scheme != "reianix" || data.host != "native") {
             Log.w(tag, "Ignoring unsupported native intent scheme/host")
+            return
+        }
+        if (intent == null || !NativeInternalIntentGuard.isTrusted(this, intent)) {
+            Log.w(tag, "Rejected untrusted native command intent")
             return
         }
         val action = data.getQueryParameter("action")?.trim()
