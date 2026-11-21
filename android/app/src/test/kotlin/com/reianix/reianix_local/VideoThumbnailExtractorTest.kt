@@ -53,14 +53,19 @@ class VideoThumbnailExtractorTest {
     }
 
     @Test
-    fun frameCandidatesForAnimeStayInMinutesOneToFiveWithOnlyOneBackup() {
+    fun frameCandidatesForAnimeStayInMinutesOneToTenWithOnlyOneBackup() {
         val durationMs = 24L * 60L * 1_000L
         val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "episode:12")
 
         assertEquals(2, candidates.size)
-        assertTrue(candidates.distinct().size == candidates.size)
-        assertTrue(candidates.all { it in 60_000_000L..300_000_000L })
+        assertEquals(2, candidates.distinct().size)
+        assertTrue(candidates.all { it in 60_000_000L..600_000_000L })
         assertTrue(candidates.all { it < durationMs * 1_000L })
+        assertTrue(
+            (1..60).map {
+                VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "different-episode-$it").first()
+            }.any { it > 300_000_000L },
+        )
     }
 
     @Test
@@ -94,6 +99,15 @@ class VideoThumbnailExtractorTest {
     }
 
     @Test
+    fun episodesShorterThanTenMinutesNeverSeekPastTheEnd() {
+        val durationMs = 8L * 60L * 1_000L
+        val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "shorter-episode")
+        assertTrue(candidates.size in 1..2)
+        assertTrue(candidates.all { it > 0L && it < durationMs * 1_000L })
+        assertTrue(candidates.all { it <= 600_000_000L })
+    }
+
+    @Test
     fun existingBlackThumbnailPathDoesNotSuppressRegeneration() {
         assertTrue(VideoThumbnailExtractor.thumbnailNeedsRegeneration("/cache/black.jpg", isUsable = false))
         assertFalse(VideoThumbnailExtractor.thumbnailNeedsRegeneration("/cache/valid.jpg", isUsable = true))
@@ -110,6 +124,60 @@ class VideoThumbnailExtractorTest {
         assertFalse(VideoThumbnailExtractor.isUsableFrame(black))
         assertFalse(VideoThumbnailExtractor.isUsableFrame(white))
         assertFalse(VideoThumbnailExtractor.isUsableFrame(uniformGray))
+    }
+
+    @Test
+    fun flatOrangeGradientIsRejectedEvenIfGrayscaleMetricsPreviouslyPassed() {
+        // Reproduces the almost featureless orange episode preview.
+        val orange = IntArray(400) { index ->
+            val x = index % 20
+            val y = index / 20
+            val red = 176 + x
+            val green = 120 + y
+            val blue = 70 + (x + y) / 4
+            (red shl 16) or (green shl 8) or blue
+        }
+        val metrics = VideoThumbnailExtractor.analyzeRgbSamples(orange, columns = 20)!!
+        // Old detection accepted gentle gradients, despite no visible subject.
+        assertTrue(metrics.standardDeviation > 1.8)
+        assertTrue(metrics.dynamicRange > 7)
+        assertTrue(metrics.meanColorDeviation < 55.0)
+        assertTrue(metrics.strongColorEdgeFraction < 0.025)
+        assertFalse(VideoThumbnailExtractor.isUsableFrame(metrics))
+    }
+
+    @Test
+    fun flatBrightColorsAreRejectedWhateverTheirHue() {
+        val backgrounds = intArrayOf(0x00ed8200, 0x002687d4, 0x00e44359, 0x002baa70, 0x00ebebe5)
+        backgrounds.forEach { color ->
+            val metrics = VideoThumbnailExtractor.analyzeRgbSamples(IntArray(400) { color }, columns = 20)!!
+            assertFalse(VideoThumbnailExtractor.isUsableFrame(metrics))
+        }
+    }
+
+    @Test
+    fun coloredAnimeWithSharpContoursIsKeptEvenWhenLuminanceIsUniform() {
+        // Saturated red and green can have almost exactly the same luminance.
+        val scene = IntArray(400) { index ->
+            if ((index % 20) < 10) 0x00ff0000 else 0x00008200
+        }
+        val metrics = VideoThumbnailExtractor.analyzeRgbSamples(scene, columns = 20)!!
+        assertTrue(metrics.standardDeviation < 1.8)
+        assertTrue(metrics.strongColorEdgeFraction >= 0.025)
+        assertTrue(metrics.meanColorDeviation >= 55.0)
+        assertTrue(VideoThumbnailExtractor.isUsableFrame(metrics))
+    }
+
+    @Test
+    fun darkSceneWithSmallDetailedSubjectRemainsValidWithColorDetection() {
+        val scene = IntArray(400) { 0x00030303 }
+        scene[197] = 0x00505050
+        scene[198] = 0x00787878
+        scene[217] = 0x00c8c8c8
+        scene[218] = 0x00ffffff
+        val metrics = VideoThumbnailExtractor.analyzeRgbSamples(scene, columns = 20)!!
+        assertTrue(metrics.meanLuminance < 25.0)
+        assertTrue(VideoThumbnailExtractor.isUsableFrame(metrics))
     }
 
     @Test

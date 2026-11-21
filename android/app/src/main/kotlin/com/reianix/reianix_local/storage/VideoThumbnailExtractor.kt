@@ -113,6 +113,9 @@ object VideoThumbnailExtractor {
         val brightPixelFraction: Double,
         val dynamicRange: Int,
         val sampleCount: Int,
+        // Negative sentinel means luminance-only analysis (existing tests).
+        val meanColorDeviation: Double = -1.0,
+        val strongColorEdgeFraction: Double = -1.0,
     )
 
     private const val CACHE_METADATA_VERSION = 1
@@ -203,7 +206,7 @@ object VideoThumbnailExtractor {
     ): Boolean = localPath.isNullOrBlank() || !isUsable
 
     /**
-     * Prefer one fast key frame from the first five minutes, not a scored search
+     * Prefer one fast key frame from the first ten minutes, not a scored search
      * throughout the episode. An episode-specific stable offset gives varied
      * previews without changing the image on every retry/cache lookup.
      *
@@ -216,9 +219,11 @@ object VideoThumbnailExtractor {
         val latestUs = if (durationUs > 0L) {
             (durationUs - maxOf(1_000L, durationUs / 100L)).coerceAtLeast(1L)
         } else {
-            300_000_000L // Metadata unavailable: assume an ordinary full episode.
+            // With missing duration, retain the safe five-minute fallback;
+            // seeking to minute ten could exceed an unknown short source.
+            300_000_000L
         }
-        val upperUs = minOf(300_000_000L, latestUs)
+        val upperUs = minOf(600_000_000L, latestUs)
         if (upperUs <= 100_000L) return listOf((upperUs / 2L).coerceAtLeast(1L))
 
         val lowerUs = minOf(60_000_000L, (upperUs / 2L).coerceAtLeast(1L))
@@ -227,7 +232,7 @@ object VideoThumbnailExtractor {
             (mediaIdentity.hashCode().toLong() and 0xffff_ffffL) % (availableSeconds + 1L)
         val firstUs = (lowerUs + offsetSeconds * 1_000_000L).coerceAtMost(upperUs)
 
-        // Keep the one fallback far from the first frame, still within minute 1–5
+        // Keep the one fallback far from the first frame, still within minute 1–10
         // when the video is long enough.
         val separationUs = maxOf(1_000_000L, (upperUs - lowerUs) / 2L)
         val fallbackUs = if (firstUs + separationUs <= upperUs) {
@@ -274,6 +279,57 @@ object VideoThumbnailExtractor {
     }
 
     /**
+     * Detect nearly solid-color frames from the SAME 20x20 pixel sample.
+     * No additional video seeking, decoding or Bitmap sampling is required.
+     */
+    internal fun analyzeRgbSamples(pixels: IntArray, columns: Int): FrameQualityMetrics? {
+        if (pixels.isEmpty() || columns <= 0 || columns > pixels.size) return null
+        val luminances = IntArray(pixels.size)
+        var totalRed = 0L
+        var totalGreen = 0L
+        var totalBlue = 0L
+        for (index in pixels.indices) {
+            val pixel = pixels[index]
+            val red = (pixel ushr 16) and 0xff
+            val green = (pixel ushr 8) and 0xff
+            val blue = pixel and 0xff
+            totalRed += red
+            totalGreen += green
+            totalBlue += blue
+            luminances[index] = (77 * red + 150 * green + 29 * blue) ushr 8
+        }
+        val base = analyzeLuminanceSamples(luminances) ?: return null
+        val meanRed = totalRed.toDouble() / pixels.size
+        val meanGreen = totalGreen.toDouble() / pixels.size
+        val meanBlue = totalBlue.toDouble() / pixels.size
+        var deviation = 0.0
+        var edgePixels = 0
+        for (index in pixels.indices) {
+            val pixel = pixels[index]
+            deviation += kotlin.math.abs(((pixel ushr 16) and 0xff) - meanRed) +
+                kotlin.math.abs(((pixel ushr 8) and 0xff) - meanGreen) +
+                kotlin.math.abs((pixel and 0xff) - meanBlue)
+            // A visible horizontal or vertical outline counts just once.
+            if (
+                (index % columns != 0 && isStrongColorEdge(pixel, pixels[index - 1])) ||
+                (index >= columns && isStrongColorEdge(pixel, pixels[index - columns]))
+            ) {
+                edgePixels++
+            }
+        }
+        return base.copy(
+            meanColorDeviation = deviation / pixels.size,
+            strongColorEdgeFraction = edgePixels.toDouble() / pixels.size,
+        )
+    }
+
+    private fun isStrongColorEdge(first: Int, second: Int): Boolean = maxOf(
+        kotlin.math.abs(((first ushr 16) and 0xff) - ((second ushr 16) and 0xff)),
+        kotlin.math.abs(((first ushr 8) and 0xff) - ((second ushr 8) and 0xff)),
+        kotlin.math.abs((first and 0xff) - (second and 0xff)),
+    ) >= 28
+
+    /**
      * Rejects near-empty frames while allowing genuinely dark scenes when they
      * still contain meaningful tonal structure.
      */
@@ -294,7 +350,24 @@ object VideoThumbnailExtractor {
             metrics.brightPixelFraction >= 0.985 &&
             metrics.standardDeviation < 4.0
         ) return false
-        if (metrics.standardDeviation < 1.8 && metrics.dynamicRange < 7) return false
+        // Equal luminance does not mean equal color: a red/green anime scene
+        // can contain clearly visible subjects despite low grayscale contrast.
+        val hasColorStructure = metrics.meanColorDeviation >= 55.0 &&
+            metrics.strongColorEdgeFraction >= 0.025
+        if (metrics.standardDeviation < 1.8 && metrics.dynamicRange < 7 &&
+            !hasColorStructure
+        ) return false
+
+        // A softly shaded solid orange/blue/etc. frame can pass the old
+        // luminance-only filter. Reject it if the same pixels contain almost
+        // no variation and almost no meaningful outlines.
+        val meaningfulDarkDetails = metrics.meanLuminance < 25.0 &&
+            metrics.standardDeviation >= 4.0 &&
+            metrics.dynamicRange >= 20
+        if (!meaningfulDarkDetails && metrics.meanColorDeviation >= 0.0 &&
+            metrics.meanColorDeviation < 55.0 &&
+            metrics.strongColorEdgeFraction < 0.025
+        ) return false
         return true
     }
 
@@ -311,20 +384,16 @@ object VideoThumbnailExtractor {
         if (bitmap.width <= 0 || bitmap.height <= 0) return null
         val columns = minOf(20, bitmap.width)
         val rows = minOf(20, bitmap.height)
-        val samples = IntArray(columns * rows)
+        val pixels = IntArray(columns * rows)
         var index = 0
         for (row in 0 until rows) {
             val y = if (rows == 1) 0 else row * (bitmap.height - 1) / (rows - 1)
             for (column in 0 until columns) {
                 val x = if (columns == 1) 0 else column * (bitmap.width - 1) / (columns - 1)
-                val pixel = bitmap.getPixel(x, y)
-                val red = (pixel shr 16) and 0xff
-                val green = (pixel shr 8) and 0xff
-                val blue = pixel and 0xff
-                samples[index++] = (77 * red + 150 * green + 29 * blue) ushr 8
+                pixels[index++] = bitmap.getPixel(x, y)
             }
         }
-        return analyzeLuminanceSamples(samples)
+        return analyzeRgbSamples(pixels, columns)
     }
 
     /** Pure source-reference normalization, testable without Android framework stubs. */
