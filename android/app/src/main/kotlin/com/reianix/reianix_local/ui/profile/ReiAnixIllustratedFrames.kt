@@ -15,12 +15,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import com.reianix.reianix_local.R
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 /** PNG artwork is bundled in drawable-nodpi and never fetched from the network.
  * The lightweight animation is only a twinkle of fixed points, not a rotating
@@ -30,12 +36,81 @@ internal fun isIllustratedProfileFrame(frame: String): Boolean =
     frame == "gold" || frame == "neon" || frame == "galaxy" ||
         frame == "cat_ears"
 
+/** Placement shared with the portrait compositor: the accessory ACTUALLY touches
+ * the upper edge of the circular photo, rather than centering a padded PNG. */
+internal data class TopAccessoryGeometry(
+    val portraitDiameter: Float,
+    val portraitOffsetY: Float,
+    val artworkTop: Float,
+    val artworkHeight: Float,
+) {
+    val portraitTop: Float get() = (1f - portraitDiameter) / 2f + portraitOffsetY
+    val artworkBottom: Float get() = artworkTop + artworkHeight
+}
+
+internal fun topAccessoryGeometry(frame: String): TopAccessoryGeometry? = when (frame) {
+    "gold" -> TopAccessoryGeometry(0.72f, 0.13f, 0.06f, 0.28f)
+    "cat_ears" -> TopAccessoryGeometry(0.77f, 0.115f, 0.025f, 0.26f)
+    else -> null
+}
+
+/** Crops transparent source sheets directly at draw time, so the kitten has
+ * ONLY two ears (no bows, paws, bells or circular trim) and the crown retains
+ * its approved illustration, with no gaps caused by invisible PNG padding. */
+@Composable
+private fun TopAccessoryArtwork(frame: String, modifier: Modifier = Modifier) {
+    val drawableId = when (frame) {
+        "gold" -> R.drawable.profile_frame_gold
+        "cat_ears" -> R.drawable.profile_frame_cat_ears
+        else -> return
+    }
+    val bitmap = ImageBitmap.imageResource(drawableId)
+    Canvas(modifier.testTag("profile-frame-top-accessory-$frame")) {
+        fun drawPart(
+            srcX: Float, srcY: Float, srcW: Float, srcH: Float,
+            destX: Float, destY: Float, destW: Float, destH: Float,
+        ) {
+            drawImage(
+                image = bitmap,
+                srcOffset = IntOffset((bitmap.width * srcX).roundToInt(), (bitmap.height * srcY).roundToInt()),
+                srcSize = IntSize((bitmap.width * srcW).roundToInt(), (bitmap.height * srcH).roundToInt()),
+                dstOffset = IntOffset((size.width * destX).roundToInt(), (size.height * destY).roundToInt()),
+                dstSize = IntSize((size.width * destW).roundToInt(), (size.height * destH).roundToInt()),
+            )
+        }
+
+        if (frame == "gold") {
+            // Original approved crown: the lower gold band slightly overlaps
+            // the TOP of the photo, while its jewels remain above the portrait.
+            drawPart(
+                75f / 320f, 30f / 320f, 170f / 320f, 93f / 320f,
+                0.22f, 0.06f, 0.56f, 0.28f,
+            )
+        } else {
+            // The bows begin below Y=95 and paws below Y=210 on the source.
+            // Do not draw them; render only the left and right EAR regions.
+            drawPart(
+                27f / 320f, 23f / 320f, 114f / 320f, 71f / 320f,
+                0.045f, 0.025f, 0.42f, 0.26f,
+            )
+            drawPart(
+                179f / 320f, 23f / 320f, 114f / 320f, 71f / 320f,
+                0.535f, 0.025f, 0.42f, 0.26f,
+            )
+        }
+    }
+}
+
 @Composable
 internal fun IllustratedProfileFrame(
     frame: String,
     modifier: Modifier = Modifier,
 ) {
     if (!isIllustratedProfileFrame(frame)) return
+    if (topAccessoryGeometry(frame) != null) {
+        TopAccessoryArtwork(frame, modifier)
+        return
+    }
     // Static resource references guarantee these illustrated frames survive APK shrinking.
     // Never silently fall back to the old geometric designs.
     val drawableId = when (frame) {
