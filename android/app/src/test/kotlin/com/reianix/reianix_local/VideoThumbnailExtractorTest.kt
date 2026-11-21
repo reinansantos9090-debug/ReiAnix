@@ -53,17 +53,44 @@ class VideoThumbnailExtractorTest {
     }
 
     @Test
-    fun frameCandidatesAvoidTheZeroTimestampAndStayWithinAnEpisode() {
+    fun frameCandidatesForAnimeStayInMinutesOneToFiveWithOnlyOneBackup() {
         val durationMs = 24L * 60L * 1_000L
-        val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs)
+        val candidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "episode:12")
 
-        assertEquals(10, candidates.size)
-        assertTrue(candidates.all { it > 0L && it < durationMs * 1_000L })
-        assertTrue(candidates.zipWithNext().all { (first, second) -> first < second })
-        // Candidate coverage must extend well beyond the first third: some local
-        // videos have a black opening or long intro before the actual scene.
-        assertTrue(candidates.last() > durationMs * 900L)
-        assertTrue(VideoThumbnailExtractor.frameCandidateTimestampsUs(0L).size <= 10)
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.distinct().size == candidates.size)
+        assertTrue(candidates.all { it in 60_000_000L..300_000_000L })
+        assertTrue(candidates.all { it < durationMs * 1_000L })
+    }
+
+    @Test
+    fun chosenFrameIsStableForOneEpisodeButVariesAcrossEpisodes() {
+        val durationMs = 24L * 60L * 1_000L
+        val first = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "anime-1:episode-1")
+        val again = VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "anime-1:episode-1")
+        val differentEpisodes = (1..12).map {
+            VideoThumbnailExtractor.frameCandidateTimestampsUs(durationMs, "anime-1:episode-$it").first()
+        }
+
+        assertEquals(first, again)
+        assertTrue(differentEpisodes.distinct().size > 1)
+    }
+
+    @Test
+    fun shortVideosAndUnavailableDurationUseSafeBoundedPositions() {
+        val oneMinuteDuration = 60_000L
+        val shortCandidates = VideoThumbnailExtractor.frameCandidateTimestampsUs(oneMinuteDuration, "short-episode")
+        assertTrue(shortCandidates.isNotEmpty())
+        assertTrue(shortCandidates.size <= 2)
+        assertTrue(shortCandidates.all { it > 0L && it < oneMinuteDuration * 1_000L })
+
+        val tiny = VideoThumbnailExtractor.frameCandidateTimestampsUs(50L, "tiny")
+        assertEquals(1, tiny.size)
+        assertTrue(tiny.single() in 1L..49_999L)
+
+        val unknown = VideoThumbnailExtractor.frameCandidateTimestampsUs(0L, "unknown")
+        assertTrue(unknown.isNotEmpty() && unknown.size <= 2)
+        assertTrue(unknown.all { it in 60_000_000L..300_000_000L })
     }
 
     @Test

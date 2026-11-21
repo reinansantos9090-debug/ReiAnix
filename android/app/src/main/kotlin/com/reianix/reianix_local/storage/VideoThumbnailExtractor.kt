@@ -203,23 +203,39 @@ object VideoThumbnailExtractor {
     ): Boolean = localPath.isNullOrBlank() || !isUsable
 
     /**
-     * Candidate timestamps avoid the exact start frame and sample only a bounded
-     * spread through the beginning and early/middle part of an episode.
+     * Prefer one fast key frame from the first five minutes, not a scored search
+     * throughout the episode. An episode-specific stable offset gives varied
+     * previews without changing the image on every retry/cache lookup.
+     *
+     * The second position is used ONLY if decoding the first frame fails or
+     * returns a blank image. Short clips are clamped before their ending.
      */
-    internal fun frameCandidateTimestampsUs(durationMs: Long): List<Long> {
-        val duration = durationMs.coerceAtLeast(0L).coerceAtMost(Long.MAX_VALUE / 1_000L) * 1_000L
-        if (duration == 0L) {
-            return listOf(250_000L, 750_000L, 1_500_000L, 3_000_000L, 5_000_000L, 10_000_000L, 20_000_000L)
+    internal fun frameCandidateTimestampsUs(durationMs: Long, mediaIdentity: String): List<Long> {
+        val durationUs = durationMs.coerceAtLeast(0L)
+            .coerceAtMost(Long.MAX_VALUE / 1_000L) * 1_000L
+        val latestUs = if (durationUs > 0L) {
+            (durationUs - maxOf(1_000L, durationUs / 100L)).coerceAtLeast(1L)
+        } else {
+            300_000_000L // Metadata unavailable: assume an ordinary full episode.
         }
-        if (duration <= 100_000L) return listOf((duration / 2L).coerceAtLeast(1L))
+        val upperUs = minOf(300_000_000L, latestUs)
+        if (upperUs <= 100_000L) return listOf((upperUs / 2L).coerceAtLeast(1L))
 
-        val minimumCandidate = minOf(250_000L, duration / 4L).coerceAtLeast(1L)
-        val latestCandidate = (duration - maxOf(1_000L, duration / 100L)).coerceAtLeast(1L)
-        val fractions = doubleArrayOf(0.005, 0.02, 0.05, 0.10, 0.18, 0.30, 0.48, 0.65, 0.82, 0.93)
-        val candidates = fractions.map { fraction ->
-            (duration.toDouble() * fraction).toLong().coerceAtLeast(minimumCandidate).coerceAtMost(latestCandidate)
-        }.distinct().take(10)
-        return candidates.ifEmpty { listOf((duration / 2L).coerceAtLeast(1L)) }
+        val lowerUs = minOf(60_000_000L, (upperUs / 2L).coerceAtLeast(1L))
+        val availableSeconds = (upperUs - lowerUs) / 1_000_000L
+        val offsetSeconds =
+            (mediaIdentity.hashCode().toLong() and 0xffff_ffffL) % (availableSeconds + 1L)
+        val firstUs = (lowerUs + offsetSeconds * 1_000_000L).coerceAtMost(upperUs)
+
+        // Keep the one fallback far from the first frame, still within minute 1–5
+        // when the video is long enough.
+        val separationUs = maxOf(1_000_000L, (upperUs - lowerUs) / 2L)
+        val fallbackUs = if (firstUs + separationUs <= upperUs) {
+            firstUs + separationUs
+        } else {
+            (firstUs - separationUs).coerceAtLeast(lowerUs)
+        }
+        return listOf(firstUs, fallbackUs).distinct()
     }
 
     /** Calculate basic visual usefulness from sampled luminance values (0..255). */
@@ -534,86 +550,33 @@ object VideoThumbnailExtractor {
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
 
             diagnosticStage = "frame_decode"
-            val candidateTimestampsUs = frameCandidateTimestampsUs(durationMs)
-            var selectedTimestampUs = -1L
-            var selectedQuality: FrameQualityMetrics? = null
-            var bestScore = Double.NEGATIVE_INFINITY
-            var decodedCandidates = 0
-            var rejectedCandidates = 0
-            var failedCandidates = 0
-            var syncFallbackAttempts = 0
-
-            candidateTimestampsUs.forEach { timestampUs ->
-                var candidate: Bitmap? = null
-                var candidateQuality: FrameQualityMetrics? = null
-                var decodedAtTimestamp = false
-                var syncFallbackUsed = false
-                var lastFrameError: Throwable? = null
-
-                // Prefer the closest decoded frame. If that mode returns no frame or
-                // only an unusable frame, try the nearest sync frame before abandoning
-                // this timestamp. CloudStream uses CLOSEST_SYNC for its preview frames;
-                // retaining CLOSEST as the first attempt keeps ReiAnix's finer sampling.
-                intArrayOf(
-                    MediaMetadataRetriever.OPTION_CLOSEST,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                ).forEachIndexed { optionIndex, option ->
-                    if (candidate != null) return@forEachIndexed
-                    if (optionIndex > 0) {
-                        syncFallbackAttempts++
-                        syncFallbackUsed = true
+            // One key-frame decode in minutes 1–5. Stop immediately on success;
+            // use just one other timestamp if the first decode is blank or fails.
+            for (timestampUs in frameCandidateTimestampsUs(durationMs, key)) {
+                val decoded = runCatching {
+                    if (android.os.Build.VERSION.SDK_INT >= 27) {
+                        retriever.getScaledFrameAtTime(
+                            timestampUs,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                            MAX_FRAME_DIMENSION,
+                            MAX_FRAME_DIMENSION,
+                        )
+                    } else {
+                        retriever.getFrameAtTime(
+                            timestampUs,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        )
                     }
+                }.getOrNull() ?: continue
 
-                    val frameAttempt = runCatching {
-                        if (android.os.Build.VERSION.SDK_INT >= 27) {
-                            retriever.getScaledFrameAtTime(
-                                timestampUs,
-                                option,
-                                MAX_FRAME_DIMENSION,
-                                MAX_FRAME_DIMENSION,
-                            )
-                        } else {
-                            retriever.getFrameAtTime(timestampUs, option)
-                        }
-                    }
-                    val decoded = frameAttempt.getOrNull()
-                    if (decoded == null) {
-                        frameAttempt.exceptionOrNull()?.let { lastFrameError = it }
-                        return@forEachIndexed
-                    }
-
-                    decodedAtTimestamp = true
-                    decodedCandidates++
-                    val quality = frameQualityMetrics(decoded)
-                    if (quality == null || !isUsableFrame(quality)) {
-                        rejectedCandidates++
-                        decoded.recycle()
-                        return@forEachIndexed
-                    }
-                    candidate = decoded
-                    candidateQuality = quality
+                val usable = runCatching {
+                    frameQualityMetrics(decoded)?.let(::isUsableFrame) == true
+                }.getOrDefault(false)
+                if (usable) {
+                    bitmap = decoded
+                    break
                 }
-
-                val selectedCandidate = candidate
-                val quality = candidateQuality
-                if (selectedCandidate == null || quality == null) {
-                    if (!decodedAtTimestamp) {
-                        failedCandidates++
-
-                    }
-                    return@forEach
-                }
-
-                val score = frameQualityScore(quality)
-                if (score > bestScore) {
-                    bitmap?.recycle()
-                    bitmap = selectedCandidate
-                    selectedTimestampUs = timestampUs
-                    selectedQuality = quality
-                    bestScore = score
-                } else {
-                    selectedCandidate.recycle()
-                }
+                decoded.recycle()
             }
 
             if (bitmap == null) {
