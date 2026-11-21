@@ -1,6 +1,8 @@
 package com.reianix.reianix_local
 
 import com.reianix.reianix_local.storage.VideoThumbnailExtractor
+import com.reianix.reianix_local.storage.FailedThumbnailCooldown
+import com.reianix.reianix_local.storage.ValidatedThumbnailFiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
@@ -159,5 +161,49 @@ class VideoThumbnailExtractorTest {
             VideoThumbnailExtractor.frameQualityScore(detailed) >
                 VideoThumbnailExtractor.frameQualityScore(flat),
         )
+    }
+
+    @Test
+    fun failedDecoderCooldownIsShortAndScopedToOneSourceRevision() {
+        var clock = 1_000L
+        val failures = FailedThumbnailCooldown(retryAfterMillis = 15_000L, nowMillis = { clock })
+        val first = VideoThumbnailExtractor.cacheKey("episode-1", 1024L, 10L)
+        val replaced = VideoThumbnailExtractor.cacheKey("episode-1", 2048L, 20L)
+        assertFalse(failures.isCoolingDown(first))
+        failures.recordFailure(first)
+        assertTrue(failures.isCoolingDown(first))
+        assertFalse(failures.isCoolingDown(replaced))
+        clock += 14_999L
+        assertTrue(failures.isCoolingDown(first))
+        clock += 1L
+        assertFalse(failures.isCoolingDown(first))
+        failures.recordFailure(first)
+        failures.recordSuccess(first)
+        assertFalse(failures.isCoolingDown(first))
+    }
+
+    @Test
+    fun verifiedThumbnailMemoizationInvalidatesWhenFileChanges() {
+        val file = java.io.File.createTempFile("reianix-verified-thumbnail-", ".jpg")
+        val validated = ValidatedThumbnailFiles(maxEntries = 2)
+        try {
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            assertFalse(validated.isVerified(file))
+            validated.recordVerified(file)
+            assertTrue(validated.isVerified(file))
+
+            file.appendBytes(byteArrayOf(4, 5))
+            assertFalse(validated.isVerified(file))
+            validated.recordVerified(file)
+            assertTrue(validated.isVerified(file))
+
+            file.setLastModified(file.lastModified() + 2_000L)
+            assertFalse(validated.isVerified(file))
+            validated.recordVerified(file)
+            validated.clear()
+            assertFalse(validated.isVerified(file))
+        } finally {
+            file.delete()
+        }
     }
 }

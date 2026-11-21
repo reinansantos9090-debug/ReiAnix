@@ -17,6 +17,64 @@ import java.util.concurrent.Semaphore
 import org.json.JSONObject
 
 /**
+ * Keep validation of an already verified JPEG in memory until its file revision
+ * changes. Without this, every library/cache lookup decodes the JPEG again,
+ * allocating Bitmaps and increasing GC pressure during rapid navigation.
+ */
+internal class ValidatedThumbnailFiles(private val maxEntries: Int = 512) {
+    init { require(maxEntries > 0) }
+
+    private data class Revision(val length: Long, val modifiedAt: Long)
+    private val verified = object : LinkedHashMap<String, Revision>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Revision>?): Boolean =
+            size > maxEntries
+    }
+
+    @Synchronized
+    fun isVerified(file: File): Boolean {
+        if (!file.isFile || file.length() <= 0L) return false
+        return verified[file.absolutePath] == Revision(file.length(), file.lastModified())
+    }
+
+    @Synchronized
+    fun recordVerified(file: File) {
+        if (file.isFile && file.length() > 0L) {
+            verified[file.absolutePath] = Revision(file.length(), file.lastModified())
+        }
+    }
+
+    @Synchronized fun clear() = verified.clear()
+}
+
+/** Back off only repeat failures for the SAME video revision, never the first extraction. */
+internal class FailedThumbnailCooldown(
+    private val retryAfterMillis: Long = 15_000L,
+    private val maxEntries: Int = 256,
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
+) {
+    init { require(retryAfterMillis > 0); require(maxEntries > 0) }
+    private val failures = object : LinkedHashMap<String, Long>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean =
+            size > maxEntries
+    }
+
+    @Synchronized
+    fun isCoolingDown(key: String): Boolean {
+        val lastFailure = failures[key] ?: return false
+        val elapsed = nowMillis() - lastFailure
+        if (elapsed >= retryAfterMillis || elapsed < 0L) {
+            failures.remove(key)
+            return false
+        }
+        return true
+    }
+
+    @Synchronized fun recordFailure(key: String) { failures[key] = nowMillis() }
+    @Synchronized fun recordSuccess(key: String) { failures.remove(key) }
+    @Synchronized fun clear() = failures.clear()
+}
+
+/**
  * Extracts a bounded local video frame and metadata without crossing the
  * Python/native mailbox boundary with a Bitmap. Results are persisted as
  * small JPEG files and are safe to regenerate when the source version changes.
@@ -60,8 +118,13 @@ object VideoThumbnailExtractor {
     private const val CACHE_METADATA_VERSION = 1
     private const val THUMBNAIL_ALGORITHM_VERSION = 3
 
-    private val inFlight = ConcurrentHashMap<String, Any>()
+    // Fixed lock stripes cannot be removed while another extraction waits on
+    // them. The old inFlight map removed a lock before its waiters acquired it,
+    // allowing a third request to decode the same source concurrently.
+    private val extractionLocks = Array(32) { Any() }
     private val latestKeyByUri = ConcurrentHashMap<String, String>()
+    private val validatedThumbnailFiles = ValidatedThumbnailFiles()
+    private val failedThumbnailCooldown = FailedThumbnailCooldown()
     private val extractionPermits = Semaphore(2)
     private const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
     private const val MAX_FRAME_DIMENSION = 320
@@ -281,6 +344,8 @@ object VideoThumbnailExtractor {
                 if (file.isFile && file.delete()) deleted++
             }
             latestKeyByUri.clear()
+            validatedThumbnailFiles.clear()
+            failedThumbnailCooldown.clear()
             deleted
         } finally {
             extractionPermits.release(2)
@@ -318,19 +383,25 @@ object VideoThumbnailExtractor {
         if (initialCacheEntryValid) {
             val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
             if (cached != null) {
-
+                failedThumbnailCooldown.recordSuccess(key)
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
             }
         }
 
-        
+        // The original decode was already attempted. Do not repeatedly invoke
+        // the platform video decoder for an unchanged, recently failed source.
+        if (failedThumbnailCooldown.isCoolingDown(key)) return null
 
-        val lock = inFlight.computeIfAbsent(key) { Any() }
+        val lock = extractionLocks[(key.hashCode() and Int.MAX_VALUE) % extractionLocks.size]
         synchronized(lock) {
             if (target.isFile && target.length() > 0L && isValidCachedThumbnail(target)) {
                 val cached = readCachedResult(context, uri, target, key, size, modifiedAt)
-                if (cached != null) return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
+                if (cached != null) {
+                    failedThumbnailCooldown.recordSuccess(key)
+                    return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
+                }
             }
+            if (failedThumbnailCooldown.isCoolingDown(key)) return null
             var permitAcquired = false
             try {
                 extractionPermits.acquire()
@@ -347,16 +418,14 @@ object VideoThumbnailExtractor {
                     if (cached != null) return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, cached.result)
                 }
                 val result = extractLocked(context, uri, target, key, size, modifiedAt)
-                
                 if (result == null) {
-
+                    failedThumbnailCooldown.recordFailure(key)
                     return null
                 }
-
+                failedThumbnailCooldown.recordSuccess(key)
                 return registerGeneratedArtwork(context, uri, identity, size, modifiedAt, result)
             } finally {
                 if (permitAcquired) extractionPermits.release()
-                inFlight.remove(key, lock)
             }
         }
     }
@@ -393,26 +462,31 @@ object VideoThumbnailExtractor {
         return result.copy(canonicalArtworkRegistered = registered)
     }
 
-    private fun isValidCachedThumbnail(file: File): Boolean = runCatching {
-        if (!file.isFile || file.length() <= 0L) return false
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+    private fun isValidCachedThumbnail(file: File): Boolean {
+        if (validatedThumbnailFiles.isVerified(file)) return true
+        val valid = runCatching {
+            if (!file.isFile || file.length() <= 0L) return false
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
 
-        var sampleSize = 1
-        val largestDimension = maxOf(bounds.outWidth, bounds.outHeight)
-        while (largestDimension / sampleSize > MAX_FRAME_DIMENSION && sampleSize <= Int.MAX_VALUE / 2) {
-            sampleSize *= 2
-        }
-        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        val decoded = BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
-        try {
-            val metrics = frameQualityMetrics(decoded) ?: return false
-            isUsableFrame(metrics)
-        } finally {
-            decoded.recycle()
-        }
-    }.getOrDefault(false)
+            var sampleSize = 1
+            val largestDimension = maxOf(bounds.outWidth, bounds.outHeight)
+            while (largestDimension / sampleSize > MAX_FRAME_DIMENSION && sampleSize <= Int.MAX_VALUE / 2) {
+                sampleSize *= 2
+            }
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val decoded = BitmapFactory.decodeFile(file.absolutePath, options) ?: return false
+            try {
+                val metrics = frameQualityMetrics(decoded) ?: return false
+                isUsableFrame(metrics)
+            } finally {
+                decoded.recycle()
+            }
+        }.getOrDefault(false)
+        if (valid) validatedThumbnailFiles.recordVerified(file)
+        return valid
+    }
 
     private fun extractLocked(
         context: Context,
