@@ -107,16 +107,22 @@ private fun ProfileAvatar(profile: ReiAnixProfile, store: ReiAnixProfileStore, s
     val photo = store.image(profile.photo)
     var photoFailed by remember(photo) { mutableStateOf(false) }
     val animated = isAnimatedProfileFrame(profile.frame)
-    val ring = when (profile.frame) {
-        "accent" -> accent(profile)
-        "white" -> Color.White
-        else -> Color.Transparent
-    }
+    val ring = if (profile.frame == "white") Color.White else Color.Transparent
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
-        // Space for frame ornaments; photo and built-in avatar remain circular and clipped.
+        // The Royal crown is a top accessory, not a circular ring. Its illustration
+        // is cropped and anchored to the upper edge of the portrait.
+        // Keep an actual round photo (not an oval) and don't move other frame styles.
+        val topAccessory = topAccessoryGeometry(profile.frame)
+        val portraitModifier = when {
+            topAccessory != null -> Modifier
+                .size(size * topAccessory.portraitDiameter)
+                .offset(y = size * topAccessory.portraitOffsetY)
+            profile.frame == "neon" || profile.frame == "galaxy" ->
+                Modifier.fillMaxSize().padding(size * 0.11f)
+            else -> Modifier.fillMaxSize().padding(if (animated) size * 0.11f else 0.dp)
+        }
         Box(
-            Modifier.fillMaxSize()
-                .padding(if (animated) size * 0.11f else 0.dp)
+            portraitModifier
                 .then(if (ring != Color.Transparent) Modifier.border(2.dp, ring, CircleShape).padding(3.dp) else Modifier)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface),
@@ -728,7 +734,7 @@ internal fun ProfileCustomization(
                                             saveChange { it.copy(avatar = p.id, photo = null) }
                                         }.padding(vertical = 8.dp)) {
                                         ProfileAvatar(profile.copy(avatar = p.id, photo = null,
-                                            frame = if (selected) "accent" else "none"), store, 48.dp)
+                                            frame = "none"), store, 48.dp)
                                         Text(p.label, style = MaterialTheme.typography.labelSmall)
                                     }
                                 }

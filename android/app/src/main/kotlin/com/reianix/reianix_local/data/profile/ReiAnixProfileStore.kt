@@ -18,6 +18,10 @@ import java.util.UUID
 internal const val DEFAULT_PROFILE_AVATAR_ID = "bolt"
 
 /** User-owned local profile, entirely independent of catalog metadata and external accounts. */
+/** Retired frame styles must not reappear after an upgrade, even in saved profiles. */
+internal fun normalizedProfileFrame(frame: String): String =
+    if (frame == "headset" || frame == "cat_ears" || frame == "accent") "none" else frame
+
 data class ReiAnixProfile(
     val name: String = "",
     val bio: String = "",
@@ -54,7 +58,7 @@ class ReiAnixProfileStore private constructor(context: Context) {
         bio = prefs.getString("bio", "").orEmpty(),
         avatar = prefs.getString("avatar", DEFAULT_PROFILE_AVATAR_ID) ?: DEFAULT_PROFILE_AVATAR_ID,
         photo = prefs.getString("photo", null),
-        frame = prefs.getString("frame", "none").orEmpty(),
+        frame = normalizedProfileFrame(prefs.getString("frame", "none").orEmpty()),
         color = prefs.getString("color", "blue").orEmpty(),
         featuredAnimeId = prefs.getLong("featured", 0L).takeIf { it > 0L },
     )
@@ -125,7 +129,11 @@ class ReiAnixProfileStore private constructor(context: Context) {
     suspend fun update(change: (ReiAnixProfile) -> ReiAnixProfile) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val profile = change(current.value)
-            val clean = profile.copy(name = profile.name.trim().take(40), bio = profile.bio.trim().take(160))
+            val clean = profile.copy(
+                name = profile.name.trim().take(40),
+                bio = profile.bio.trim().take(160),
+                frame = normalizedProfileFrame(profile.frame),
+            )
             require(clean.photo == null || image(clean.photo)?.isFile == true) { "Foto indisponível." }
             val old = current.value
             val obsolete = prefs.getString("banner", null)
