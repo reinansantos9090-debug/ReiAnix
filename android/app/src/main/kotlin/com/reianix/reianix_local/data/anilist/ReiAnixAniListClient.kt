@@ -430,13 +430,13 @@ class ReiAnixAniListClient(
                 edges { role node { id name { full } image { medium } } }
             }
         """
-        private const val MEDIA_FIELDS_WITH_CHARACTERS = MEDIA_FIELDS + CHARACTER_FIELDS
         private const val MEDIA_FIELDS = """
             id title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
         """
+        private const val MEDIA_FIELDS_WITH_CHARACTERS = MEDIA_FIELDS + CHARACTER_FIELDS
     }
 }
 
