@@ -245,7 +245,15 @@ class ReiAnixKitsuCatalogProvider(
         return buildList {
             for (index in 0 until refs.length()) {
                 val ref = refs.optJSONObject(index) ?: continue
-                val media = resources["mediaCharacters:${ref.catalogText("id")}"] ?: continue
+                // Anime metadata returns relationship IDs with the full media
+                // rows in "included"; paginated /anime/{id}/characters returns
+                // full mediaCharacters rows directly in "data". Support both.
+                val media = resources["mediaCharacters:${ref.catalogText("id")}"]
+                    ?: ref.takeIf {
+                        it.catalogText("type") == "mediaCharacters" &&
+                            it.optJSONObject("relationships") != null
+                    }
+                    ?: continue
                 val personRef = media.optJSONObject("relationships")
                     ?.optJSONObject("character")?.optJSONObject("data") ?: continue
                 val character = resources["characters:${personRef.catalogText("id")}"] ?: continue
