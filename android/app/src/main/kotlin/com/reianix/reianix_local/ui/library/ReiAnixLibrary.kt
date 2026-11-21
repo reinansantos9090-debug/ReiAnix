@@ -1285,7 +1285,6 @@ private fun LibraryAnimeCard(
         // episode list again from the card composition path.
         val availableCount = anime.availableContentCount
         LibraryCardRenderData(
-            availableCount = availableCount,
             metadata = buildList {
                 anime.year?.let { add(it.toString()) }
                 if (availableCount > 0) {
@@ -1320,18 +1319,16 @@ private fun LibraryAnimeCard(
         completed = renderData.completed,
         modifier = modifier,
         onClick = onClick,
-        bottomBadgeText = presentationStateLabel(anime.presentationState) ?: when {
-            anime.mediaKind == com.reianix.reianix_local.ui.model.ReiAnixMediaKind.MOVIE -> "Filme"
-            renderData.availableCount > 0 -> renderData.availableCount.toString() + if (renderData.availableCount == 1) " episódio" else " episódios"
-            else -> null
-        },
+        // Episode quantity is already displayed in the metadata below the poster.
+        // Keep status/movie badges, but do not overlay a duplicate black chip.
+        bottomBadgeText = presentationStateLabel(anime.presentationState)
+            ?: if (anime.mediaKind == com.reianix.reianix_local.ui.model.ReiAnixMediaKind.MOVIE) "Filme" else null,
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = maxDimensionPx,
     )
 }
 
 private data class LibraryCardRenderData(
-    val availableCount: Int,
     val metadata: List<String>,
     val progress: Float?,
     val favorite: Boolean,
