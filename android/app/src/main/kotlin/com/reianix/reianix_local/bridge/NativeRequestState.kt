@@ -186,8 +186,12 @@ class NativeRequestState {
         if(!isSupportedAction(action) || pendingLifecycleAction!=null)return false
         pendingLifecycleAction=action
         pendingLifecycleRequestId=requestId?.trim()?.takeIf{it.isNotEmpty()}
-        markOperationState(requestId, action, OperationState.QUEUED)
-        persist()
+        // markOperationState already persists the queued request. A second synchronous
+        // SharedPreferences commit on the UI thread only adds latency.
+        if (!markOperationState(requestId, action, OperationState.QUEUED)) {
+            // A request without a trackable ID still needs its pending action saved.
+            persist()
+        }
         return true
     }
 
