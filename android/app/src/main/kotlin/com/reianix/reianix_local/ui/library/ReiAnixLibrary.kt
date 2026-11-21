@@ -1036,7 +1036,9 @@ private fun ColumnScope.LibraryReadyContent(
                 }
             }
 
-            if (state.scanInProgress) {
+            // An automatic startup reconciliation is silent when cached covers are visible.
+            // Show the scanner row only for a refresh explicitly requested by the user.
+            if (state.scanInProgress && isRefreshing) {
                 item(
                     key = "library-scanner",
                     span = { GridItemSpan(maxLineSpan) },
