@@ -4,14 +4,19 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 
 /**
  * Compare back-stack entry identities, not destination names. Every outgoing
@@ -45,13 +50,41 @@ internal fun NavGraphBuilder.reiAnixGuardedComposable(
     content: @Composable (NavBackStackEntry) -> Unit,
 ) {
     composable(route = route, arguments = arguments) { entry ->
+        val touchPlacement = if (route == ReiAnixRoutes.DETAILS) {
+            val foreground by navController.currentBackStackEntryAsState()
+            if (foreground?.destination?.route == ReiAnixRoutes.LIBRARY) {
+                Modifier.drawOutgoingDetailsInPlace()
+            } else {
+                Modifier
+            }
+        } else {
+            Modifier
+        }
+
         Box(
             Modifier
                 .fillMaxSize()
+                .then(touchPlacement)
                 .blockOutgoingDestinationTouches(navController, entry.id),
         ) {
             content(entry)
         }
+    }
+}
+
+/**
+ * On pop, NavHost draws Details above Library. Move the Details hit area away
+ * while drawing it at its usual coordinates so NavHost can finish the fade.
+ * Keep the real content composed and measured throughout the transition.
+ */
+private fun Modifier.drawOutgoingDetailsInPlace(): Modifier = drawWithContent {
+    translate(left = -size.width * 2f) {
+        this@drawWithContent.drawContent()
+    }
+}.layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, placeable.height) {
+        placeable.place(x = placeable.width * 2, y = 0)
     }
 }
 
