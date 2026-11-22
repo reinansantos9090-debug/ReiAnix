@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.ui.artwork
 
+import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -28,6 +29,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import coil.ImageLoader
+import coil.Coil
+import coil.memory.MemoryCache
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
@@ -159,7 +162,15 @@ private object ReiAnixArtworkImageLoader {
     fun get(context: Context): ImageLoader {
         instance?.let { return it }
         return synchronized(this) {
-            instance ?: ImageLoader.Builder(context.applicationContext)
+            val appContext = context.applicationContext
+            val lowRam = appContext.getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
+            instance ?: ImageLoader.Builder(appContext)
+                .memoryCache {
+                    MemoryCache.Builder(appContext)
+                        .maxSizePercent(if (lowRam) 0.15 else 0.20)
+                        .build()
+                }
+                .diskCache { Coil.imageLoader(appContext).diskCache }
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
                 .networkCachePolicy(CachePolicy.ENABLED)

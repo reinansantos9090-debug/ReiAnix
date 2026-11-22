@@ -57,6 +57,20 @@ class PlayerEnhancementPolicyTest {
         assertTrue(AniSkipSegments(context).parse(JSONObject("""{"found":false}"""), 1200000).isEmpty())
     }
 
+    @Test fun introDbOnlySuppliesSegmentsThatFitTheLocalVideo() {
+        val context = RuntimeEnvironment.getApplication()
+        val response = JSONObject("""{
+            "intro":{"start_ms":1039,"end_ms":91039},
+            "outro":{"start_ms":1286120,"end_ms":1356110},
+            "recap":null
+        }""")
+
+        assertEquals(
+            listOf(PlayerSkipSegment("op", 1039, 91039)),
+            AniSkipSegments(context).parseIntroDb(response, durationMs = 1340000),
+        )
+    }
+
     @Test fun diskCacheIsReusedAndInvalidatedForChangedMedia() {
         val context = RuntimeEnvironment.getApplication()
         File(context.cacheDir, "seek-preview-v2").deleteRecursively()
