@@ -5602,7 +5602,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (anime.anilistMatchManual != true && anime.anilistMatchStatus != "matched") return@withContext emptyList<PlayerSkipSegment>()
                     val number = PlayerEnhancementPolicy.episodeNumber(episode.number)
                         ?: return@withContext emptyList<PlayerSkipSegment>()
-                    AniSkipSegments(applicationContext).fetch(anilistId, number, durationMs)
+                    AniSkipSegments(applicationContext).fetch(anilistId, number, episode.season, durationMs)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) { emptyList<PlayerSkipSegment>() }

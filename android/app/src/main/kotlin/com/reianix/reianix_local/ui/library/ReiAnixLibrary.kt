@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.ui.geometry.Offset
@@ -73,7 +74,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -114,6 +117,8 @@ import com.reianix.reianix_local.ui.ReiAnixSearchField
 import com.reianix.reianix_local.ui.ReiAnixScannerInProgressState
 import com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+import com.reianix.reianix_local.ui.model.ReiAnixArtworkUiModel
 import com.reianix.reianix_local.ui.model.presentationStateLabel
 import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
@@ -419,11 +424,23 @@ private fun ReiAnixLibraryPresentationScreen(
             )
         }
 
+        val waitingForInitialCatalog = state.animeCount == 0 &&
+            (state.scanInProgress || state.status == ReiAnixLibraryLoadStatus.LOADING)
+        var showInitialIndicator by remember(waitingForInitialCatalog) { mutableStateOf(false) }
+        LaunchedEffect(waitingForInitialCatalog) {
+            if (waitingForInitialCatalog) {
+                delay(200)
+                showInitialIndicator = true
+            }
+        }
+
         // A non-empty canonical snapshot is usable even while the source is
         // being checked or the scanner is reconciling it. Never replace that
         // catalog with a full-screen loading state.
         if (state.animeCount > 0) {
             renderReadyContent()
+        } else if (waitingForInitialCatalog && !showInitialIndicator) {
+            Box(Modifier.weight(1f))
         } else if (state.scanInProgress) {
             // An initial scan is not an empty library. Keep the state compact
             // and never claim the catalog is empty until reconciliation settles.
@@ -618,11 +635,18 @@ private fun LibraryFiltersDialog(
         }
     }
 
-    val options: List<Pair<String?, String>> = when (tab) {
-        0 -> ReiAnixLibrarySort.OPTIONS.map { it.label to it.label }
-        1 -> listOf(null to "Todos") + genres.map { it.stableKey to it.name }
-        2 -> ReiAnixLibraryFilters.WATCH_STATES
-        else -> ReiAnixLibraryFilters.LABEL_FILTERS
+    val optionsCache = remember(genres) { mutableMapOf<Int, List<Pair<String?, String>>>() }
+    val options = remember(tab, optionsCache, genres) {
+        optionsCache[tab] ?: libraryFilterTabOptions(tab, genres)
+    }
+    LaunchedEffect(tab, genres) {
+        // Let the selected tab render first, then prepare only its next neighbor.
+        withFrameNanos { }
+        val neighbor = if (tab == tabs.lastIndex) tab - 1 else tab + 1
+        val neighborOptions = optionsCache[neighbor] ?: libraryFilterTabOptions(neighbor, genres)
+        optionsCache.clear()
+        optionsCache[tab] = options
+        optionsCache[neighbor] = neighborOptions
     }
     val selectedKey = when (tab) {
         0 -> sort
@@ -1082,14 +1106,16 @@ private fun ColumnScope.LibraryReadyContent(
                     key = { anime -> anime.stableKey },
                     contentType = { "library-anime-card" },
                 ) { anime ->
+                    val animeId = anime.id
+                    val card = remember(anime) { anime.toLibraryCard() }
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.TopCenter,
                     ) {
                         LibraryAnimeCard(
-                            anime = anime,
-                            onClick = { onOpenDetails(anime.id) },
-                            onToggleFavorite = { onToggleFavorite(anime.id) },
+                            card = card,
+                            onClick = remember(onOpenDetails, animeId) { { onOpenDetails(animeId) } },
+                            onToggleFavorite = remember(onToggleFavorite, animeId) { { onToggleFavorite(animeId) } },
                             maxDimensionPx = posterRequestDimensionPx,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1273,70 +1299,75 @@ private fun LibraryFilterChip(
     )
 }
 
+private fun libraryFilterTabOptions(
+    tab: Int,
+    genres: List<ReiAnixGenreUiModel>,
+): List<Pair<String?, String>> = when (tab) {
+    0 -> ReiAnixLibrarySort.OPTIONS.map { it.label to it.label }
+    1 -> listOf(null to "Todos") + genres.map { it.stableKey to it.name }
+    2 -> ReiAnixLibraryFilters.WATCH_STATES
+    else -> ReiAnixLibraryFilters.LABEL_FILTERS
+}
+
 @Composable
 private fun LibraryAnimeCard(
-    anime: ReiAnixAnimeUiModel,
+    card: LibraryCardRenderData,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     maxDimensionPx: Int,
     modifier: Modifier = Modifier,
 ) {
-    val renderData = remember(anime) {
-        // AnimeUiModel keeps this summary lazy and cached for its immutable snapshot.
-        // Grid scrolling can create many cards at once, so never walk each anime's
-        // episode list again from the card composition path.
-        val availableCount = anime.availableContentCount
-        LibraryCardRenderData(
-            metadata = buildList {
-                anime.year?.let { add(it.toString()) }
-                if (availableCount > 0) {
-                    add(
-                        if (availableCount == 1) {
-                            "1 episódio"
-                        } else {
-                            availableCount.toString() + " episódios"
-                        },
-                    )
-                }
-            },
-            progress = anime.resumeProgressFraction,
-            favorite = anime.favorite,
-            watching = anime.isWatching,
-            watched = anime.hasWatchedEpisode,
-            completed = anime.isCompleted,
-        )
-    }
-
     ReiAnixAnimeCard(
-        title = anime.title,
-        artworkPath = anime.artwork?.localPath,
-        artworkExternalUrl = anime.artwork?.externalUrl,
-        artworkIdentity = anime.stableKey,
-        artworkSourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
-        metadata = renderData.metadata,
-        progress = renderData.progress,
-        favorite = renderData.favorite,
-        watching = renderData.watching,
-        watched = renderData.watched,
-        completed = renderData.completed,
+        title = card.title,
+        artworkPath = card.artwork?.localPath,
+        artworkExternalUrl = card.artwork?.externalUrl,
+        artworkIdentity = card.artworkIdentity,
+        artworkSourceRevisions = card.artwork?.sourceRevisions.orEmpty(),
+        metadata = card.metadata,
+        progress = card.progress,
+        favorite = card.favorite,
+        watching = card.watching,
+        watched = card.watched,
+        completed = card.completed,
         modifier = modifier,
         onClick = onClick,
-        // Episode quantity is already displayed in the metadata below the poster.
-        // Keep status/movie badges, but do not overlay a duplicate black chip.
-        bottomBadgeText = presentationStateLabel(anime.presentationState)
-            ?: if (anime.mediaKind == com.reianix.reianix_local.ui.model.ReiAnixMediaKind.MOVIE) "Filme" else null,
+        bottomBadgeText = card.badge,
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = maxDimensionPx,
     )
 }
 
+/** Only fields rendered in the card participate in Compose's equality check. */
+@Immutable
 private data class LibraryCardRenderData(
+    val title: String,
+    val artwork: ReiAnixArtworkUiModel?,
+    val artworkIdentity: String,
     val metadata: List<String>,
     val progress: Float?,
     val favorite: Boolean,
     val watching: Boolean,
     val watched: Boolean,
     val completed: Boolean,
+    val badge: String?,
+)
+
+private fun ReiAnixAnimeUiModel.toLibraryCard(): LibraryCardRenderData = LibraryCardRenderData(
+    title = title,
+    artwork = artwork,
+    artworkIdentity = stableKey,
+    metadata = buildList {
+        year?.let { add(it.toString()) }
+        val count = availableContentCount
+        if (count > 0) add(if (count == 1) "1 episódio" else "$count episódios")
+    },
+    progress = resumeProgressFraction,
+    favorite = favorite,
+    watching = isWatching,
+    watched = hasWatchedEpisode,
+    completed = isCompleted,
+    badge = presentationStateLabel(presentationState)
+        ?: if (mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else null,
 )
 
 private fun libraryResultLabel(count: Int): String =

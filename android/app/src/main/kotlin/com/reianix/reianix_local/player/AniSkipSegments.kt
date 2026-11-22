@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.player
 
 import android.content.Context
+import android.util.AtomicFile
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -13,14 +14,21 @@ import kotlin.math.roundToLong
 internal class AniSkipSegments(context: Context) {
     private val directory = File(context.cacheDir, "player-skip-v1")
 
-    fun fetch(anilistId: Long, episode: Int, durationMs: Long): List<PlayerSkipSegment> {
+    fun fetch(anilistId: Long, episode: Int, season: Int, durationMs: Long): List<PlayerSkipSegment> {
         if (anilistId <= 0 || episode <= 0 || durationMs <= 0) return emptyList()
+        val primary = fetchAniSkip(anilistId, episode, durationMs)
+        val kinds = primary.mapTo(mutableSetOf()) { it.kind }
+        if (season <= 0 || ("op" in kinds && "ed" in kinds)) return primary
+
+        // IntroDB only fills missing types. The mapping supplies the service's
+        // season/episode numbers, which can differ from AniList numbering.
+        return primary + fetchIntroDb(anilistId, episode, season, durationMs)
+            .filter { it.kind !in kinds }
+    }
+
+    private fun fetchAniSkip(anilistId: Long, episode: Int, durationMs: Long): List<PlayerSkipSegment> {
         val file = File(directory, "$anilistId-$episode-$durationMs.json")
-        val cached = runCatching {
-            if (file.isFile && file.lastModified() > System.currentTimeMillis() - 604_800_000L)
-                parse(JSONObject(file.readText()), durationMs) else null
-        }.getOrNull()
-        if (cached != null) return cached
+        readCached(file)?.let { return parse(it, durationMs) }
         return try {
             val body = JSONObject().put("query", "query { Media(id: $anilistId, type: ANIME) { idMal } }")
             val mal = request("https://graphql.anilist.co", body.toString())
@@ -29,11 +37,7 @@ internal class AniSkipSegments(context: Context) {
             val seconds = String.format(Locale.US, "%.3f", durationMs / 1000.0)
             val json = request("https://api.aniskip.com/v2/skip-times/$mal/$episode?types=op&types=ed&types=recap&episodeLength=$seconds")
             val segments = parse(json, durationMs)
-            if (segments.isNotEmpty()) runCatching {
-                directory.mkdirs()
-                file.writeText(json.toString())
-                directory.listFiles()?.sortedByDescending { it.lastModified() }?.drop(512)?.forEach { it.delete() }
-            }
+            if (segments.isNotEmpty()) writeCached(file, json)
             segments
         } catch (_: Exception) { emptyList() }
     }
@@ -58,7 +62,87 @@ internal class AniSkipSegments(context: Context) {
         }.distinct()
     }
 
-    private fun request(url: String, body: String? = null): JSONObject {
+    private fun fetchIntroDb(
+        anilistId: Long,
+        episode: Int,
+        season: Int,
+        durationMs: Long,
+    ): List<PlayerSkipSegment> {
+        val file = File(directory, "introdb-$anilistId-$season-$episode-$durationMs.json")
+        readCached(file)?.let { return parseIntroDb(it, durationMs) }
+
+        return runCatching {
+            val response = request(
+                "https://api.ani.zip/mappings?anilist_id=$anilistId",
+                maxChars = 2 * 1024 * 1024,
+            )
+            val mappings = response.optJSONObject("mappings") ?: return emptyList()
+            val imdbId = mappings.optString("imdb_id")
+            if (mappings.optLong("anilist_id") != anilistId || !IMDB_ID.matches(imdbId)) return emptyList()
+
+            val mapped = response.optJSONObject("episodes")?.optJSONObject(episode.toString())
+                ?: return emptyList()
+            val mappedSeason = mapped.optInt("seasonNumber")
+            val mappedEpisode = mapped.optInt("episodeNumber")
+            val runtimeMinutes = mapped.optInt("runtime")
+            if (mappedSeason <= 0 || mappedEpisode <= 0 || runtimeMinutes <= 0 ||
+                (season != 1 && season != mappedSeason) ||
+                abs(runtimeMinutes * 60_000L - durationMs) > 60_000L
+            ) return emptyList()
+
+            val json = request(
+                "https://api.introdb.app/segments?imdb_id=$imdbId&season=$mappedSeason&episode=$mappedEpisode",
+            )
+            if (json.optString("imdb_id") != imdbId || json.optInt("season") != mappedSeason ||
+                json.optInt("episode") != mappedEpisode || json.optBoolean("is_movie")
+            ) return emptyList()
+
+            parseIntroDb(json, durationMs).also { writeCached(file, json) }
+        }.getOrDefault(emptyList())
+    }
+
+    internal fun parseIntroDb(json: JSONObject, durationMs: Long): List<PlayerSkipSegment> =
+        INTRO_DB_SEGMENTS.mapNotNull { (field, kind) ->
+            val segment = json.optJSONObject(field) ?: return@mapNotNull null
+            val start = segment.optLong("start_ms", -1L)
+            val end = segment.optLong("end_ms", -1L)
+            if (PlayerEnhancementPolicy.validSegment(kind, start, end, durationMs)) {
+                PlayerSkipSegment(kind, start, end)
+            } else {
+                null
+            }
+        }
+
+    private fun readCached(file: File): JSONObject? = synchronized(CACHE_LOCK) {
+        runCatching {
+            val cache = AtomicFile(file)
+            if (file.isFile && file.lastModified() > System.currentTimeMillis() - CACHE_LIFETIME_MS) {
+                JSONObject(cache.readFully().toString(Charsets.UTF_8))
+            } else {
+                null
+            }
+        }.getOrNull()
+    }
+
+    private fun writeCached(file: File, json: JSONObject) {
+        synchronized(CACHE_LOCK) {
+            runCatching {
+                val cache = AtomicFile(file)
+                val stream = cache.startWrite()
+                try {
+                    stream.write(json.toString().toByteArray(Charsets.UTF_8))
+                    cache.finishWrite(stream)
+                } catch (error: Exception) {
+                    cache.failWrite(stream)
+                    throw error
+                }
+                directory.listFiles()?.filter { it.extension == "json" }
+                    ?.sortedByDescending { it.lastModified() }?.drop(512)?.forEach { it.delete() }
+            }
+        }
+    }
+
+    private fun request(url: String, body: String? = null, maxChars: Int = 128 * 1024): JSONObject {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.connectTimeout = 5_000
@@ -78,10 +162,17 @@ internal class AniSkipSegments(context: Context) {
                     val n = reader.read(buffer)
                     if (n < 0) break
                     data.append(buffer, 0, n)
-                    check(data.length <= 128 * 1024)
+                    check(data.length <= maxChars)
                 }
                 JSONObject(data.toString())
             }
         } finally { c.disconnect() }
+    }
+
+    private companion object {
+        const val CACHE_LIFETIME_MS = 604_800_000L
+        val CACHE_LOCK = Any()
+        val IMDB_ID = Regex("tt[0-9]{7,10}")
+        val INTRO_DB_SEGMENTS = listOf("intro" to "op", "outro" to "ed", "recap" to "recap")
     }
 }

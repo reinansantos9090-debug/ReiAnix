@@ -2,15 +2,29 @@ package com.reianix.reianix_local
 
 import android.util.Log
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
 
 /**
  * Native process Application and single owner of the existing Kotlin dependency
  * graph. The idempotent bootstrap keeps recovery and native service startup
  * asynchronous and independent of Activity recreation.
  */
-class ReiAnixApplication : Application() {
+class ReiAnixApplication : Application(), ImageLoaderFactory {
     lateinit var dependencies: ReiAnixAppDependencies
         private set
+
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .diskCache {
+            // One cache instance for both the default and local artwork loaders.
+            DiskCache.Builder()
+                .directory(cacheDir.resolve("image_cache"))
+                .maxSizePercent(0.02)
+                .maximumMaxSizeBytes(512L * 1024 * 1024)
+                .build()
+        }
+        .build()
 
     override fun onCreate() {
         super.onCreate()
