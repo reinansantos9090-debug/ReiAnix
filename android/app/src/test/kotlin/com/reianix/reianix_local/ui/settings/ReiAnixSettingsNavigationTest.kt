@@ -64,6 +64,15 @@ class ReiAnixSettingsNavigationTest {
         })
     }
 
+    @Test fun episodeAlertsLiveOnlyInMetadataAndKeepTheirSearchDestination() {
+        val key = "setting:releases.notifications"
+        assertEquals(false, settingsDestination("Geral")!!.entries.any { it.key == key })
+        assertEquals(true, settingsDestination("Metadados e Capas")!!.entries.any { it.key == key })
+        assertEquals("Metadados e Capas", searchSettings("avisos episódios")
+            .single { it.entry.key == key }.destination.id)
+        assertNotEquals(Icons.Filled.Settings, settingsIcon("releases.notifications"))
+    }
+
     @Test fun settingLabelsExplainTheirActualBehavior() {
         val library = SettingsDestinations.first { it.id == "Biblioteca" }
         assertEquals("Animes por lote", library.entries.first { it.key == "setting:library.page_size" }.title)
