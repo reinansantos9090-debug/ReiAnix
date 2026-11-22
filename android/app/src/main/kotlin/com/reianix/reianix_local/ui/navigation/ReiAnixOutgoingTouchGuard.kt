@@ -4,13 +4,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -36,8 +34,9 @@ internal fun isActiveDetailsDestination(
 /**
  * Register destinations through one shared guard, preserving NavHost's normal
  * enter/exit animations, route arguments, back-stack scopes and saved state.
- * Observe the foreground entry inside the destination, not in the NavGraph
- * builder, because the builder is remembered across route changes.
+ * Read the live foreground entry for each touch event. This avoids the tiny
+ * frame gap between a back action and Compose recomposition, when the stale
+ * screen could otherwise still accept a very fast tap.
  */
 internal fun NavGraphBuilder.reiAnixGuardedComposable(
     navController: NavHostController,
@@ -46,13 +45,10 @@ internal fun NavGraphBuilder.reiAnixGuardedComposable(
     content: @Composable (NavBackStackEntry) -> Unit,
 ) {
     composable(route = route, arguments = arguments) { entry ->
-        val currentEntry by navController.currentBackStackEntryAsState()
         Box(
             Modifier
                 .fillMaxSize()
-                .blockOutgoingDestinationTouches(
-                    isActiveNavigationDestination(entry.id, currentEntry?.id),
-                ),
+                .blockOutgoingDestinationTouches(navController, entry.id),
         ) {
             content(entry)
         }
@@ -60,16 +56,21 @@ internal fun NavGraphBuilder.reiAnixGuardedComposable(
 }
 
 /**
- * Consume the full pointer gesture at the initial pass, ahead of outgoing child
- * click handlers. The active screen remains unrestricted and its transitions
- * are left completely intact.
+ * Check each pointer event against NavController's live entry at the initial
+ * pass, ahead of the child click handlers. A gesture that began before a pop
+ * cannot finish as a click on the outgoing screen after navigation changes.
+ * There are no timers or artificial delays; the active route is unrestricted.
  */
-internal fun Modifier.blockOutgoingDestinationTouches(active: Boolean): Modifier =
-    if (active) this else pointerInput(Unit) {
-        awaitEachGesture {
-            do {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
+internal fun Modifier.blockOutgoingDestinationTouches(
+    navController: NavHostController,
+    entryId: String,
+): Modifier = pointerInput(navController, entryId) {
+    awaitEachGesture {
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (!isActiveNavigationDestination(entryId, navController.currentBackStackEntry?.id)) {
                 event.changes.forEach { it.consume() }
-            } while (event.changes.any { it.pressed })
-        }
+            }
+        } while (event.changes.any { it.pressed })
     }
+}
