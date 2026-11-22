@@ -21,7 +21,6 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
@@ -426,19 +425,19 @@ fun ReiAnixNavigationHost(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
         ) {
-            composable(ReiAnixRoutes.HOME) { home() }
-            composable(ReiAnixRoutes.LIBRARY) { library() }
-            composable(ReiAnixRoutes.MY_LIST) { myList() }
-            composable(ReiAnixRoutes.COLLECTIONS) { collections() }
-            composable(ReiAnixRoutes.ORGANIZE) { organize() }
-            composable(ReiAnixRoutes.SEARCH) { search() }
-            composable(ReiAnixRoutes.SETTINGS) { settings() }
-            composable(ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
-            composable(ReiAnixRoutes.PROFILE) { profile() }
-            composable(ReiAnixRoutes.STORAGE) { storage() }
-            composable(ReiAnixRoutes.RECOVERY) { recovery() }
-            composable(ReiAnixRoutes.COLLECTOR) { collector() }
-            composable(
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.HOME) { home() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.LIBRARY) { library() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.MY_LIST) { myList() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.COLLECTIONS) { collections() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.ORGANIZE) { organize() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.SEARCH) { search() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.SETTINGS) { settings() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.SETTINGS_GENERAL) { settingsGeneral() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.PROFILE) { profile() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.STORAGE) { storage() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.RECOVERY) { recovery() }
+            reiAnixGuardedComposable(navController, ReiAnixRoutes.COLLECTOR) { collector() }
+            reiAnixGuardedComposable(navController, 
                 route = ReiAnixRoutes.TIMELINE,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_SECTION) {
@@ -450,7 +449,7 @@ fun ReiAnixNavigationHost(
                 timeline(entry.arguments?.getString(ReiAnixRoutes.ARG_SECTION) ?: "animes")
             }
 
-            composable(
+            reiAnixGuardedComposable(navController, 
                 route = ReiAnixRoutes.DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANIME_ID) {
@@ -475,7 +474,7 @@ fun ReiAnixNavigationHost(
                 details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
             }
 
-            composable(
+            reiAnixGuardedComposable(navController, 
                 route = ReiAnixRoutes.ANILIST_DETAILS,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_ANILIST_ID) {
@@ -500,7 +499,7 @@ fun ReiAnixNavigationHost(
                 )
             }
 
-            composable(
+            reiAnixGuardedComposable(navController, 
                 route = ReiAnixRoutes.PLAYER,
                 arguments = listOf(
                     navArgument(ReiAnixRoutes.ARG_EPISODE_ID) {
