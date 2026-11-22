@@ -34,6 +34,8 @@ import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.profile.ReiAnixProfileRoute
 import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
+import com.reianix.reianix_local.ui.motion.reiAnixScreenEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixScreenExitTransition
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
 import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
@@ -416,7 +418,6 @@ fun ReiAnixNavigationHost(
         onBottomDestinationClick = navController::navigateToTopLevel,
         showBottomNavigation = shouldShowBottomNavigation,
         navigationContent = { innerPadding ->
-        // Let NavHost keep the outgoing content visible through its fade.
         NavHost(
             navController = navController,
             startDestination = effectiveStartDestination,
@@ -424,6 +425,10 @@ fun ReiAnixNavigationHost(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
+            enterTransition = { reiAnixScreenEnterTransition() },
+            exitTransition = { reiAnixScreenExitTransition() },
+            popEnterTransition = { reiAnixScreenEnterTransition() },
+            popExitTransition = { reiAnixScreenExitTransition() },
         ) {
             reiAnixGuardedComposable(navController, ReiAnixRoutes.HOME) { home() }
             reiAnixGuardedComposable(navController, ReiAnixRoutes.LIBRARY) { library() }
