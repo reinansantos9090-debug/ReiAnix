@@ -271,6 +271,63 @@ class MediaFilenameParserTest {
     }
 
     @Test
+    fun titledSeasonFoldersIdentifyNumberOnlyEpisodesWithoutLosingTheSequel() {
+        val dressUp = MediaFilenameParser.parseVideoPath(
+            "Animes/Anime/Sono Bisque Doll wa Koi wo Suru Season 2 Dublado/01.mkv",
+        )
+        val windBreaker = MediaFilenameParser.parseVideoPath(
+            "Animes/Anime/Wind Breaker Season 2/02.mp4",
+        )
+
+        assertEquals("Sono Bisque Doll wa Koi wo Suru Season 2", dressUp.animeTitle)
+        assertEquals("Wind Breaker Season 2", windBreaker.animeTitle)
+        listOf(dressUp, windBreaker).forEach { parsed ->
+            assertEquals(2, parsed.season)
+            assertEquals(ParsedMediaKind.REGULAR, parsed.kind)
+            assertEquals(MediaIdentificationConfidence.HIGH, parsed.confidence)
+            assertEquals("numbered_episode_in_titled_season_folder", parsed.identificationSource)
+            assertFalse(parsed.unresolved.contains("episode_not_identified"))
+        }
+        assertEquals(1.0, dressUp.episodeNumber!!, 0.0)
+        assertEquals(2.0, windBreaker.episodeNumber!!, 0.0)
+    }
+
+    @Test
+    fun matchingSeasonFolderConfirmsSingleNumericSuffixButNotAnUnrelatedNumber() {
+        val numbered = MediaFilenameParser.parseVideoPath(
+            "Animes/Wind Breaker Season 2/Wind Breaker Season 2 - 07.mkv",
+        )
+        val ordinal = MediaFilenameParser.parseVideoPath(
+            "Animes/Wind Breaker 2nd Season/08.mkv",
+        )
+        val uncorroborated = MediaFilenameParser.parseVideoPath(
+            "Animes/Wind Breaker/Season 2/08.mkv",
+        )
+
+        assertEquals("Wind Breaker Season 2", numbered.animeTitle)
+        assertEquals(7.0, numbered.episodeNumber!!, 0.0)
+        assertEquals(MediaIdentificationConfidence.HIGH, numbered.confidence)
+        assertEquals("confirmed_numeric_suffix_in_titled_season_folder", numbered.identificationSource)
+        assertEquals(2, ordinal.season)
+        assertEquals(8.0, ordinal.episodeNumber!!, 0.0)
+        assertEquals("Wind Breaker 2nd Season", ordinal.animeTitle)
+        assertEquals(ParsedMediaKind.UNKNOWN, uncorroborated.kind)
+        assertNull(uncorroborated.episodeNumber)
+    }
+
+    @Test
+    fun seasonNumberAloneIsNeverGuessedAsAnEpisode() {
+        val parsed = MediaFilenameParser.parseVideoPath("Wind Breaker Season 2.mkv")
+        val standaloneSeason = MediaFilenameParser.parseVideoPath("Animes/Season 2/01.mkv")
+
+        assertEquals("Wind Breaker Season 2", parsed.animeTitle)
+        assertNull(parsed.episodeNumber)
+        assertEquals(ParsedMediaKind.UNKNOWN, parsed.kind)
+        assertEquals(ParsedMediaKind.UNKNOWN, standaloneSeason.kind)
+        assertNull(standaloneSeason.episodeNumber)
+    }
+
+    @Test
     fun rootLevelPlainNamedVideoCanBeRecognizedAsMovieOnlyWhenOptedIn() {
         val lookBack = MediaFilenameParser.parseVideoPath("Look Back.mp4", allowStandaloneMovie = true)
         val nestedVideo = MediaFilenameParser.parseVideoPath(

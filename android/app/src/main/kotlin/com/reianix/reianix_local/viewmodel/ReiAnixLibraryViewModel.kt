@@ -162,6 +162,11 @@ private fun nativePlayerEpisodeOrderKey(
     )
 }
 
+/** Keep the pull-to-refresh affordance tied to a deliberate user command, never passive scanning. */
+internal fun isExplicitLibraryRefresh(action: String?, status: String?): Boolean =
+    action.equals("refresh", ignoreCase = true) &&
+        status?.uppercase(java.util.Locale.ROOT) in setOf("QUEUED", "RUNNING")
+
 enum class ReiAnixNativeFoldersStatus {
     IDLE,
     LOADING,
@@ -781,13 +786,10 @@ class ReiAnixLibraryViewModel(
             emptyList(),
         )
 
-    /** True while an existing refresh command is queued or the canonical scanner reports activity. */
+    /** Background startup scans keep the catalog current but are not user pull-to-refresh gestures. */
     val isRefreshing: StateFlow<Boolean> = uiState
         .map { state ->
-            state.scanInProgress || (
-                state.lastCommandAction.equals("refresh", ignoreCase = true) &&
-                    state.lastCommandStatus?.uppercase() in setOf("QUEUED", "RUNNING")
-                )
+            isExplicitLibraryRefresh(state.lastCommandAction, state.lastCommandStatus)
         }
         .distinctUntilChanged()
         .stateIn(

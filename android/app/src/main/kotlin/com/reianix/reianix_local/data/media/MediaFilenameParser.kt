@@ -55,6 +55,8 @@ object MediaFilenameParser {
         extension.lowercase(Locale.ROOT) in supportedVideoExtensions
 
     private val seasonMarker = Regex("(?:\\bS|\\bseason[ ._-]*|\\btemporada[ ._-]*|\\btemp[ ._-]*)(\\d{1,3})(?=\\b|[ ._-]*E)", RegexOption.IGNORE_CASE)
+    private val ordinalSeasonMarker = Regex("\\b(\\d{1,2})(?:st|nd|rd|th)[ ._-]*season\\b", RegexOption.IGNORE_CASE)
+    private val numberOnlyFilename = Regex("(\\d{1,4})(?:v\\d+)?", RegexOption.IGNORE_CASE)
     private val sxxexx = Regex("\\bS(\\d{1,3})[ ._-]*E(?:P(?:ISODE)?)?[ ._-]*(\\d{1,4})(?:v\\d+)?(?=\\b|E\\d)", RegexOption.IGNORE_CASE)
     private val tempEpisode = Regex("\\b(?:temp|temporada)[ ._-]*(\\d{1,3})[ ._-]*E(?:P(?:ISODE)?)?[ ._-]*(\\d{1,4})(?:v\\d+)?\\b", RegexOption.IGNORE_CASE)
     private val crossEpisode = Regex("\\b(\\d{1,2})\\s*[xX]\\s*(\\d{1,4})(?:v\\d+)?\\b")
@@ -79,11 +81,16 @@ object MediaFilenameParser {
     private val seasonLabel = Regex("(?i)^(?:s|season|temporada|temp)[ ._-]*\\d{1,3}$")
     private val volumeOrDisc = Regex("\\b(?:vol(?:ume)?|disc|disk)[ ._-]*\\d{1,3}\\b", RegexOption.IGNORE_CASE)
 
+    private fun folderSeasonNumber(folder: String): Int? =
+        seasonMarker.find(folder)?.groupValues?.get(1)?.toIntOrNull()
+            ?: ordinalSeasonMarker.find(folder)?.groupValues?.get(1)?.toIntOrNull()
+
     private fun isProbableTitleFolder(folder: String): Boolean {
         val cleaned = MediaTitleNormalizer.cleanMediaTitle(folder)
         if (cleaned.isBlank()) return false
         if (cleaned.lowercase(Locale.ROOT) in genericFolders) return false
-        if (seasonMarker.find(folder) != null || seasonLabel.matches(cleaned)) return false
+        // A series named "Wind Breaker Season 2" is a title, not a season-only folder.
+        if (seasonLabel.matches(cleaned) || ordinalSeasonMarker.matches(cleaned)) return false
         if (volumeOrDisc.containsMatchIn(folder)) return false
         if (year.matches(cleaned) || cleaned in numericTechnicalFolder) return false
         return true
@@ -105,9 +112,7 @@ object MediaFilenameParser {
         val effectiveFolders = if (!root.isNullOrBlank() && normalizedPath.startsWith("$root/")) {
             normalizedPath.removePrefix("$root/").substringBeforeLast('/', "").split('/').filter(String::isNotBlank)
         } else folders
-        val folderSeason = effectiveFolders.asReversed().firstNotNullOfOrNull {
-            seasonMarker.find(it)?.groupValues?.get(1)?.toIntOrNull()
-        }
+        val folderSeason = effectiveFolders.asReversed().firstNotNullOfOrNull(::folderSeasonNumber)
 
         var season = folderSeason
         var episode: Double? = null
@@ -209,12 +214,16 @@ object MediaFilenameParser {
                     evidence += "MOVIE_TYPE_TOKEN:${marker?.value.orEmpty()}"
                 }
                 else -> {
+                    // The 2 in "Season 2" is not an episode number.
+                    val seasonNumbers = seasonMarker.findAll(stem)
+                        .mapNotNull { it.groups[1]?.range }.toList()
                     val candidates = filenameNumber.findAll(stem).filter { match ->
                         val value = match.groupValues[1]
                         val before = stem.substring(0, match.range.first)
                         val technicalNumber = value in setOf("264", "265", "4320", "2160", "1080", "720", "480", "8", "10", "12")
                         val numberFollowsTechnicalMarker =
                             Regex("(?i)(?:x|h\\.?|codec|bit)\\s*${Regex.escape(value)}\\b").containsMatchIn(stem)
+                        seasonNumbers.none { match.range == it } &&
                         !year.matches(value) &&
                             !Regex("(?i)(?<!\\d)${Regex.escape(value)}p\\b").containsMatchIn(stem) &&
                             !(technicalNumber && numberFollowsTechnicalMarker) &&
@@ -224,7 +233,7 @@ object MediaFilenameParser {
                             before.trim(' ', '.', '_', '-', '[', ']', '(', ')', '{', '}').isNotEmpty()
                     }.toList()
                     if (candidates.isNotEmpty() && absoluteMatch == null &&
-                        !stem.trim().matches(Regex("\\d{1,4}(?:v\\d+)?"))
+                        numberOnlyFilename.matchEntire(stem.trim()) == null
                     ) {
                         marker = candidates.last()
                         episode = marker!!.groupValues[1].toDouble()
@@ -266,28 +275,58 @@ object MediaFilenameParser {
             unresolved += "multi_episode_range"
         }
 
+        val nearestTitleFolder = effectiveFolders.asReversed().firstOrNull(::isProbableTitleFolder)
         val titleSource = marker?.let { stem.substring(0, it.range.first) } ?: stem
         var title = MediaTitleNormalizer.cleanMediaTitle(titleSource)
         if (title.isBlank() || title.matches(Regex("(?i)(?:e|ep|episode)?\\s*\\d+")) || seasonLabel.matches(title)) {
-            title = effectiveFolders.asReversed().firstOrNull(::isProbableTitleFolder)
-                ?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
+            title = nearestTitleFolder?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
         }
         if (folderSeason != null && kind == ParsedMediaKind.UNKNOWN) {
-            val folderTitle = effectiveFolders.asReversed().firstOrNull(::isProbableTitleFolder)
-                ?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
+            val folderTitle = nearestTitleFolder?.let(MediaTitleNormalizer::cleanMediaTitle).orEmpty()
             if (folderTitle.isNotBlank()) title = folderTitle
         }
         if (title.isBlank()) title = "Arquivo não identificado"
 
-        // A number-only filename is insufficient evidence, even inside a series folder.
-        if (stem.trim().matches(Regex("\\d{1,4}(?:v\\d+)?"))) {
-            if (effectiveFolders.any(::isProbableTitleFolder)) {
-                unresolved += "numeric_filename_without_episode_marker"
+        val titleSeason = nearestTitleFolder?.let(::folderSeasonNumber)
+            ?.takeIf { it == folderSeason && it > 0 }
+        val confirmedTitleFolder = titleSeason != null &&
+            MediaTitleNormalizer.normalizeMediaTitle(nearestTitleFolder) ==
+                MediaTitleNormalizer.normalizeMediaTitle(title)
+
+        // Numbered episodes are safe to import when the nearest real anime folder
+        // identifies both the title and its season. "Naruto/Season 2/03.mkv"
+        // remains unresolved: the season-only folder is not title evidence.
+        val numberOnly = numberOnlyFilename.matchEntire(stem.trim())
+        if (numberOnly != null) {
+            val numberedEpisode = numberOnly.groupValues[1].toIntOrNull()
+            if (confirmedTitleFolder && extension in supportedVideoExtensions &&
+                numberedEpisode != null && numberedEpisode in 1..999
+            ) {
+                season = titleSeason
+                episode = numberedEpisode.toDouble()
+                kind = ParsedMediaKind.REGULAR
+                source = "numbered_episode_in_titled_season_folder"
+                confidence = MediaIdentificationConfidence.HIGH
+                unresolved.remove("episode_not_identified")
+                evidence += "NUMBERED_EPISODE_WITH_TITLE_AND_SEASON_FOLDER:" + numberOnly.value
+            } else {
+                if (nearestTitleFolder != null) {
+                    unresolved += "numeric_filename_without_episode_marker"
+                }
+                kind = ParsedMediaKind.UNKNOWN
+                source = "unknown"
+                confidence = MediaIdentificationConfidence.LOW
+                episode = null
             }
-            kind = ParsedMediaKind.UNKNOWN
-            source = "unknown"
-            confidence = MediaIdentificationConfidence.LOW
-            episode = null
+        } else if (source == "numeric_suffix" &&
+            confirmedTitleFolder && "multiple_numeric_candidates" !in unresolved &&
+            extension in supportedVideoExtensions && episode != null
+        ) {
+            // A single trailing episode number is confirmed by a matching
+            // season-labelled series folder; unrelated numeric suffixes stay medium.
+            confidence = MediaIdentificationConfidence.HIGH
+            source = "confirmed_numeric_suffix_in_titled_season_folder"
+            evidence += "EPISODE_CONFIRMED_BY_TITLE_AND_SEASON_FOLDER"
         }
 
         // Only the selected SAF root opts into recognizing plain named videos as films.
@@ -312,7 +351,9 @@ object MediaFilenameParser {
         if (stem.isNotEmpty()) fieldConfidence[ParsedMediaField.BASE_NAME] = MediaIdentificationConfidence.HIGH
         if (title != "Arquivo não identificado") {
             fieldConfidence[ParsedMediaField.TITLE] =
-                if (marker != null && titleSource.isNotBlank()) confidence else MediaIdentificationConfidence.LOW
+                if (source == "numbered_episode_in_titled_season_folder") {
+                    MediaIdentificationConfidence.HIGH
+                } else if (marker != null && titleSource.isNotBlank()) confidence else MediaIdentificationConfidence.LOW
         }
         if (season != null) {
             fieldConfidence[ParsedMediaField.SEASON] = when {
