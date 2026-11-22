@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.navigation
 import android.net.Uri
 import androidx.annotation.Keep
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -472,7 +473,17 @@ fun ReiAnixNavigationHost(
                     .orEmpty()
                     .ifBlank { ReiAnixRoutes.HOME }
 
-                details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
+                // NavHost retains outgoing content during its cross-fade. Once
+                // Library (or another route) becomes current, the old Details
+                // must not receive a tap that could launch its episode.
+                val detailsActive = isActiveDetailsDestination(
+                    detailsEntryId = entry.id,
+                    currentEntryId = backStackEntry?.id,
+                    currentRoute = currentRoute,
+                )
+                Box(Modifier.fillMaxSize().blockOutgoingDestinationTouches(detailsActive)) {
+                    details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
+                }
             }
 
             composable(
