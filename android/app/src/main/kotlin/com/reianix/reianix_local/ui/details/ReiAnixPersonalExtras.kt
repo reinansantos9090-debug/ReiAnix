@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -80,6 +81,9 @@ import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
 import com.reianix.reianix_local.data.personal.ReiAnixLocalRecommendation
 import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeService
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -146,6 +150,7 @@ internal fun shouldLoadRecommendations(
 fun ReiAnixPersonalExtras(
     animeId: Long,
     onOpenAnime: (Long) -> Unit,
+    catalog: StateFlow<List<ReiAnixAnimeUiModel>>? = null,
 ) {
     val context = LocalContext.current
     val service = remember(context) { ReiAnixAppDependencies.from(context).personalAnimeService }
@@ -161,6 +166,21 @@ fun ReiAnixPersonalExtras(
     }
 
     val suggestions = recommendationState.recommendationsFor(animeId) ?: cachedSuggestions
+    val suggestedIds = remember(suggestions) { suggestions.orEmpty().map { it.animeId }.toSet() }
+    // Cover publication already refreshes the canonical catalog. Observe just
+    // these local posters so a download can fill its card independently of ranking.
+    val posters = if (catalog != null && suggestedIds.isNotEmpty()) {
+        val posterFlow = remember(catalog, suggestedIds) {
+            catalog.map { recommendationPosters(it, suggestedIds) }
+        }
+        val initialPosters = remember(catalog, suggestedIds) {
+            recommendationPosters(catalog.value, suggestedIds)
+        }
+        posterFlow.collectAsStateWithLifecycle(initialValue = initialPosters).value
+    } else {
+        emptyMap()
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -184,7 +204,9 @@ fun ReiAnixPersonalExtras(
             suggestions.isEmpty() -> Text("Sem sugestões suficientes na biblioteca.", style = MaterialTheme.typography.bodySmall)
             else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(suggestions.take(6), key = { it.animeId }) { suggestion ->
-                    RecommendationPoster(suggestion) { onOpenAnime(suggestion.animeId) }
+                    RecommendationPoster(suggestion, posters[suggestion.animeId]) {
+                        onOpenAnime(suggestion.animeId)
+                    }
                 }
             }
         }
@@ -201,7 +223,11 @@ fun ReiAnixPersonalExtras(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(suggestions, key = { it.animeId }) { suggestion ->
-                        RecommendationPoster(suggestion, Modifier.fillMaxWidth()) {
+                        RecommendationPoster(
+                            suggestion,
+                            posters[suggestion.animeId],
+                            Modifier.fillMaxWidth(),
+                        ) {
                             showAll = false
                             onOpenAnime(suggestion.animeId)
                         }
@@ -213,9 +239,25 @@ fun ReiAnixPersonalExtras(
     }
 }
 
+private data class RecommendationArtwork(val path: String, val revision: String?)
+
+private fun recommendationPosters(
+    catalog: List<ReiAnixAnimeUiModel>,
+    suggestedIds: Set<Long>,
+): Map<Long, RecommendationArtwork> = buildMap {
+    for (anime in catalog) {
+        if (anime.id !in suggestedIds) continue
+        val artwork = anime.artwork ?: continue
+        val path = artwork.localPath ?: continue
+        put(anime.id, RecommendationArtwork(path, artwork.sourceRevisions[path]))
+        if (size == suggestedIds.size) break
+    }
+}
+
 @Composable
 private fun RecommendationPoster(
     suggestion: ReiAnixLocalRecommendation,
+    artwork: RecommendationArtwork?,
     modifier: Modifier = Modifier.width(108.dp),
     onClick: () -> Unit,
 ) {
@@ -224,11 +266,16 @@ private fun RecommendationPoster(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         ReiAnixPoster(
-            localPath = suggestion.posterPath,
+            localPath = artwork?.path ?: suggestion.posterPath,
             contentDescription = null,
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
             identity = "recommendation:" + suggestion.animeId,
             maxDimensionPx = 320,
+            sourceRevisions = if (artwork?.revision != null) {
+                mapOf(artwork.path to artwork.revision)
+            } else {
+                emptyMap()
+            },
         )
         Text(suggestion.title, style = MaterialTheme.typography.bodySmall,
             maxLines = 3, overflow = TextOverflow.Ellipsis)

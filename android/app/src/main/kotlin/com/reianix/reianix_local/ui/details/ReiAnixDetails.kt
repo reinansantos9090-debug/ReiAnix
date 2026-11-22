@@ -117,6 +117,7 @@ import com.reianix.reianix_local.ui.artwork.ReiAnixBackdrop
 import com.reianix.reianix_local.ui.discovery.ReiAnixMarathonDialog
 import com.reianix.reianix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
 import com.reianix.reianix_local.ui.model.presentationStateLabel
 import com.reianix.reianix_local.ui.model.ReiAnixDetailsAnimeUiModel
@@ -145,6 +146,7 @@ import com.reianix.reianix_local.data.anilist.AniListAnime
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import java.util.Locale
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun ReiAnixDetailsRoute(
@@ -283,6 +285,7 @@ fun ReiAnixDetailsRoute(
     ReiAnixDetailsScreen(
         state = state,
         associationRevision = aniListState.associationRevision,
+        recommendationCatalog = viewModel.searchCatalog,
         showThumbnails = showThumbnails,
         onBack = {
             if (isForegroundDetails()) navController.popBackStack()
@@ -364,6 +367,7 @@ fun ReiAnixDetailsScreen(
     onIdentifyWithTraceMoe: (Long) -> Unit = {},
     onCancelTraceMoe: (Long) -> Unit = {},
     onManualAniList: (() -> Unit)? = null,
+    recommendationCatalog: StateFlow<List<ReiAnixAnimeUiModel>>? = null,
 ) {
     ReiAnixResponsiveRoot {
     Column(
@@ -389,6 +393,7 @@ fun ReiAnixDetailsScreen(
                         onWatch = onWatch,
                         onToggleFavorite = onToggleFavorite,
                         onOpenRecommendedAnime = onOpenRecommendedAnime,
+                        recommendationCatalog = recommendationCatalog,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
                         onManualAniList = onManualAniList,
@@ -553,6 +558,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onOpenRecommendedAnime: (Long) -> Unit,
+    recommendationCatalog: StateFlow<List<ReiAnixAnimeUiModel>>?,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
     onManualAniList: (() -> Unit)?,
@@ -664,7 +670,11 @@ private fun ColumnScope.ReiAnixDetailsReady(
             contentType = "details-recommendations",
         ) {
             Box(modifier = Modifier.fillMaxWidth().testTag("details-recommendations")) {
-                ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
+                ReiAnixPersonalExtras(
+                    animeId = anime.id,
+                    onOpenAnime = onOpenRecommendedAnime,
+                    catalog = recommendationCatalog,
+                )
             }
         }
 
