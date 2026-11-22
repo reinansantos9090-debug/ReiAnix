@@ -74,9 +74,7 @@ import coil.compose.AsyncImage
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException
 import com.reianix.reianix_local.data.anilist.AniListResult
-import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
-import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
 import com.reianix.reianix_local.data.personal.ReiAnixLocalRecommendation
 import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeService
 import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
@@ -582,25 +580,22 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
  */
 @Composable
 fun ReiAnixMetadataCharacters(
-    animeId: Long,
-    metadataRevision: String,
+    aniListId: Int?,
+    associationRevision: Long,
 ) {
-    val context = LocalContext.current
-    val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
-    val charactersRepository = remember(dependencies) {
-        ReiAnixCharacterCache(context, ReiAnixAniListClient())
-    }
-    var characters by remember(animeId) { mutableStateOf<List<ReiAnixAnimeCharacter>>(emptyList()) }
+    if (aniListId == null) return
 
-    LaunchedEffect(animeId, metadataRevision) {
+    val context = LocalContext.current
+    val charactersRepository = remember(context) { ReiAnixAppDependencies.from(context).characterCache }
+    var characters by remember(charactersRepository, aniListId) {
+        mutableStateOf<List<ReiAnixAnimeCharacter>>(charactersRepository.peek(aniListId).orEmpty())
+    }
+
+    LaunchedEffect(charactersRepository, aniListId, associationRevision) {
         try {
-            val associatedId = dependencies.sqliteLibraryRepository.getAnime(animeId)?.anilistId
-                ?.takeIf { it > 0 && it <= Int.MAX_VALUE.toLong() }?.toInt()
-            if (associatedId != null) {
-                when (val result = charactersRepository.load(associatedId)) {
-                    is AniListResult.Success -> characters = result.value
-                    is AniListResult.Failure -> Unit // do not impact Details when AniList is unavailable
-                }
+            when (val result = charactersRepository.load(aniListId)) {
+                is AniListResult.Success -> characters = result.value
+                is AniListResult.Failure -> Unit // do not impact Details when AniList is unavailable
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

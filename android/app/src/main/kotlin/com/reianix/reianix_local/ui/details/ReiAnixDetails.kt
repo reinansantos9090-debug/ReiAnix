@@ -1187,8 +1187,8 @@ private fun DetailsHero(
                 DetailsExpandableSynopsis(description)
             }
             ReiAnixMetadataCharacters(
-                animeId = anime.id,
-                metadataRevision = associationRevision.toString() + ":" + anime.metadataAvailability.name + ":" + anime.presentationState.name,
+                aniListId = anime.aniListId,
+                associationRevision = associationRevision,
             )
         }
         if (anime.genres.isNotEmpty()) {

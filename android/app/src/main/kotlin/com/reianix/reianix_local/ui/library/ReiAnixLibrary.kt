@@ -86,7 +86,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -104,9 +103,6 @@ import com.reianix.reianix_local.ui.ReiAnixAnimeCard
 import com.reianix.reianix_local.ui.collections.ReiAnixCollectionsScreen
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
-import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeader
-import com.reianix.reianix_local.ui.scroll.ReiAnixScrollAwareHeaderState
-import com.reianix.reianix_local.ui.scroll.rememberReiAnixScrollAwareHeaderState
 import com.reianix.reianix_local.ui.ReiAnixBadge
 import com.reianix.reianix_local.ui.ReiAnixBadgeTone
 import com.reianix.reianix_local.ui.ReiAnixChip
@@ -370,15 +366,13 @@ private fun ReiAnixLibraryPresentationScreen(
             isRefreshing = isRefreshing,
         )
     }
-    val scrollHeaderState = rememberReiAnixScrollAwareHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(scrollHeaderState.nestedScrollConnection)
             .background(reiAnixScreenBackground()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ReiAnixScrollAwareHeader(state = scrollHeaderState) {
+        val header: @Composable () -> Unit = {
             Box(
                 modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
             ) {
@@ -395,10 +389,14 @@ private fun ReiAnixLibraryPresentationScreen(
             }
         }
 
+        val hasReadyContent = state.animeCount > 0 ||
+            (!state.scanInProgress && state.status == ReiAnixLibraryLoadStatus.READY)
+        if (!hasReadyContent) header()
+
         val renderReadyContent: @Composable () -> Unit = {
             LibraryReadyContent(
                 state = state,
-                scrollHeaderState = scrollHeaderState,
+                header = header,
                 filters = filters,
                 visibleAnimes = visibleAnimes,
                 genres = genres,
@@ -835,7 +833,7 @@ private fun ColumnScope.LibraryReadyContent(
     onLoadMore: () -> Unit = {},
     errorMessage: String? = null,
     modifier: Modifier = Modifier,
-    scrollHeaderState: ReiAnixScrollAwareHeaderState? = null,
+    header: @Composable () -> Unit,
 ) {
     val refreshState = rememberPullToRefreshState()
     val availableEpisodeCount = state.availableEpisodeCount
@@ -851,15 +849,6 @@ private fun ColumnScope.LibraryReadyContent(
         saver = LazyGridState.Saver,
     ) {
         LazyGridState()
-    }
-
-    LaunchedEffect(gridState, scrollHeaderState) {
-        val headerState = scrollHeaderState ?: return@LaunchedEffect
-        snapshotFlow {
-            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
-        }.collect { isAtTop ->
-            headerState.updateContentAtTop(isAtTop)
-        }
     }
 
     // Scroll observation should not restart its coroutine whenever the page
@@ -920,6 +909,15 @@ private fun ColumnScope.LibraryReadyContent(
             verticalArrangement = Arrangement.spacedBy(posterGridSpacing),
             horizontalArrangement = Arrangement.spacedBy(posterGridSpacing),
         ) {
+            // The title and search belong to the same scroll surface.
+            item(
+                key = "library-header",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "library-header",
+            ) {
+                header()
+            }
+
             if (!errorMessage.isNullOrBlank()) {
                 item(
                     key = "library-error-banner",

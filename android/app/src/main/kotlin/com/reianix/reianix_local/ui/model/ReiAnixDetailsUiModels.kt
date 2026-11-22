@@ -47,6 +47,7 @@ data class ReiAnixDetailsAnimeUiModel(
     val userTags: List<String> = emptyList(),
     val personalNote: String? = null,
     val playbackTargetEpisode: ReiAnixEpisodeUiModel? = null,
+    val aniListId: Int? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id
@@ -84,6 +85,7 @@ object ReiAnixDetailsUiStateProjection {
                     id = anime.id,
                     title = anime.title,
                     year = anime.year,
+                    aniListId = anime.aniListId,
                     genres = anime.genres,
                     score = anime.score,
                     favorite = anime.favorite,
