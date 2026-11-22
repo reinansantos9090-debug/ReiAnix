@@ -706,9 +706,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Metadados e Capas" -> {
-                    item(key = "setting:releases.notifications") {
-                        ReiAnixReleaseAlertsSetting()
-                    }
                     item(key = "setting:metadata.anilist_enabled") {
                         BooleanSettingRow(
                             keyName = "metadata.anilist_enabled",
@@ -735,6 +732,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             checked = state.settings["artwork.enabled"] == "true",
                             onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
                         )
+                    }
+                    item(key = "setting:releases.notifications") {
+                        ReiAnixReleaseAlertsSetting()
                     }
                     item(key = "setting:artwork.cache_limit_mb") {
                         ChoiceSettingRow(
