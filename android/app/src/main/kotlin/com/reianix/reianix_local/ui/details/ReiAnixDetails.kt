@@ -168,8 +168,14 @@ fun ReiAnixDetailsRoute(
     val detailsStateFlow = remember(viewModel, canonicalId) {
         viewModel.detailsState(canonicalId)
     }
+    // The underlying catalog is already in memory when returning from the player.
+    // Starting with a synthetic LOADING state flashes the entire Details content
+    // until the asynchronous flow emits, even though the anime is available.
+    val initialDetailsState = remember(viewModel, canonicalId) {
+        ReiAnixLibraryViewModel.projectDetailsState(viewModel.uiState.value, canonicalId)
+    }
     val state by detailsStateFlow.collectAsStateWithLifecycle(
-        initialValue = ReiAnixDetailsUiState(),
+        initialValue = initialDetailsState,
     )
     val traceMoeStates by viewModel.traceMoeIdentificationStates.collectAsStateWithLifecycle()
     val traceMoeState = traceMoeStates[canonicalId] ?: ReiAnixTraceMoeIdentificationUiState()

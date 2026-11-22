@@ -45,6 +45,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Job
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -79,6 +83,59 @@ import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+/** A Details back-stack entry retains this ViewModel while its player is on top.
+ * In contrast, remember() inside the LazyColumn item is discarded when Details
+ * leaves composition, which used to replace the suggestions with a loading label
+ * and re-query SQLite for 1–2 seconds every time playback was closed.
+ */
+internal class ReiAnixRecommendationListViewModel : ViewModel() {
+    private var loadedAnimeId: Long? = null
+    private var loadJob: Job? = null
+
+    var recommendations by mutableStateOf<List<ReiAnixLocalRecommendation>?>(null)
+        private set
+    var failed by mutableStateOf(false)
+        private set
+
+    fun ensureLoaded(animeId: Long, service: ReiAnixPersonalAnimeService) {
+        if (!shouldLoadRecommendations(
+                loadedAnimeId = loadedAnimeId,
+                requestedAnimeId = animeId,
+                hasResult = recommendations != null,
+                isLoading = loadJob?.isActive == true,
+            )
+        ) return
+
+        loadJob?.cancel()
+        if (loadedAnimeId != animeId) {
+            recommendations = null
+        }
+        loadedAnimeId = animeId
+        failed = false
+        loadJob = viewModelScope.launch {
+            try {
+                val result = service.recommendLocal(animeId, limit = 12)
+                if (loadedAnimeId == animeId) {
+                    recommendations = result
+                    failed = false
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // A transient SQLite problem must not erase covers already visible.
+                if (loadedAnimeId == animeId && recommendations == null) failed = true
+            }
+        }
+    }
+}
+
+internal fun shouldLoadRecommendations(
+    loadedAnimeId: Long?,
+    requestedAnimeId: Long,
+    hasResult: Boolean,
+    isLoading: Boolean,
+): Boolean = loadedAnimeId != requestedAnimeId || (!hasResult && !isLoading)
+
 /** Automatically loaded only in Details, with existing local covers. */
 @Composable
 fun ReiAnixPersonalExtras(
@@ -90,21 +147,15 @@ fun ReiAnixPersonalExtras(
     val service = remember(dependencies) {
         ReiAnixPersonalAnimeService(dependencies.sqliteSettingsRepository, dependencies.sqliteLibraryRepository)
     }
-    var recommendations by remember(animeId) { mutableStateOf<List<ReiAnixLocalRecommendation>?>(null) }
-    var failed by remember(animeId) { mutableStateOf(false) }
+    // Scoped to the Details NavBackStackEntry, not to this disposable LazyColumn item.
+    val recommendationState: ReiAnixRecommendationListViewModel = viewModel()
     var showAll by remember(animeId) { mutableStateOf(false) }
 
-    LaunchedEffect(animeId) {
-        try {
-            recommendations = service.recommendLocal(animeId, limit = 12)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            failed = true
-        }
+    LaunchedEffect(animeId, service) {
+        recommendationState.ensureLoaded(animeId, service)
     }
 
-    val suggestions = recommendations
+    val suggestions = recommendationState.recommendations
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -123,7 +174,7 @@ fun ReiAnixPersonalExtras(
             }
         }
         when {
-            failed -> Text("Não foi possível carregar as sugestões.", style = MaterialTheme.typography.bodySmall)
+            recommendationState.failed -> Text("Não foi possível carregar as sugestões.", style = MaterialTheme.typography.bodySmall)
             suggestions == null -> Text("Carregando sugestões…", style = MaterialTheme.typography.bodySmall)
             suggestions.isEmpty() -> Text("Sem sugestões suficientes na biblioteca.", style = MaterialTheme.typography.bodySmall)
             else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
