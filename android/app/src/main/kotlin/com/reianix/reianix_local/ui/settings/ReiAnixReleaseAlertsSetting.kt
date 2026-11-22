@@ -40,14 +40,12 @@ fun ReiAnixReleaseAlertsSetting() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var enabled by remember { mutableStateOf(ReiAnixReleaseMonitor.active(context)) }
-    var permissionDenied by remember { mutableStateOf(false) }
 
     DisposableEffect(context, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 ReiAnixReleaseMonitor.reconcilePermission(context)
                 enabled = ReiAnixReleaseMonitor.active(context)
-                permissionDenied = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -59,7 +57,6 @@ fun ReiAnixReleaseAlertsSetting() {
     ) { granted ->
         ReiAnixReleaseMonitor.recordPermissionDecision(context, granted)
         enabled = ReiAnixReleaseMonitor.active(context)
-        permissionDenied = !enabled
     }
 
     fun changeEnabled(newValue: Boolean) {
@@ -67,12 +64,10 @@ fun ReiAnixReleaseAlertsSetting() {
             !newValue -> {
                 ReiAnixReleaseMonitor.setEnabled(context, false)
                 enabled = false
-                permissionDenied = false
             }
             ReiAnixReleaseMonitor.notificationsAllowed(context) -> {
                 ReiAnixReleaseMonitor.setEnabled(context, true)
                 enabled = true
-                permissionDenied = false
             }
             Build.VERSION.SDK_INT >= 33 -> {
                 permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -80,7 +75,6 @@ fun ReiAnixReleaseAlertsSetting() {
             else -> {
                 ReiAnixReleaseMonitor.recordPermissionDecision(context, false)
                 enabled = false
-                permissionDenied = true
             }
         }
     }
@@ -108,14 +102,6 @@ fun ReiAnixReleaseAlertsSetting() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (permissionDenied || (ReiAnixReleaseMonitor.hasSavedPreference(context) &&
-                    !ReiAnixReleaseMonitor.notificationsAllowed(context))) {
-                Text(
-                    "Autorize as notificações nas configurações do Android para receber avisos.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
         }
         Switch(
             checked = enabled,
