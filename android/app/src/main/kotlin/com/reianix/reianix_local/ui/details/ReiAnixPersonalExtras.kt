@@ -83,19 +83,24 @@ import com.reianix.reianix_local.data.personal.ReiAnixWatchStatus
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+private const val DETAILS_RECOMMENDATION_LIMIT = 12
+
 /** A Details back-stack entry retains this ViewModel while its player is on top.
  * In contrast, remember() inside the LazyColumn item is discarded when Details
  * leaves composition, which used to replace the suggestions with a loading label
  * and re-query SQLite for 1–2 seconds every time playback was closed.
  */
 internal class ReiAnixRecommendationListViewModel : ViewModel() {
-    private var loadedAnimeId: Long? = null
+    private var loadedAnimeId by mutableStateOf<Long?>(null)
     private var loadJob: Job? = null
 
-    var recommendations by mutableStateOf<List<ReiAnixLocalRecommendation>?>(null)
-        private set
-    var failed by mutableStateOf(false)
-        private set
+    private var recommendations by mutableStateOf<List<ReiAnixLocalRecommendation>?>(null)
+    private var failed by mutableStateOf(false)
+
+    fun recommendationsFor(animeId: Long): List<ReiAnixLocalRecommendation>? =
+        recommendations.takeIf { loadedAnimeId == animeId }
+
+    fun failedFor(animeId: Long): Boolean = loadedAnimeId == animeId && failed
 
     fun ensureLoaded(animeId: Long, service: ReiAnixPersonalAnimeService) {
         if (!shouldLoadRecommendations(
@@ -114,7 +119,7 @@ internal class ReiAnixRecommendationListViewModel : ViewModel() {
         failed = false
         loadJob = viewModelScope.launch {
             try {
-                val result = service.recommendLocal(animeId, limit = 12)
+                val result = service.recommendLocal(animeId, limit = DETAILS_RECOMMENDATION_LIMIT)
                 if (loadedAnimeId == animeId) {
                     recommendations = result
                     failed = false
@@ -143,9 +148,9 @@ fun ReiAnixPersonalExtras(
     onOpenAnime: (Long) -> Unit,
 ) {
     val context = LocalContext.current
-    val dependencies = remember(context) { ReiAnixAppDependencies.from(context) }
-    val service = remember(dependencies) {
-        ReiAnixPersonalAnimeService(dependencies.sqliteSettingsRepository, dependencies.sqliteLibraryRepository)
+    val service = remember(context) { ReiAnixAppDependencies.from(context).personalAnimeService }
+    val cachedSuggestions = remember(service, animeId) {
+        service.cachedRecommendations(animeId, limit = DETAILS_RECOMMENDATION_LIMIT)
     }
     // Scoped to the Details NavBackStackEntry, not to this disposable LazyColumn item.
     val recommendationState: ReiAnixRecommendationListViewModel = viewModel()
@@ -155,7 +160,7 @@ fun ReiAnixPersonalExtras(
         recommendationState.ensureLoaded(animeId, service)
     }
 
-    val suggestions = recommendationState.recommendations
+    val suggestions = recommendationState.recommendationsFor(animeId) ?: cachedSuggestions
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -174,7 +179,7 @@ fun ReiAnixPersonalExtras(
             }
         }
         when {
-            recommendationState.failed -> Text("Não foi possível carregar as sugestões.", style = MaterialTheme.typography.bodySmall)
+            suggestions == null && recommendationState.failedFor(animeId) -> Text("Não foi possível carregar as sugestões.", style = MaterialTheme.typography.bodySmall)
             suggestions == null -> Text("Carregando sugestões…", style = MaterialTheme.typography.bodySmall)
             suggestions.isEmpty() -> Text("Sem sugestões suficientes na biblioteca.", style = MaterialTheme.typography.bodySmall)
             else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

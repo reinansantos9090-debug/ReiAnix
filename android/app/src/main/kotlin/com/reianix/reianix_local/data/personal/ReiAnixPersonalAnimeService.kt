@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.data.personal
 
+import android.util.LruCache
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
@@ -61,6 +62,12 @@ class ReiAnixPersonalAnimeService(
         return load(animeId)
     }
 
+    // Keep recent results across Details entries, including successful empty lists.
+    private val recentRecommendations = LruCache<Pair<Long, Int>, List<ReiAnixLocalRecommendation>>(32)
+
+    internal fun cachedRecommendations(animeId: Long, limit: Int): List<ReiAnixLocalRecommendation>? =
+        recentRecommendations.get(animeId to limit)
+
     /** Details-only local recommendations; ranking runs off the UI thread. */
     suspend fun recommendLocal(animeId: Long, limit: Int = 6): List<ReiAnixLocalRecommendation> {
         require(animeId > 0L)
@@ -109,7 +116,7 @@ class ReiAnixPersonalAnimeService(
         }
         // Only the bounded result set is inspected for persisted local artwork.
         // Do not perform any cover downloads or metadata searches here.
-        return withContext(Dispatchers.IO) {
+        val recommendations = withContext(Dispatchers.IO) {
             ranked.map { suggestion ->
                 val stored = library.artworkForAnime(suggestion.animeId)
                     .firstOrNull { it.artworkType == "poster" && !it.localPath.isNullOrBlank() && java.io.File(it.localPath).isFile }
@@ -117,6 +124,8 @@ class ReiAnixPersonalAnimeService(
                 suggestion.copy(posterPath = stored ?: suggestion.posterPath)
             }
         }
+        recentRecommendations.put(animeId to limit, recommendations)
+        return recommendations
     }
 
     private fun genres(raw: String?): Set<String> = runCatching {
