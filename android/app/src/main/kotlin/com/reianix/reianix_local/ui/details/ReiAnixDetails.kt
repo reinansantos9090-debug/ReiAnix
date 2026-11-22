@@ -96,6 +96,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import com.reianix.reianix_local.ui.ReiAnixBadge
 import com.reianix.reianix_local.ui.ReiAnixBadgeTone
@@ -126,6 +127,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
 import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
+import com.reianix.reianix_local.ui.navigation.isActiveDetailsDestination
 import com.reianix.reianix_local.ui.navigation.navigateToPlayer
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
@@ -235,6 +237,13 @@ fun ReiAnixDetailsRoute(
         mutableStateOf(false)
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val detailsEntryId = (lifecycleOwner as? NavBackStackEntry)?.id
+
+    fun isForegroundDetails(): Boolean = isActiveDetailsDestination(
+        detailsEntryId = detailsEntryId,
+        currentEntryId = navController.currentBackStackEntry?.id,
+        currentRoute = navController.currentDestination?.route,
+    )
 
     // The guard covers only the navigation hand-off. A resume releases it only
     // after this Details destination has first left the RESUMED state.
@@ -269,10 +278,14 @@ fun ReiAnixDetailsRoute(
         state = state,
         associationRevision = aniListState.associationRevision,
         showThumbnails = showThumbnails,
-        onBack = { navController.popBackStack() },
+        onBack = {
+            if (isForegroundDetails()) navController.popBackStack()
+        },
         onRetry = { viewModel.refreshDetails(canonicalId) },
         onWatch = { episodeId ->
-            if (!playerLaunchInFlight) {
+            // Ignore callbacks from an outgoing Details screen that is still
+            // visible under NavHost's cross-fade after returning to Library.
+            if (!playerLaunchInFlight && isForegroundDetails()) {
                 playerLaunchInFlight = true
                 navController.navigateToPlayer(
                     episodeId = episodeId.toString(),
@@ -282,7 +295,9 @@ fun ReiAnixDetailsRoute(
             }
         },
         onToggleFavorite = viewModel::toggleFavorite,
-        onOpenRecommendedAnime = { recommendedId -> navController.navigateToDetails(recommendedId.toString(), origin) },
+        onOpenRecommendedAnime = { recommendedId ->
+            if (isForegroundDetails()) navController.navigateToDetails(recommendedId.toString(), origin)
+        },
         onSetEpisodeWatched = viewModel::setEpisodeWatched,
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { aniListViewModel.repairAniListMetadata(canonicalId) },
