@@ -29,20 +29,29 @@ import kotlinx.coroutines.withContext
 import java.net.URI
 import java.util.concurrent.TimeUnit
 
-/** Opt-in background notification service. Never used by the library scan or cover pipeline. */
+/** Background release alerts, scheduled only with user/Android authorization. */
 object ReiAnixReleaseMonitor {
     private const val PREFERENCES = "reianix_release_monitor"
     private const val ENABLED = "enabled"
+    private const val AWAITING_PERMISSION = "enable_when_permission_granted"
+    private const val LAST_PERMISSION_ALLOWED = "last_permission_allowed"
     const val CHANNEL_ID = "reianix_episode_releases"
     private const val WORK_NAME = "reianix_release_checks_v1"
 
-    fun enabled(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getBoolean(ENABLED, false)
+    /** Existing installations retain their saved choice; first-run setup owns the default. */
+    fun hasSavedPreference(context: Context): Boolean = preferences(context).contains(ENABLED)
+
+    fun enabled(context: Context): Boolean = preferences(context).getBoolean(ENABLED, false)
+
+    /** The setting reflects both the user's preference and the Android permission. */
+    fun active(context: Context): Boolean = enabled(context) && notificationsAllowed(context)
 
     fun setEnabled(context: Context, enabled: Boolean) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        val editor = prefs.edit().putBoolean(ENABLED, enabled)
+        val prefs = preferences(context)
+        val editor = prefs.edit()
+            .putBoolean(ENABLED, enabled)
+            .putBoolean(AWAITING_PERMISSION, false)
+            .putBoolean(LAST_PERMISSION_ALLOWED, notificationsAllowed(context))
         if (enabled && !prefs.contains("last_checked")) {
             editor.putLong("last_checked", System.currentTimeMillis() / 1000L)
         }
@@ -50,23 +59,56 @@ object ReiAnixReleaseMonitor {
         schedule(context)
     }
 
+    /**
+     * First-run or settings permission result. A denial is visible as OFF, but if
+     * Android permission is granted later the default request can be completed.
+     */
+    fun recordPermissionDecision(context: Context, granted: Boolean) {
+        if (granted && notificationsAllowed(context)) {
+            setEnabled(context, true)
+        } else {
+            preferences(context).edit()
+                .putBoolean(ENABLED, false)
+                .putBoolean(AWAITING_PERMISSION, true)
+                .putBoolean(LAST_PERMISSION_ALLOWED, false)
+                .apply()
+            schedule(context)
+        }
+    }
+
+    /** Run only on Activity resume, not in the library/cover-loading pipeline. */
+    fun reconcilePermission(context: Context) {
+        val prefs = preferences(context)
+        if (!prefs.contains(ENABLED)) return
+        val allowed = notificationsAllowed(context)
+        if (allowed && prefs.getBoolean(AWAITING_PERMISSION, false)) {
+            setEnabled(context, true)
+            return
+        }
+        if (prefs.getBoolean(LAST_PERMISSION_ALLOWED, allowed) != allowed) {
+            prefs.edit().putBoolean(LAST_PERMISSION_ALLOWED, allowed).apply()
+            if (enabled(context)) schedule(context)
+        }
+    }
+
     fun schedule(context: Context) {
         val manager = WorkManager.getInstance(context.applicationContext)
-        if (!enabled(context)) {
+        if (!active(context)) {
             manager.cancelUniqueWork(WORK_NAME)
             return
         }
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-        val work = PeriodicWorkRequestBuilder<ReiAnixReleaseWorker>(6, TimeUnit.HOURS)
+        val work = PeriodicWorkRequestBuilder<ReiAnixReleaseWorker>(4, TimeUnit.HOURS)
             .setConstraints(constraints).build()
-        manager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, work)
+        manager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, work)
     }
 
     fun notificationsAllowed(context: Context): Boolean =
-        Build.VERSION.SDK_INT < 33 ||
+        (Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED) &&
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     /** Platform availability is never inferred from AniList broadcast timestamps. */
     fun officialWatchLink(links: List<ReiAnixOfficialLink>): ReiAnixOfficialLink? =
