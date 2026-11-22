@@ -2121,6 +2121,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
+        // Apply notification permission changes made in Android Settings without reopening onboarding.
+        com.reianix.reianix_local.data.releases.ReiAnixReleaseMonitor.reconcilePermission(this)
+
 
         activityResumed = true
 
