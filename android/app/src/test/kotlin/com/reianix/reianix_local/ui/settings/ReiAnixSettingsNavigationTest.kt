@@ -67,7 +67,12 @@ class ReiAnixSettingsNavigationTest {
     @Test fun episodeAlertsLiveOnlyInMetadataAndKeepTheirSearchDestination() {
         val key = "setting:releases.notifications"
         assertEquals(false, settingsDestination("Geral")!!.entries.any { it.key == key })
-        assertEquals(true, settingsDestination("Metadados e Capas")!!.entries.any { it.key == key })
+        val metadataEntries = settingsDestination("Metadados e Capas")!!.entries
+        assertEquals(true, metadataEntries.any { it.key == key })
+        assertEquals(
+            metadataEntries.indexOfFirst { it.key == "setting:artwork.enabled" } + 1,
+            metadataEntries.indexOfFirst { it.key == key },
+        )
         assertEquals("Metadados e Capas", searchSettings("avisos episódios")
             .single { it.entry.key == key }.destination.id)
         assertNotEquals(Icons.Filled.Settings, settingsIcon("releases.notifications"))
