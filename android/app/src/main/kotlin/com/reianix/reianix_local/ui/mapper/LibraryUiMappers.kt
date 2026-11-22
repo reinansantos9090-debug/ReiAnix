@@ -38,6 +38,8 @@ object LibraryUiMappers {
             id = id,
             title = title,
             year = metadataYear ?: sourceYear,
+            aniListId = (source.stringOrNull("anilist_id") ?: metadata.stringOrNull("anilist_id"))
+                ?.toIntOrNull()?.takeIf { it > 0 },
             genres = genres(source),
             favorite = source.booleanOrNull("favorite") ?: metadata.booleanOrNull("favorite") ?: false,
             mediaKind = mediaKind(

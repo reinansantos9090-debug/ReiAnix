@@ -300,6 +300,7 @@ data class ReiAnixAnimeUiModel(
     val seasonLabel: String? = null,
     /** Episode count announced by stored metadata; never inferred from local files. */
     val announcedEpisodeCount: Int? = null,
+    val aniListId: Int? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id

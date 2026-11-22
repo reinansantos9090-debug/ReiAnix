@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.data.personal
 
 import android.content.Context
+import android.util.LruCache
 import com.reianix.reianix_local.data.anilist.AniListResult
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListClient
 import com.reianix.reianix_local.data.anilist.ReiAnixAnimeCharacter
@@ -15,16 +16,30 @@ class ReiAnixCharacterCache(
     context: Context,
     private val client: ReiAnixAniListClient,
 ) {
+    private data class CachedCharacters(
+        val characters: List<ReiAnixAnimeCharacter>,
+        val storedAt: Long,
+    )
+
     private val folder = File(context.applicationContext.cacheDir, "characters")
+    private val memory = LruCache<Int, CachedCharacters>(64)
+
+    fun peek(anilistId: Int): List<ReiAnixAnimeCharacter>? =
+        memory.get(anilistId)
+            ?.takeIf { System.currentTimeMillis() - it.storedAt <= CACHE_TTL_MS }
+            ?.characters
+
     suspend fun load(anilistId: Int): AniListResult<List<ReiAnixAnimeCharacter>> {
         require(anilistId > 0)
+        peek(anilistId)?.let { return AniListResult.Success(it) }
         val cacheFile = File(folder, "$anilistId.json")
         val cached = withContext(Dispatchers.IO) {
-            if (!cacheFile.isFile || System.currentTimeMillis() - cacheFile.lastModified() > CACHE_TTL_MS) {
+            val storedAt = cacheFile.lastModified()
+            if (!cacheFile.isFile || System.currentTimeMillis() - storedAt > CACHE_TTL_MS) {
                 null
             } else runCatching {
                 val array = JSONArray(cacheFile.readText())
-                buildList {
+                val characters = buildList {
                     for (i in 0 until array.length()) {
                         val item = array.optJSONObject(i) ?: continue
                         val id = item.optInt("id")
@@ -34,11 +49,16 @@ class ReiAnixCharacterCache(
                             item.optString("image").takeIf { it.startsWith("https://") }))
                     }
                 }
+                CachedCharacters(characters, storedAt)
             }.getOrNull()
         }
-        if (cached != null) return AniListResult.Success(cached)
+        if (cached != null) {
+            memory.put(anilistId, cached)
+            return AniListResult.Success(cached.characters)
+        }
         val response = client.getCharacters(anilistId)
         if (response is AniListResult.Success) {
+            memory.put(anilistId, CachedCharacters(response.value, System.currentTimeMillis()))
             withContext(Dispatchers.IO) {
                 runCatching {
                     folder.mkdirs()

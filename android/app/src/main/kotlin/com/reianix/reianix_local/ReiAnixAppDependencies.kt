@@ -16,6 +16,7 @@ import com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProvider
 import com.reianix.reianix_local.data.collector.ReiAnixCollectorJourneyService
 import com.reianix.reianix_local.data.library.ReiAnixLibraryDiscoveryService
 import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
+import com.reianix.reianix_local.data.personal.ReiAnixCharacterCache
 import com.reianix.reianix_local.data.personal.ReiAnixPersonalAnimeService
 import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeClient
 import java.io.File
@@ -46,6 +47,10 @@ class ReiAnixAppDependencies(context: Context) {
         ReiAnixAppBootstrap(appContext, this)
     }
 
+
+    val characterCache: ReiAnixCharacterCache by lazy {
+        ReiAnixCharacterCache(appContext, ReiAnixAniListClient())
+    }
 
     val sqliteDatabase: ReiAnixSqliteDatabase by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ReiAnixSqliteDatabase(appContext)
