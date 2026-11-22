@@ -6,6 +6,41 @@ import org.junit.Test
 
 class ReiAnixOutgoingTouchGuardTest {
     @Test
+    fun allNavigationScreensRejectInputFromAnOlderBackStackEntry() {
+        val everyRoute = listOf(
+            ReiAnixRoutes.HOME,
+            ReiAnixRoutes.LIBRARY,
+            ReiAnixRoutes.MY_LIST,
+            ReiAnixRoutes.COLLECTIONS,
+            ReiAnixRoutes.ORGANIZE,
+            ReiAnixRoutes.SEARCH,
+            ReiAnixRoutes.SETTINGS,
+            ReiAnixRoutes.SETTINGS_GENERAL,
+            ReiAnixRoutes.PROFILE,
+            ReiAnixRoutes.STORAGE,
+            ReiAnixRoutes.RECOVERY,
+            ReiAnixRoutes.COLLECTOR,
+            ReiAnixRoutes.TIMELINE,
+            ReiAnixRoutes.DETAILS,
+            ReiAnixRoutes.ANILIST_DETAILS,
+            ReiAnixRoutes.PLAYER,
+        )
+        // The same guard is used for every NavHost destination, including
+        // player, settings and secondary screens, not only Details/Library.
+        for (route in everyRoute) {
+            assertTrue(route, isActiveNavigationDestination("current-entry", "current-entry"))
+            assertFalse(route, isActiveNavigationDestination("outgoing-entry", "current-entry"))
+            assertFalse(route, isActiveNavigationDestination(null, "current-entry"))
+        }
+    }
+
+    @Test
+    fun sameRouteIsNotSufficientWhenTwoInstancesAreTransitioning() {
+        assertFalse(isActiveNavigationDestination("first-details-instance", "second-details-instance"))
+        assertTrue(isActiveNavigationDestination("second-details-instance", "second-details-instance"))
+    }
+
+    @Test
     fun leavingDetailsForLibraryImmediatelyDisablesItsControls() {
         assertTrue(isActiveDetailsDestination("details-entry", "details-entry", ReiAnixRoutes.DETAILS))
         assertFalse(isActiveDetailsDestination("details-entry", "library-entry", ReiAnixRoutes.LIBRARY))
