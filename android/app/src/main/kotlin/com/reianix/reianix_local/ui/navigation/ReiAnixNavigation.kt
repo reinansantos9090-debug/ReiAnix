@@ -476,10 +476,14 @@ fun ReiAnixNavigationHost(
                 // NavHost retains outgoing content during its cross-fade. Once
                 // Library (or another route) becomes current, the old Details
                 // must not receive a tap that could launch its episode.
+                // Observe the active entry inside the destination itself.
+                // NavHost remembers its graph builder, so capturing a route
+                // computed outside it could become stale across back gestures.
+                val foregroundEntry by navController.currentBackStackEntryAsState()
                 val detailsActive = isActiveDetailsDestination(
                     detailsEntryId = entry.id,
-                    currentEntryId = backStackEntry?.id,
-                    currentRoute = currentRoute,
+                    currentEntryId = foregroundEntry?.id,
+                    currentRoute = foregroundEntry?.destination?.route,
                 )
                 Box(Modifier.fillMaxSize().blockOutgoingDestinationTouches(detailsActive)) {
                     details(ReiAnixDetailsArgs(animeId = animeId, origin = origin))
