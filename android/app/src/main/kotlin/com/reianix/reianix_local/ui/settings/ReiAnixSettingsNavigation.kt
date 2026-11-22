@@ -62,13 +62,13 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("Geral", "Geral", "", listOf(
         SettingsEntry("setting:app.immersive", "Modo imersivo", "tela cheia edge-to-edge barra de status notificações relógio bateria"),
         SettingsEntry("setting:app.confirm_destructive", "Confirmar ações destrutivas"),
-        SettingsEntry("setting:releases.notifications", "Notificar novos episódios", "lançamento avisos anime biblioteca episódios"),
     )),
     SettingsDestination("Player", "Player", "", listOf(
         SettingsEntry("setting:player.reset", "Restaurar configurações do player", "Restaurar configurações do player Restaura somente as preferências do Player aos padrões existentes. Restaurar"),
     )),
     SettingsDestination("Metadados e Capas", "Metadados e Capas", "", listOf(
         SettingsEntry("setting:metadata.anilist_enabled", "Usar AniList"),
+        SettingsEntry("setting:releases.notifications", "Notificar novos episódios", "lançamento avisos anime biblioteca episódios"),
         SettingsEntry("setting:metadata.auto_match", "Identificar automaticamente pelo AniList"),
         SettingsEntry("setting:artwork.enabled", "Baixar capas pela internet"),
         SettingsEntry("setting:artwork.cache_limit_mb", "Limite do cache de capas"),
