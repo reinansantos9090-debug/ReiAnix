@@ -1,5 +1,10 @@
 package com.reianix.reianix_local.ui.storage
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -19,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -28,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.reianix.reianix_local.R
+import com.reianix.reianix_local.data.releases.ReiAnixReleaseMonitor
 import com.reianix.reianix_local.ui.ReiAnixProgressIndicator
 
 /** The SAF folder is optional at first launch. No implicit storage source is created. */
@@ -39,6 +46,13 @@ fun ReiAnixLibraryFolderOnboarding(
     onStart: () -> Unit,
     onSelectFolder: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        ReiAnixReleaseMonitor.recordPermissionDecision(context, granted)
+        onStart()
+    }
     val pickerOpen = state.equals("folder_picker_open", ignoreCase = true)
     val errorMessage = error?.trim()?.takeIf { it.isNotBlank() && it.any(Char::isWhitespace) }
     val selected = !selectedFolderPath.isNullOrBlank()
@@ -175,7 +189,24 @@ fun ReiAnixLibraryFolderOnboarding(
                     }
                 }
                 Button(
-                    onClick = onStart,
+                    onClick = {
+                        when {
+                            // The folder is optional; keep the old skip behavior.
+                            !selected || ReiAnixReleaseMonitor.hasSavedPreference(context) -> onStart()
+                            ReiAnixReleaseMonitor.notificationsAllowed(context) -> {
+                                ReiAnixReleaseMonitor.recordPermissionDecision(context, true)
+                                onStart()
+                            }
+                            Build.VERSION.SDK_INT >= 33 -> {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                            else -> {
+                                // On older Android versions notifications are managed in app settings.
+                                ReiAnixReleaseMonitor.recordPermissionDecision(context, false)
+                                onStart()
+                            }
+                        }
+                    },
                     enabled = !pickerOpen,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
                     shape = RoundedCornerShape(14.dp),
