@@ -1,25 +1,63 @@
 package com.reianix.reianix_local.ui.navigation
 
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
- * NavHost cross-fades two destinations, so the leaving Details screen can stay
- * visible above the Library briefly after a pop. It must not keep accepting
- * episode taps while the incoming destination is already current.
- *
- * Match the actual back-stack entry, not only its route: two different Details
- * entries can exist at the same time during a recommendations navigation.
+ * Compare back-stack entry identities, not destination names. Every outgoing
+ * destination remains composed during the NavHost cross-fade and may still be
+ * visually present; only the newest entry should accept interactions.
  */
+internal fun isActiveNavigationDestination(
+    entryId: String?,
+    currentEntryId: String?,
+): Boolean = entryId != null && entryId == currentEntryId
+
+/** A second Details instance must never count as the current Details entry. */
 internal fun isActiveDetailsDestination(
     detailsEntryId: String?,
     currentEntryId: String?,
     currentRoute: String?,
-): Boolean = detailsEntryId != null &&
-    detailsEntryId == currentEntryId &&
+): Boolean = isActiveNavigationDestination(detailsEntryId, currentEntryId) &&
     currentRoute == ReiAnixRoutes.DETAILS
+
+/**
+ * Register destinations through one shared guard, preserving NavHost's normal
+ * enter/exit animations, route arguments, back-stack scopes and saved state.
+ * Observe the foreground entry inside the destination, not in the NavGraph
+ * builder, because the builder is remembered across route changes.
+ */
+internal fun NavGraphBuilder.reiAnixGuardedComposable(
+    navController: NavHostController,
+    route: String,
+    arguments: List<NamedNavArgument> = emptyList(),
+    content: @Composable (NavBackStackEntry) -> Unit,
+) {
+    composable(route = route, arguments = arguments) { entry ->
+        val currentEntry by navController.currentBackStackEntryAsState()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .blockOutgoingDestinationTouches(
+                    isActiveNavigationDestination(entry.id, currentEntry?.id),
+                ),
+        ) {
+            content(entry)
+        }
+    }
+}
 
 /**
  * Consume the full pointer gesture at the initial pass, ahead of outgoing child
