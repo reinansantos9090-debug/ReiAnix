@@ -5,6 +5,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
+import com.reianix.reianix_local.ui.model.ReiAnixDetailsLoadStatus
 import com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import org.junit.Assert.assertEquals
@@ -34,6 +35,9 @@ class ReiAnixLibraryViewModelContractTest {
         val home = ReiAnixLibraryViewModel.projectHomeState(state)
         val details = ReiAnixLibraryViewModel.projectDetailsState(state, 7L)
 
+        // Details can render the current canonical snapshot immediately on reentry;
+        // it must not transiently reset to the synthetic LOADING skeleton.
+        assertEquals(ReiAnixDetailsLoadStatus.READY, details.status)
         assertEquals(1, home.animes.single().availableContentCount)
         assertEquals(72L, details.anime?.seasons?.single()?.episodes?.single()?.id)
         assertEquals(18.0, details.anime?.seasons?.single()?.episodes?.single()?.progressSeconds ?: -1.0, 0.0)
