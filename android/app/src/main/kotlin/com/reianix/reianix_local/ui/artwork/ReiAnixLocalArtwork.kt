@@ -1,6 +1,5 @@
 package com.reianix.reianix_local.ui.artwork
 
-import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -30,9 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import coil.ImageLoader
 import coil.Coil
-import coil.memory.MemoryCache
 import coil.compose.AsyncImage
-import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Dimension
 import coil.size.Size
@@ -156,28 +153,9 @@ private val recentRemoteArtworkFailures = ArtworkRemoteFailureCooldown()
  * download completes; Coil caches do not replace canonical SQLite artwork records.
  */
 private object ReiAnixArtworkImageLoader {
-    @Volatile
-    private var instance: ImageLoader? = null
-
-    fun get(context: Context): ImageLoader {
-        instance?.let { return it }
-        return synchronized(this) {
-            val appContext = context.applicationContext
-            val lowRam = appContext.getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
-            instance ?: ImageLoader.Builder(appContext)
-                .memoryCache {
-                    MemoryCache.Builder(appContext)
-                        .maxSizePercent(if (lowRam) 0.15 else 0.20)
-                        .build()
-                }
-                .diskCache { Coil.imageLoader(appContext).diskCache }
-                .memoryCachePolicy(CachePolicy.ENABLED)
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .networkCachePolicy(CachePolicy.ENABLED)
-                .build()
-                .also { instance = it }
-        }
-    }
+    // Reuse the Application's Coil image loader. A second loader used to create
+    // an independent bitmap cache and could fetch an identical cover again.
+    fun get(context: Context): ImageLoader = Coil.imageLoader(context.applicationContext)
 }
 
 /**

@@ -2,9 +2,12 @@ package com.reianix.reianix_local
 
 import android.util.Log
 import android.app.Application
+import android.app.ActivityManager
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import com.reianix.reianix_local.ui.artwork.ReiAnixArtworkRequestInterceptor
 
 /**
  * Native process Application and single owner of the existing Kotlin dependency
@@ -15,16 +18,32 @@ class ReiAnixApplication : Application(), ImageLoaderFactory {
     lateinit var dependencies: ReiAnixAppDependencies
         private set
 
-    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
-        .diskCache {
-            // One cache instance for both the default and local artwork loaders.
-            DiskCache.Builder()
-                .directory(cacheDir.resolve("image_cache"))
-                .maxSizePercent(0.02)
-                .maximumMaxSizeBytes(512L * 1024 * 1024)
-                .build()
-        }
-        .build()
+    override fun newImageLoader(): ImageLoader {
+        // A single Coil instance serves library, home and detail artwork, so that
+        // their memory caches never duplicate the same decoded poster.
+        val isLowRam = getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
+        return ImageLoader.Builder(this)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(if (isLowRam) 0.15 else 0.20)
+                    .build()
+            }
+            .diskCache {
+                // Keep the existing persistent cache path and size bounds.
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizePercent(0.02)
+                    .maximumMaxSizeBytes(512L * 1024 * 1024)
+                    .build()
+            }
+            // Coil 2.7's existing BitmapFactory parallelism default is four:
+            // make it explicit without lowering first-load throughput.
+            .bitmapFactoryMaxParallelism(4)
+            .components {
+                add(ReiAnixArtworkRequestInterceptor())
+            }
+            .build()
+    }
 
     override fun onCreate() {
         super.onCreate()
