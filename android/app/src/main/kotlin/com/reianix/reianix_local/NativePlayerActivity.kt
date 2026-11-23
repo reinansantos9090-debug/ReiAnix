@@ -212,6 +212,8 @@ class NativePlayerActivity : FragmentActivity() {
     private var audioOnly = false
     private var smartSkipButton: TextView? = null
     private var smartSkipEnabled = true
+    private var smartSkipGeneration = 0L
+    private var frameCaptureInProgress = false
     private var playerShortcuts = PlayerShortcutPolicy.default
     private var activeAnimePreferences: PlayerAnimePreferences? = null
     private var activeAnimePreferencesKey: String? = null
@@ -4222,7 +4224,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun setSmartSkipEnabled(enabled: Boolean) {
         if (smartSkipEnabled == enabled) return
-        captionRevision++ // An older async preference read may not undo this tap.
+        smartSkipGeneration++ // Do not undo an explicit user tap with stale SQLite data.
         smartSkipEnabled = enabled
         if (!enabled) {
             skipLookupJob?.cancel()
@@ -4245,11 +4247,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun captureCurrentVideoFrame() {
         if (!::player.isInitialized || !::uri.isInitialized ||
             episodeChangePending || favoriteClipSession != null ||
-            sessionState != SessionState.ACTIVE || pendingFrameCapture != null
+            sessionState != SessionState.ACTIVE || pendingFrameCapture != null ||
+            frameCaptureInProgress
         ) {
             showFeedback("Captura indisponível neste momento")
             return
         }
+        frameCaptureInProgress = true
         val requestedUri = uri
         setMorePanelVisible(false)
         val positionMs = player.currentPosition.coerceAtLeast(0L)
@@ -4257,27 +4261,36 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val name = "ReiAnix_${System.currentTimeMillis()}.jpg"
         showFeedback("Capturando imagem…", 1400L)
         lifecycleScope.launch {
-            val image = PlayerFrameCapture.capture(applicationContext, requestedUri, positionMs)
-            if (image == null) {
-                showFeedback("Não foi possível capturar essa cena", 1800L)
-                return@launch
-            }
-            if (isDestroyed || isFinishing || generation != playerGeneration ||
-                !::uri.isInitialized || uri != requestedUri
-            ) {
-                image.delete()
-                return@launch
-            }
-            if (Build.VERSION.SDK_INT >= 29) {
-                val saved = PlayerFrameCapture.saveToGallery(applicationContext, image, name)
-                image.delete()
-                if (!isDestroyed) showFeedback(
-                    if (saved) "Imagem salva em Pictures/ReiAnix" else "Não foi possível salvar a imagem",
-                    1800L,
-                )
-            } else {
-                pendingFrameCapture = image
-                frameSaveLauncher.launch(name)
+            try {
+                val image = PlayerFrameCapture.capture(applicationContext, requestedUri, positionMs)
+                if (image == null) {
+                    showFeedback("Não foi possível capturar essa cena", 1800L)
+                    return@launch
+                }
+                if (isDestroyed || isFinishing || generation != playerGeneration ||
+                    !::uri.isInitialized || uri != requestedUri
+                ) {
+                    image.delete()
+                    return@launch
+                }
+                if (Build.VERSION.SDK_INT >= 29) {
+                    val saved = PlayerFrameCapture.saveToGallery(applicationContext, image, name)
+                    image.delete()
+                    if (!isDestroyed) showFeedback(
+                        if (saved) "Imagem salva em Pictures/ReiAnix" else "Não foi possível salvar a imagem",
+                        1800L,
+                    )
+                } else {
+                    pendingFrameCapture = image
+                    runCatching { frameSaveLauncher.launch(name) }.onFailure { error ->
+                        pendingFrameCapture = null
+                        image.delete()
+                        logPlayer("FRAME_SAVE_PICKER_FAILED", error)
+                        showFeedback("Não foi possível abrir o seletor de arquivos", 1800L)
+                    }
+                }
+            } finally {
+                frameCaptureInProgress = false
             }
         }
     }
@@ -6263,6 +6276,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun loadCaptionAppearance() {
         val revision = ++captionRevision
+        val skipGenerationAtLoad = smartSkipGeneration
         val animeKey = currentAnimePreferencesKey()
         lifecycleScope.launch {
             val values = withContext(Dispatchers.IO) {
@@ -6273,24 +6287,30 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 animeKey != currentAnimePreferencesKey()
             ) return@launch
             playerShortcuts = PlayerShortcutPolicy.parse(values["player.shortcuts"])
-            val enableSkip = values["player.aniskip_enabled"] != "false"
-            if (smartSkipEnabled != enableSkip) {
-                smartSkipEnabled = enableSkip
-                skipLookupJob?.cancel()
-                remoteSkipSegments = emptyList()
-                skipLookupGeneration = -1L
-                skipLookupDuration = -1L
-                if (enableSkip && ::player.isInitialized && player.duration > 0L) {
-                    requestSmartSkipSegments(player.duration)
+            if (skipGenerationAtLoad == smartSkipGeneration) {
+                val enableSkip = values["player.aniskip_enabled"] != "false"
+                if (smartSkipEnabled != enableSkip) {
+                    smartSkipEnabled = enableSkip
+                    skipLookupJob?.cancel()
+                    remoteSkipSegments = emptyList()
+                    skipLookupGeneration = -1L
+                    skipLookupDuration = -1L
+                    if (enableSkip && ::player.isInitialized && player.duration > 0L) {
+                        requestSmartSkipSegments(player.duration)
+                    }
                 }
             }
-            subtitleColor = values["audio.subtitle_color"] ?: "system"
-            subtitleFont = values["audio.subtitle_font"] ?: "system"
-            if (activeAnimePreferences == null || activeAnimePreferencesKey != animeKey) {
+            // On a same-anime handoff the already-applied in-memory snapshot
+            // is more recent than an in-flight SQLite write. Do not apply
+            // stale preferences or repeat Media3 track changes unnecessarily.
+            val reuse = activeAnimePreferences != null && activeAnimePreferencesKey == animeKey
+            if (!reuse) {
+                subtitleColor = values["audio.subtitle_color"] ?: "system"
+                subtitleFont = values["audio.subtitle_font"] ?: "system"
                 activeAnimePreferences = PlayerAnimePreferences.decode(animeKey?.let(values::get))
                 activeAnimePreferencesKey = animeKey.takeIf { activeAnimePreferences != null }
+                activeAnimePreferences?.let(::applySavedAnimePreferences) ?: applySubtitlePreferences()
             }
-            activeAnimePreferences?.let(::applySavedAnimePreferences) ?: applySubtitlePreferences()
             updateSmartSkipButton()
             syncComposePlayerUiState()
         }
