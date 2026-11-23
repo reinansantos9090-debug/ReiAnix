@@ -69,6 +69,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -143,6 +144,11 @@ import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModel
 import com.reianix.reianix_local.viewmodel.ReiAnixAniListViewModelFactory
 import com.reianix.reianix_local.data.anilist.AniListAnime
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
@@ -193,32 +199,11 @@ fun ReiAnixDetailsRoute(
     }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     var showManualAssociation by rememberSaveable(canonicalId) { mutableStateOf(false) }
-    // The Details status can remain READY while the asynchronous local-library
-    // projection gains a media URI, corrected availability/duration, or a newly
-    // published thumbnail. Include those source facts in a stable effect key so a
-    // first request made before local media becomes resolvable is not the only one.
-    val thumbnailRequestRevision = remember(state.anime) {
-        state.anime?.let { anime ->
-            (anime.seasons.flatMap { it.episodes } + anime.specials + anime.mediaFiles)
-                .distinctBy { it.id }
-                .sortedBy { it.id }
-                .joinToString(separator = "|") { episode ->
-                    listOf(
-                        episode.id.toString(),
-                        episode.media.reference.orEmpty(),
-                        episode.media.uri.orEmpty(),
-                        episode.media.path.orEmpty(),
-                        episode.media.mediaIdentity.orEmpty(),
-                        episode.media.availability.name,
-                        episode.media.sourceAvailabilityState.orEmpty(),
-                        episode.fileSizeBytes?.toString().orEmpty(),
-                        episode.modifiedAt?.toString().orEmpty(),
-                        episode.durationSeconds?.toString().orEmpty(),
-                        episode.artwork?.localPath.orEmpty(),
-                    ).joinToString(separator = "\u001f")
-                }
-        }.orEmpty()
-    }
+    // Changes to local media can require a new thumbnail pass while Details
+    // stays READY. Build the full episode revision off the UI thread instead of
+    // sorting/allocating hundreds of strings on the first navigation frame.
+    // Keep the exact source fields and no debounce: initial thumbnail work is
+    // still triggered immediately after the screen enters composition.
 
     LaunchedEffect(canonicalId, state.status) {
         if (state.status == ReiAnixDetailsLoadStatus.READY) {
@@ -226,10 +211,20 @@ fun ReiAnixDetailsRoute(
         }
     }
 
-    LaunchedEffect(canonicalId, state.status, thumbnailRequestRevision) {
-        if (state.status == ReiAnixDetailsLoadStatus.READY) {
-            viewModel.requestMissingEpisodeThumbnails(canonicalId)
-        }
+    LaunchedEffect(canonicalId) {
+        snapshotFlow { state }
+            .map { details ->
+                if (details.status == ReiAnixDetailsLoadStatus.READY) {
+                    detailsThumbnailRevision(details.anime)
+                } else {
+                    null
+                }
+            }
+            .flowOn(Dispatchers.Default)
+            .distinctUntilChanged()
+            .collect { revision ->
+                if (revision != null) viewModel.requestMissingEpisodeThumbnails(canonicalId)
+            }
     }
 
     LaunchedEffect(aniListState.associationRevision) {
@@ -948,7 +943,10 @@ private fun DetailsHero(
     val posterPath = anime.artwork?.localPath?.takeIf { it.isNotBlank() }
     val target = anime.playbackTargetEpisode
 
-    val metadata = buildList {
+    val metadata = remember(
+        anime.year, anime.status, anime.format, anime.episodeCount,
+        anime.announcedEpisodeCount, anime.seasons.size, anime.score, anime.durationMinutes,
+    ) { buildList {
         anime.year?.let { add(it.toString()) }
         anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { add(statusLabel(it)) }
         anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { add(formatLabel(it)) }
@@ -963,7 +961,7 @@ private fun DetailsHero(
         }
         anime.score?.let { add("Nota " + formatScore(it)) }
         anime.durationMinutes?.takeIf { it > 0 }?.let { add("$it min/ep") }
-    }.joinToString(" • ")
+    }.joinToString(" • ") }
 
     val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
 

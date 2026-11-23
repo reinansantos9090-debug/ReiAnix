@@ -33,6 +33,15 @@ internal fun reiAnixScreenExitTransition(): ExitTransition =
     fadeOut(animationSpec = screenTransitionSpec()) +
         scaleOut(animationSpec = screenTransitionSpec(), targetScale = SCREEN_TRANSITION_SCALE)
 
+// Full-screen Details has a backdrop, poster, and nested lazy content. Avoid
+// scaling two expensive screens simultaneously during a Details handoff while
+// retaining a smooth fade and preserving the original animation duration.
+internal fun reiAnixDetailsEnterTransition(): EnterTransition =
+    fadeIn(animationSpec = screenTransitionSpec())
+
+internal fun reiAnixDetailsExitTransition(): ExitTransition =
+    fadeOut(animationSpec = screenTransitionSpec())
+
 /** Animate the incoming content when an internal tab changes in place. */
 @Composable
 internal fun Modifier.reiAnixScreenFade(destination: Any?): Modifier {

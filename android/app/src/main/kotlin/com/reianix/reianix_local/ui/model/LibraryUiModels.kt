@@ -215,46 +215,39 @@ data class ReiAnixSeasonUiModel(
      * Episode IDs are sorted before signing so the identity never depends on
      * the current season/episode ordering in the Compose tree.
      */
-    val stableKey: String
-        get() {
+    // Numbered seasons need no episode sorting at all. For unnumbered
+    // seasons preserve the original normalized-title/episode-ID fallback,
+    // computed once per immutable season rather than on every recomposition.
+    val stableKey: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        if (number != null) {
+            "anime:$animeId:season:number:$number"
+        } else {
             val normalizedTitle = title
                 .trim()
                 .lowercase()
                 .replace(Regex("\\s+"), " ")
                 .takeIf { it.isNotEmpty() }
-
-            val episodeSignature = episodes
-                .asSequence()
+            val episodeSignature = episodes.asSequence()
                 .map { it.id }
                 .sorted()
                 .joinToString(separator = "-")
                 .ifBlank { "empty" }
 
-            return buildString {
+            buildString {
                 append("anime:")
                 append(animeId)
                 append(":season:")
-
-                when {
-                    number != null -> {
-                        append("number:")
-                        append(number)
-                    }
-
-                    normalizedTitle != null -> {
-                        append("title:")
-                        append(normalizedTitle)
-                        append(":episodes:")
-                        append(episodeSignature)
-                    }
-
-                    else -> {
-                        append("episodes:")
-                        append(episodeSignature)
-                    }
+                if (normalizedTitle != null) {
+                    append("title:")
+                    append(normalizedTitle)
+                    append(":episodes:")
+                } else {
+                    append("episodes:")
                 }
+                append(episodeSignature)
             }
         }
+    }
 }
 
 // Deliberately not @Immutable: this large model contains nested episode lists.

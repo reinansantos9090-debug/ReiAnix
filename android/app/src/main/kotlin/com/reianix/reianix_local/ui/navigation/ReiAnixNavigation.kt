@@ -36,6 +36,8 @@ import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.motion.reiAnixScreenEnterTransition
 import com.reianix.reianix_local.ui.motion.reiAnixScreenExitTransition
+import com.reianix.reianix_local.ui.motion.reiAnixDetailsEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixDetailsExitTransition
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
 import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
@@ -264,6 +266,13 @@ internal fun shouldShowReiAnixBottomNavigation(
     route != ReiAnixRoutes.DETAILS &&
     route != ReiAnixRoutes.ANILIST_DETAILS
 
+/** Use a light GPU fade whenever either side of the transition is Details. */
+internal fun reiAnixDetailsTransition(from: String?, to: String?): Boolean =
+    from == ReiAnixRoutes.DETAILS ||
+    to == ReiAnixRoutes.DETAILS ||
+    from == ReiAnixRoutes.ANILIST_DETAILS ||
+    to == ReiAnixRoutes.ANILIST_DETAILS
+
 /**
  * Production entry point wired to the canonical local-library projections.
  * Settings and Storage remain injectable Compose destinations so callers can
@@ -457,10 +466,22 @@ fun ReiAnixNavigationHost(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
-            enterTransition = { reiAnixScreenEnterTransition() },
-            exitTransition = { reiAnixScreenExitTransition() },
-            popEnterTransition = { reiAnixScreenEnterTransition() },
-            popExitTransition = { reiAnixScreenExitTransition() },
+            enterTransition = {
+                if (reiAnixDetailsTransition(initialState.destination.route, targetState.destination.route))
+                    reiAnixDetailsEnterTransition() else reiAnixScreenEnterTransition()
+            },
+            exitTransition = {
+                if (reiAnixDetailsTransition(initialState.destination.route, targetState.destination.route))
+                    reiAnixDetailsExitTransition() else reiAnixScreenExitTransition()
+            },
+            popEnterTransition = {
+                if (reiAnixDetailsTransition(initialState.destination.route, targetState.destination.route))
+                    reiAnixDetailsEnterTransition() else reiAnixScreenEnterTransition()
+            },
+            popExitTransition = {
+                if (reiAnixDetailsTransition(initialState.destination.route, targetState.destination.route))
+                    reiAnixDetailsExitTransition() else reiAnixScreenExitTransition()
+            },
         ) {
             reiAnixGuardedComposable(navController, ReiAnixRoutes.HOME) { home() }
             reiAnixGuardedComposable(navController, ReiAnixRoutes.LIBRARY) { library() }

@@ -1768,35 +1768,39 @@ class ReiAnixLibraryViewModel(
             episodeThumbnailBatchRerunRequested.add(animeId)
             return
         }
-        val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: run {
-            episodeThumbnailBatchesInFlight.remove(animeId)
-            episodeThumbnailBatchCompletions.remove(animeId)?.complete(Unit)
-            return
-        }
-        // Queue all available local episodes in the catalog's season/episode order.
-        // Existing paths are decoded and visually checked on Dispatchers.IO.
-        val pending = anime.contentEpisodes.filter { episode ->
-            if (episode.media.availability.name != "AVAILABLE" ||
-                episodeThumbnailSource(episode) == null
-            ) {
-                return@filter false
-            }
-            if (episodeThumbnailRequestsInFlight.add(episode.id)) {
-                true
-            } else {
-                // A newer projection arrived while this episode was being processed.
-                // The active batch may have captured an older URI, size, or timestamp.
-                episodeThumbnailRerunRequested.add(episode.id)
-                false
-            }
-        }
-        if (pending.isEmpty()) {
-            episodeThumbnailBatchesInFlight.remove(animeId)
-            episodeThumbnailBatchCompletions.remove(animeId)?.complete(Unit)
-            return
-        }
-
         viewModelScope.launch {
+            // The catalog lookup and per-episode eligibility scan used to run
+            // synchronously in the Details navigation effect on the main thread.
+            // Work on a background dispatcher without changing episode order,
+            // source selection, or the existing in-flight/rerun protections.
+            val pending = withContext(Dispatchers.Default) {
+                nativeCatalogState.value.animes.firstOrNull { it.id == animeId }
+                    ?.contentEpisodes
+                    ?.filter { episode ->
+                        if (episode.media.availability.name != "AVAILABLE" ||
+                            episodeThumbnailSource(episode) == null
+                        ) {
+                            return@filter false
+                        }
+                        if (episodeThumbnailRequestsInFlight.add(episode.id)) {
+                            true
+                        } else {
+                            episodeThumbnailRerunRequested.add(episode.id)
+                            false
+                        }
+                    }.orEmpty()
+            }
+            if (pending.isEmpty()) {
+                val rerunRequested = episodeThumbnailBatchRerunRequested.remove(animeId)
+                episodeThumbnailBatchesInFlight.remove(animeId)
+                if (rerunRequested) {
+                    requestMissingEpisodeThumbnails(animeId)
+                } else {
+                    episodeThumbnailBatchCompletions.remove(animeId)?.complete(Unit)
+                }
+                return@launch
+            }
+
             try {
                 // Inspect all saved paths first so invalid rows can be hidden before
                 // replacement extraction. Do not submit cached samples in this pass:
