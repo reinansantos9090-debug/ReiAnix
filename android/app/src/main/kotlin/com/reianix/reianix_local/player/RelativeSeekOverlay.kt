@@ -15,6 +15,7 @@ import android.graphics.Path
 import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
+import androidx.compose.ui.geometry.Offset
 
 /** Draws short-lived relative seek feedback without intercepting player input. */
 internal class RelativeSeekOverlay(
@@ -26,6 +27,15 @@ internal class RelativeSeekOverlay(
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val curvedEdge = Path()
     private val circle = requireNotNull(ContextCompat.getDrawable(context, R.drawable.ic_player_seek_circle)).mutate()
+    private val windowOrigin = IntArray(2)
+    private var backwardCenterInWindow: Offset? = null
+    private var forwardCenterInWindow: Offset? = null
+
+    fun updateIconCenter(forward: Boolean, centerInWindow: Offset) {
+        if (forward) forwardCenterInWindow = centerInWindow else backwardCenterInWindow = centerInWindow
+        if (visibility == VISIBLE && showCircle) invalidate()
+    }
+
     var showCircle = true
         set(value) {
             if (field == value) return
@@ -106,7 +116,7 @@ internal class RelativeSeekOverlay(
         postInvalidateOnAnimation()
     }
 
-    private fun drawCounter(canvas: Canvas, forward: Boolean, centerY: Float, opacity: Float) {
+    private fun drawCounter(canvas: Canvas, forward: Boolean, fallbackCenterY: Float, opacity: Float) {
         val dimensions = ReiAnixTokens.PlayerDimensions
         val controlsWidth = minOf(width.toFloat(), dimensions.centerControlsMaxWidth.value * density)
         val sidePadding = (dimensions.centerHorizontalPadding.value * density).roundToInt()
@@ -117,7 +127,11 @@ internal class RelativeSeekOverlay(
         val iconSize = if (landscape) dimensions.landscapeSeekGlyphSize.value
             else dimensions.seekIconSize.value
         val circleSize = (iconSize * density).roundToInt()
-        val centerX = width / 2f + if (forward) distance else -distance
+        val measuredCenter = if (forward) forwardCenterInWindow else backwardCenterInWindow
+        getLocationInWindow(windowOrigin)
+        val centerX = measuredCenter?.let { it.x - windowOrigin[0] }
+            ?: (width / 2f + if (forward) distance else -distance)
+        val centerY = measuredCenter?.let { it.y - windowOrigin[1] } ?: fallbackCenterY
         val left = (centerX - circleSize / 2f).roundToInt()
         val top = (centerY - circleSize / 2f).roundToInt()
         val alpha = (255 * opacity).toInt()
