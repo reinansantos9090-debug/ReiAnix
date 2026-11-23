@@ -16,6 +16,7 @@ import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.ExternalVideoChooser
 import com.reianix.reianix_local.player.PlayerStartupMetrics
 import com.reianix.reianix_local.player.PlayerTimeFormatter
+import com.reianix.reianix_local.player.RelativeSeekOverlay
 import com.reianix.reianix_local.player.SeekScrubVisibilityGuard
 import com.reianix.reianix_local.player.SystemUiController
 import com.reianix.reianix_local.scanner.BroadStorageScanner
@@ -142,6 +143,7 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var positionLabel: TextView
     private lateinit var durationLabel: TextView
     private lateinit var feedback: TextView
+    private lateinit var relativeSeekOverlay: RelativeSeekOverlay
     private lateinit var errorPanel: LinearLayout
     private lateinit var preparingIndicator: ProgressBar
     private lateinit var lockButton: TextView
@@ -741,7 +743,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         installBasePlayerView()
         installGestureLayer()
         installControls()
-        setLocked(locked, persist = false, announce = false)
+        setLocked(locked, persist = false)
         if (controlsRestoredFromState && !locked) {
             setControlsVisible(controlsVisible)
         }
@@ -1051,7 +1053,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             player.setPlaybackSpeed(PlayerGesturePolicy.normalizePlaybackSpeed(incomingDefaultSpeed))
         }
         if (incomingLockMode != locked) {
-            setLocked(incomingLockMode, persist = false, announce = false)
+            setLocked(incomingLockMode, persist = false)
         }
         doubleTapSeekMs = PlayerGesturePolicy.seekIntervalMs(
             newIntent.getLongExtra("setting_player_double_tap_seek_seconds", doubleTapSeekMs / 1000L),
@@ -2442,6 +2444,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         )
+        relativeSeekOverlay = RelativeSeekOverlay(this)
+        root.addView(
+            relativeSeekOverlay,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
+        )
         // A configuration event can arrive before the new viewport is measured.
         // Reconcile geometry after Android lays out the new landscape/portrait size.
         root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
@@ -2601,7 +2608,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             rightMargin = dp(18)
         })
 
-        val previousButton = actionButton("−10", 70) { seekBy(-10_000L, "−10s") }.apply {
+        val previousButton = actionButton("−10", 70) { seekBy(-10_000L) }.apply {
             contentDescription = "Voltar 10 segundos"
         }
         previousButton.tag = "reianix_seek_back"
@@ -2616,7 +2623,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         centerControls.addView(playPauseButton, weightParams(84))
 
-        val nextButton = actionButton("+10", 70) { seekBy(10_000L, "+10s") }.apply {
+        val nextButton = actionButton("+10", 70) { seekBy(10_000L) }.apply {
             contentDescription = "Avançar 10 segundos"
         }
         nextButton.tag = "reianix_seek_forward"
@@ -2672,7 +2679,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         val target = player.duration * seekBar.progress.toLong() / SEEK_PROGRESS_MAX
                         player.seekTo(target.coerceIn(0L, player.duration))
                         saveProgress("player_progress", force = true)
-                        showFeedback(formatTime(target))
                     } finally {
                         setSeekScrubActive(false)
                     }
@@ -2690,14 +2696,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
             gravity = Gravity.CENTER
         }
         val skipOpening = actionButton("Pular abertura", 132) {
-            localMetadata.opening?.let { seekToMarker(it.endMs, "Abertura pulada") }
+            localMetadata.opening?.let { seekToMarker(it.endMs) }
         }.apply {
             tag = "reianix_skip_opening"
             visibility = View.GONE
             contentDescription = "Pular abertura"
         }
         val skipEnding = actionButton("Pular encerramento", 150) {
-            localMetadata.ending?.let { seekToMarker(it.endMs, "Encerramento pulado") }
+            localMetadata.ending?.let { seekToMarker(it.endMs) }
         }.apply {
             tag = "reianix_skip_ending"
             visibility = View.GONE
@@ -2737,7 +2743,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             if (::player.isInitialized && !episodeChangePending) {
                                 player.seekTo(0L)
                                 saveProgress("player_progress", force = true)
-                                showFeedback("00:00")
                             }
                         },
                         onMarkers = { showLocalMetadataEditor() },
@@ -2747,14 +2752,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onAutoplayChanged = { enabled ->
                             autoplayNext = enabled
                             persistCanonicalPlayerSetting("player.autoplay_next", enabled.toString())
-                            showFeedback(if (enabled) "Autoplay ligado" else "Autoplay desligado")
                             touchControls()
                             syncComposePlayerUiState()
                         },
                         onGesturesChanged = { enabled ->
                             horizontalSeekEnabled = enabled
                             persistCanonicalPlayerSetting("gestures.horizontal_seek", enabled.toString())
-                            showFeedback(if (enabled) "Gestos horizontais ligados" else "Gestos horizontais desligados")
                             touchControls()
                             syncComposePlayerUiState()
                         },
@@ -2763,7 +2766,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             brightnessGesturesEnabled = enabled
                             persistCanonicalPlayerSetting("gestures.volume", enabled.toString())
                             persistCanonicalPlayerSetting("gestures.brightness", enabled.toString())
-                            showFeedback(if (enabled) "Gestos de brilho e volume ligados" else "Gestos de brilho e volume desligados")
                             touchControls()
                             syncComposePlayerUiState()
                         },
@@ -2771,21 +2773,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             zoomEnabled = enabled
                             persistCanonicalPlayerSetting("player.zoom_enabled", enabled.toString())
                             if (!enabled) findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
-                            showFeedback(if (enabled) "Zoom ligado" else "Zoom desligado")
                             touchControls()
                             syncComposePlayerUiState()
                         },
                         onDoubleTapChanged = { enabled ->
                             doubleTapEnabled = enabled
                             persistCanonicalPlayerSetting("gestures.double_tap", enabled.toString())
-                            showFeedback(if (enabled) "Double tap ligado" else "Double tap desligado")
                             touchControls()
                             syncComposePlayerUiState()
                         },
                         onLongPressChanged = { enabled ->
                             longPressEnabled = enabled
                             persistCanonicalPlayerSetting("gestures.long_press", enabled.toString())
-                            showFeedback(if (enabled) "Pressão longa ligada" else "Pressão longa desligada")
                             touchControls()
                             syncComposePlayerUiState()
                         },
@@ -2913,11 +2912,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         state = composePlayerUiState.value,
                         seekSeconds = (effectiveSeekMs / 1_000L).coerceAtLeast(1L),
                         onPlayPause = { togglePlayPause() },
-                        onSeekRelative = { deltaMs ->
-                            val seconds = deltaMs / 1000L
-                            val label = if (seconds < 0L) "−" + (-seconds) + "s" else "+" + seconds + "s"
-                            seekBy(deltaMs, label)
-                        },
+                        onSeekRelative = { seekBy(it) },
                     )
                 }
             }
@@ -2938,7 +2933,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 val safeTarget = targetMs.coerceIn(0L, duration)
                                 player.seekTo(safeTarget)
                                 saveProgress("player_progress", force = true)
-                                showFeedback(formatTime(safeTarget))
                                 touchControls()
                             }
                         },
@@ -3401,7 +3395,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 persistCanonicalPlayerSetting("player.default_speed", speeds[which].toString())
                 button.text = labels[which]
                 button.isSelected = true
-                showFeedback(labels[which])
                 touchControls()
                 syncComposePlayerUiState()
                 dialog.dismiss()
@@ -3492,7 +3485,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
             isSelected = isFill
         }
         persistCanonicalPlayerSetting("player.aspect_ratio", settingValue)
-        showFeedback(aspectModeLabel)
         touchControls()
         playerView.requestLayout()
         syncComposePlayerUiState()
@@ -3879,7 +3871,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .create().also { showPlayerMenuDialog(it) }
     }
 
-    private fun seekBy(deltaMs: Long, feedbackText: String) {
+    private fun seekBy(deltaMs: Long, touchX: Float? = null, touchY: Float? = null) {
         if (episodeChangePending) {
             logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
@@ -3894,8 +3886,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // Relative seek gestures are frequent; the authoritative checkpoints remain
         // pause/completion/exit plus the periodic progress reporter.
         saveProgress("player_progress")
-        showFeedback(feedbackText)
-        touchControls()
+        relativeSeekOverlay.showSeek(deltaMs, touchX, touchY)
+        if (touchX == null || controlsVisible) touchControls()
     }
 
     private fun showFeedback(message: String, durationMs: Long = 900L) {
@@ -4003,7 +3995,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (!locked) touchControls()
     }
 
-    private fun setLocked(value: Boolean, persist: Boolean = true, announce: Boolean = true) {
+    private fun setLocked(value: Boolean, persist: Boolean = true) {
         if (value) seekScrubVisibility.update(false)
         locked = value
         if (persist) {
@@ -4033,7 +4025,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         updateLockUi()
         syncComposePlayerUiState()
-        if (announce) showFeedback(if (locked) "Player bloqueado" else "Player desbloqueado")
     }
 
     private fun updateLockUi() {
@@ -4262,7 +4253,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         invalidateTransition("player_error")
         // A fatal playback error takes precedence over the floating menu.
         setMorePanelVisible(false)
-        setLocked(false, persist = true, announce = false)
+        setLocked(false, persist = true)
         errorVisible = true
         if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
         if (::player.isInitialized) player.pause()
@@ -4654,6 +4645,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         transitionSourceDirection = requestEvent("NEXT", "PREVIOUS")
         transitionSourceMonotonicNs = monotonicNs
         episodeChangePending = true
+        if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.reset()
         setTransitionPhase(TransitionPhase.REQUESTED, "request_accepted")
         nextTransitionActive = isNextRequest
         previousTransitionActive = isPreviousRequest
@@ -4663,7 +4655,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(episodeChangeTimeout)
         armEpisodeChangeTimeout("request_episode")
         updateEpisodeNavigationButtons()
-        showFeedback(if (isNextRequest) "Próximo…" else "Anterior…", 1400L)
 
         if (!completionReported) {
             saveProgress("player_progress", force = true)
@@ -5258,6 +5249,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onPause() {
+        if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.reset()
         dismissFavoriteSceneUi()
 
 
@@ -5525,7 +5517,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (::player.isInitialized && !episodeChangePending && !locked) {
                 currentSkipSegments(player.duration).firstOrNull {
                     player.currentPosition in it.startMs until it.endMs
-                }?.let { segment -> seekToMarker(segment.endMs, segment.label) }
+                }?.let { segment -> seekToMarker(segment.endMs) }
             }
         }.apply {
             tag = "reianix_smart_skip"
@@ -5981,7 +5973,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", "8")
                         persistCanonicalPlayerSetting("audio.subtitle_embedded_style", "true")
                         applySubtitlePreferences()
-                        showFeedback("Legendas restauradas")
                     }
                 }
             }
@@ -6008,7 +5999,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         playerView.videoSurfaceView?.visibility = if (enabled) View.INVISIBLE else View.VISIBLE
         updatePictureInPictureParams()
-        showFeedback(if (enabled) "Somente áudio • tela pode ser apagada" else "Vídeo ativado")
         syncComposePlayerUiState()
         touchControls()
     }
@@ -6053,12 +6043,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (ending != null && position >= ending.startMs && position < ending.endMs) View.VISIBLE else View.GONE
     }
 
-    private fun seekToMarker(targetMs: Long, feedbackText: String) {
+    private fun seekToMarker(targetMs: Long) {
         if (!::player.isInitialized || player.duration <= 0L) return
         val safeTarget = targetMs.coerceIn(0L, player.duration)
         player.seekTo(safeTarget)
         saveProgress("player_progress", force = true)
-        showFeedback(feedbackText)
         touchControls()
     }
 
@@ -6106,7 +6095,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             })
             localMetadata.notes.filterNot { it.favorite }.sortedBy { it.timestampMs }.forEach { note ->
                 val item = actionButton(formatTime(note.timestampMs) + " • " + (if (note.favorite) "★ " else "") + note.text, 260) {
-                    seekToMarker(note.timestampMs, formatTime(note.timestampMs))
+                    seekToMarker(note.timestampMs)
                 }
                 item.gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 item.setOnLongClickListener {
@@ -6116,7 +6105,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         showFeedback("Não foi possível excluir a nota")
                         return@setOnLongClickListener true
                     }
-                    showFeedback("Nota removida")
                     showLocalMetadataEditor()
                     true
                 }
@@ -6166,7 +6154,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     return@setPositiveButton
                 }
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
-                showFeedback("Marcadores salvos")
             }
             .create().also { showPlayerMenuDialog(it) }
     }
@@ -6194,7 +6181,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         input.text?.toString().orEmpty(),
                     )
                     updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
-                    showFeedback("Nota salva")
                 } catch (_: Exception) {
                     showFeedback("Não foi possível salvar a nota")
                 }
@@ -6580,12 +6566,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     when (PlayerGesturePolicy.side(event.x, width)) {
                         PlayerGesturePolicy.Side.LEFT -> {
                             logPlayer("PLAYER_DOUBLE_TAP side=left requestId=" + requestId.ifEmpty { "-" })
-                            seekBy(-effectiveSeekMs, "−" + (effectiveSeekMs / 1000L) + "s")
+                            seekBy(-effectiveSeekMs, event.x, event.y)
                         }
 
                         PlayerGesturePolicy.Side.RIGHT -> {
                             logPlayer("PLAYER_DOUBLE_TAP side=right requestId=" + requestId.ifEmpty { "-" })
-                            seekBy(effectiveSeekMs, "+" + (effectiveSeekMs / 1000L) + "s")
+                            seekBy(effectiveSeekMs, event.x, event.y)
                         }
 
                         PlayerGesturePolicy.Side.CENTER -> {
@@ -6871,7 +6857,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 val target = horizontalSeekTargetMs.coerceIn(0L, player.duration)
                                 player.seekTo(target)
                                 saveProgress("player_progress")
-                                showFeedback("Ir para " + formatTime(target))
                                 logPlayer("GESTURE_END type=horizontal_seek positionMs=" + target + " requestId=" + requestId.ifEmpty { "-" })
                                 touchControls()
                             }
@@ -7000,6 +6985,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         fun cancelInteractions() {
+            if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.reset()
             zoomAnimator?.cancel()
             zoomAnimator = null
             setFillSnapVisible(false)
