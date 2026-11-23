@@ -3945,8 +3945,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
                         if (trackType == C.TRACK_TYPE_AUDIO) {
                             activeAnimePreferences = activeAnimePreferences?.copy(audioTrack = choice)
+                            preferredAudioLanguage = choice.language
                         } else {
                             activeAnimePreferences = activeAnimePreferences?.copy(subtitleTrack = choice)
+                            preferredSubtitleLanguage = choice.language
+                            subtitleMode = when (choice.mode) {
+                                "off" -> "never"
+                                "selected" -> "always"
+                                else -> "auto"
+                            }
                         }
                         persistAnimePreferences()
                     }
@@ -4229,6 +4236,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
         val requestedUri = uri
+        setMorePanelVisible(false)
         val positionMs = player.currentPosition.coerceAtLeast(0L)
         val generation = playerGeneration
         val name = "ReiAnix_${System.currentTimeMillis()}.jpg"
@@ -4307,6 +4315,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             showFeedback("Abra um episódio vinculado a um anime para usar esta opção")
             return
         }
+        // Prevent an older in-flight configuration read from overwriting the
+        // opt-in choice made explicitly from the open menu.
+        captionRevision++
         activeAnimePreferences = snapshotCurrentAnimePreferences()
         persistAnimePreferences()
         showFeedback("Preferências deste anime ativadas")
