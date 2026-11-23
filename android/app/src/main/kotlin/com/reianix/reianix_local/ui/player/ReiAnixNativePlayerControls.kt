@@ -265,9 +265,11 @@ fun ReiAnixNativePlayerCenterControls(
         ) {
             val seekDistance = if (landscape) maxWidth * dimensions.landscapeSeekOffsetFraction
                 else ((maxWidth - dimensions.seekButtonSize) / 2).coerceAtLeast(0.dp)
-            val seekSize = if (landscape) dimensions.landscapeSeekIconSize(maxWidth.value).dp else dimensions.seekIconSize
-            val playSize = if (landscape) (maxWidth * 0.105f).coerceIn(dimensions.playIconSize, 96.dp)
+            val seekTouchSize = if (landscape) dimensions.landscapeSeekIconSize(maxWidth.value).dp else dimensions.seekIconSize
+            val playTouchSize = if (landscape) (maxWidth * 0.105f).coerceIn(dimensions.playIconSize, 96.dp)
                 else dimensions.playIconSize
+            val seekSize = if (landscape) dimensions.landscapeSeekGlyphSize else dimensions.seekIconSize
+            val playSize = if (landscape) dimensions.landscapePlayGlyphSize else dimensions.playIconSize
             // Round ONCE, then mirror the same pixel offset in both directions.
             // Independent Dp rounding of +x and -x can differ by one pixel.
             val seekDistancePx = with(LocalDensity.current) { seekDistance.roundToPx() }
@@ -282,6 +284,8 @@ fun ReiAnixNativePlayerCenterControls(
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
                     iconSize = seekSize,
+                    touchSize = seekTouchSize,
+                    landscape = landscape,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
@@ -292,14 +296,14 @@ fun ReiAnixNativePlayerCenterControls(
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
-                    modifier = Modifier.size(maxOf(dimensions.centerButtonContainerSize, playSize)),
+                    modifier = Modifier.size(maxOf(dimensions.centerButtonContainerSize, playTouchSize)),
                     contentAlignment = Alignment.Center,
                 ) {
                     IconButton(
                         onClick = onPlayPause,
                         enabled = !state.episodeTransitionInProgress,
                         modifier = Modifier
-                            .size(maxOf(dimensions.centerButtonSize, playSize))
+                            .size(maxOf(dimensions.centerButtonSize, playTouchSize))
                             .semantics {
                                 contentDescription = when {
                                     state.episodeTransitionInProgress -> "Aguarde a troca de episódio"
@@ -370,6 +374,8 @@ fun ReiAnixNativePlayerCenterControls(
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
                     iconSize = seekSize,
+                    touchSize = seekTouchSize,
+                    landscape = landscape,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
@@ -384,6 +390,8 @@ private fun PlayerSeekIconButton(
     description: String,
     forward: Boolean,
     iconSize: androidx.compose.ui.unit.Dp,
+    touchSize: androidx.compose.ui.unit.Dp,
+    landscape: Boolean,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
@@ -391,7 +399,7 @@ private fun PlayerSeekIconButton(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier
-            .size(maxOf(ReiAnixTokens.PlayerDimensions.seekButtonSize, iconSize))
+            .size(maxOf(ReiAnixTokens.PlayerDimensions.seekButtonSize, touchSize))
             .semantics {
                 contentDescription = description
                 stateDescription = if (enabled) "Habilitado" else "Desabilitado"
@@ -412,8 +420,10 @@ private fun PlayerSeekIconButton(
             Text(
                 text = seconds.toString(),
                 style = ReiAnixTokens.TypographyTokens.chip.copy(
-                    fontSize = (iconSize.value * 0.25f).sp,
-                    lineHeight = (iconSize.value * 0.30f).sp,
+                    fontSize = if (landscape) ReiAnixTokens.PlayerDimensions.landscapeSeekCounterSize else 10.sp,
+                    lineHeight = if (landscape) 22.sp else 12.sp,
+                    fontWeight = if (landscape) androidx.compose.ui.text.font.FontWeight.Bold else
+                        ReiAnixTokens.TypographyTokens.chip.fontWeight,
                 ),
                 color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.align(Alignment.Center),

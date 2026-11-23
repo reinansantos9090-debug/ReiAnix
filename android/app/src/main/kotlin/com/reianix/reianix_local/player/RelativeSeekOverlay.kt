@@ -114,7 +114,7 @@ internal class RelativeSeekOverlay(
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val distance = if (landscape) (width * dimensions.landscapeSeekOffsetFraction).roundToInt()
             else ((controlsWidth - 2 * sidePadding - touchSize) / 2f).coerceAtLeast(0f).roundToInt()
-        val iconSize = if (landscape) dimensions.landscapeSeekIconSize(width / density)
+        val iconSize = if (landscape) dimensions.landscapeSeekGlyphSize.value
             else dimensions.seekIconSize.value
         val circleSize = (iconSize * density).roundToInt()
         val centerX = width / 2f + if (forward) distance else -distance
@@ -131,7 +131,9 @@ internal class RelativeSeekOverlay(
 
         paint.color = Color.WHITE
         paint.alpha = alpha
-        paint.textSize = iconSize * 0.25f * resources.displayMetrics.scaledDensity
+        val counterSize = if (landscape) dimensions.landscapeSeekCounterSize.value else 10f
+        paint.typeface = if (landscape) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        paint.textSize = counterSize * resources.displayMetrics.scaledDensity
         paint.textSize *= minOf(1f, circleSize * 0.46f / paint.measureText(label))
         paint.textAlign = Paint.Align.CENTER
         canvas.drawText(label, centerX, centerY - (paint.ascent() + paint.descent()) / 2f, paint)
