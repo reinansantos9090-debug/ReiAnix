@@ -129,6 +129,7 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var composeCenterView: ComposeView
     private lateinit var composeBottomView: ComposeView
     private val composePlayerUiState = mutableStateOf(ReiAnixNativePlayerUiState())
+    private val accumulatedSeekSeconds = mutableStateOf(0L)
     private val optionsPanelResetSignal = mutableStateOf(0)
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
@@ -2444,7 +2445,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         )
-        relativeSeekOverlay = RelativeSeekOverlay(this)
+        relativeSeekOverlay = RelativeSeekOverlay(this) { accumulatedSeekSeconds.value = it }
         root.addView(
             relativeSeekOverlay,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
@@ -2913,6 +2914,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         seekSeconds = (effectiveSeekMs / 1_000L).coerceAtLeast(1L),
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { seekBy(it) },
+                        accumulatedSeekSeconds = accumulatedSeekSeconds.value,
                     )
                 }
             }
@@ -3083,6 +3085,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             favoriteClipSourceDurationMs = favoriteClipSession?.takeUnless { it.restoring }?.sourceDurationMs ?: 0L,
         )
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
+        if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.showCircle = !unlockedOverlaysVisible
         val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
         if (::composeTopView.isInitialized) composeTopView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
         if (::composeCenterView.isInitialized) composeCenterView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
