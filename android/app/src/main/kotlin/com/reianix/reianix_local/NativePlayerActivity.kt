@@ -1918,10 +1918,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (isPlaying) {
                     scheduleControlsHide()
                 } else {
-                    // Pause keeps the controls usable instead of letting a stale
-                    // playback timer hide them after the user pauses.
                     handler.removeCallbacks(controlsHider)
-                    touchControls()
+                    // Buffering temporarily stops playback while playWhenReady
+                    // remains true. Only a pause should reveal hidden controls.
+                    if (!player.playWhenReady) touchControls()
                 }
             }
         }
@@ -2445,7 +2445,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         )
-        relativeSeekOverlay = RelativeSeekOverlay(this) { accumulatedSeekSeconds.value = it }
+        relativeSeekOverlay = RelativeSeekOverlay(this) { seconds ->
+            accumulatedSeekSeconds.value = seconds
+            syncBufferingIndicatorVisibility()
+        }
         root.addView(
             relativeSeekOverlay,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
@@ -3115,7 +3118,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 controlsVisible &&
                 !locked &&
                 !inPictureInPicture
-        preparingIndicator.visibility = if (composeIndicatorVisible) View.GONE else View.VISIBLE
+        val hiddenSeekFeedbackVisible = !controlsVisible && accumulatedSeekSeconds.value != 0L
+        preparingIndicator.visibility =
+            if (composeIndicatorVisible || hiddenSeekFeedbackVisible) View.GONE else View.VISIBLE
     }
 
     private fun setMorePanelVisible(visible: Boolean) {
@@ -3885,11 +3890,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             deltaMs = deltaMs,
             durationMs = player.duration,
         )
+        relativeSeekOverlay.showSeek(deltaMs)
         player.seekTo(target)
         // Relative seek gestures are frequent; the authoritative checkpoints remain
         // pause/completion/exit plus the periodic progress reporter.
         saveProgress("player_progress")
-        relativeSeekOverlay.showSeek(deltaMs)
         if (showControls || controlsVisible) touchControls()
     }
 
@@ -3995,7 +4000,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun scheduleControlsHide() {
-        if (!locked) touchControls()
+        if (controlsVisible && !locked) touchControls()
     }
 
     private fun setLocked(value: Boolean, persist: Boolean = true) {
