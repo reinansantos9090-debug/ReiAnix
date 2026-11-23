@@ -210,14 +210,32 @@ fun NavHostController.navigateToMyList() {
     )
 }
 
+/**
+ * Detail pages are individual history entries even though they use the same
+ * destination pattern. launchSingleTop would replace the previous anime when
+ * opening a recommendation, breaking A -> B -> C -> Back -> B -> A.
+ */
+internal fun shouldPushAnimeDetails(
+    currentRoute: String?,
+    currentAnimeId: String?,
+    requestedAnimeId: String,
+): Boolean = currentRoute != ReiAnixRoutes.DETAILS ||
+    currentAnimeId?.trim() != requestedAnimeId.trim()
+
 fun NavHostController.navigateToDetails(
     animeId: String,
     origin: String,
 ) {
-    navigate(
-        ReiAnixRoutes.details(animeId, origin),
-        navOptions { launchSingleTop = true },
-    )
+    // Ignore a repeated tap on the same *active* anime; otherwise always
+    // push a new entry so each detail screen retains scroll/selected season.
+    if (!shouldPushAnimeDetails(
+            currentRoute = currentDestination?.route,
+            currentAnimeId = currentBackStackEntry?.arguments?.getString(ReiAnixRoutes.ARG_ANIME_ID),
+            requestedAnimeId = animeId,
+        )
+    ) return
+
+    navigate(ReiAnixRoutes.details(animeId, origin))
 }
 
 fun NavHostController.navigateToPlayer(
@@ -230,6 +248,21 @@ fun NavHostController.navigateToPlayer(
         navOptions { launchSingleTop = true },
     )
 }
+
+/**
+ * Details (including AniList) consume the full available viewport instead of
+ * reserving the bottom bar's height. Primary tabs keep their original chrome.
+ */
+internal fun shouldShowReiAnixBottomNavigation(
+    route: String?,
+    selectedBottomRoute: String?,
+    enabled: Boolean,
+): Boolean = enabled &&
+    selectedBottomRoute != null &&
+    route != ReiAnixRoutes.STORAGE &&
+    route != ReiAnixRoutes.TIMELINE &&
+    route != ReiAnixRoutes.DETAILS &&
+    route != ReiAnixRoutes.ANILIST_DETAILS
 
 /**
  * Production entry point wired to the canonical local-library projections.
@@ -403,12 +436,11 @@ fun ReiAnixNavigationHost(
         topLevelDestinations.any { it.route == currentRoute } -> currentRoute
         else -> null
     }
-    val shouldShowBottomNavigation = showBottomNavigation &&
-        currentRoute != ReiAnixRoutes.STORAGE &&
-        currentRoute != ReiAnixRoutes.TIMELINE &&
-        (selectedBottomRoute != null ||
-            currentRoute == ReiAnixRoutes.DETAILS ||
-            currentRoute == ReiAnixRoutes.ANILIST_DETAILS)
+    val shouldShowBottomNavigation = shouldShowReiAnixBottomNavigation(
+        route = currentRoute,
+        selectedBottomRoute = selectedBottomRoute,
+        enabled = showBottomNavigation,
+    )
 
     ReiAnixWallpaperScope(enabled = currentRoute != ReiAnixRoutes.PLAYER && currentRoute != ReiAnixRoutes.RECOVERY) {
     ReiAnixAppShell(
