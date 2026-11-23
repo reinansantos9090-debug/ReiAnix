@@ -3,7 +3,14 @@ package com.reianix.reianix_local.player
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+// JSONObject comes from the Android runtime; use the same JVM runtime as the
+// existing player enhancement and local-metadata tests.
+@RunWith(RobolectricTestRunner::class)
+@Config(application = android.app.Application::class, sdk = [35])
 class PlayerShortcutAndAnimePreferencesTest {
     @Test fun keepsFourCurrentShortcutsByDefault() {
         assertEquals("lock,episodes,next,options", PlayerShortcutPolicy.default.joinToString(",") { it.key })
