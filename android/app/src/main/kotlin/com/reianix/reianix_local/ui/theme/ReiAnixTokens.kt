@@ -302,6 +302,8 @@ object ReiAnixTokens {
         // Larger glyph for the 10-second circular seek controls; the 60.dp
         // IconButton hit target remains independent of this visual size.
         val seekIconSize = 40.dp
+        const val landscapeSeekOffsetFraction = 0.25f
+        fun landscapeSeekIconSize(widthDp: Float): Float = (widthDp * 0.09f).coerceIn(40f, 88f)
         val centerButtonContainerSize = 76.dp
         val centerButtonSize = 68.dp
         val bufferingIndicatorSize = 32.dp

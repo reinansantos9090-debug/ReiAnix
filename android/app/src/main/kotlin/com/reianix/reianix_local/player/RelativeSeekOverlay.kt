@@ -6,6 +6,7 @@ import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -25,7 +26,6 @@ internal class RelativeSeekOverlay(
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val curvedEdge = Path()
     private val circle = requireNotNull(ContextCompat.getDrawable(context, R.drawable.ic_player_seek_circle)).mutate()
-    private val circleSize = (ReiAnixTokens.PlayerDimensions.seekIconSize.value * density).roundToInt()
     var showCircle = true
         set(value) {
             if (field == value) return
@@ -111,8 +111,12 @@ internal class RelativeSeekOverlay(
         val controlsWidth = minOf(width.toFloat(), dimensions.centerControlsMaxWidth.value * density)
         val sidePadding = (dimensions.centerHorizontalPadding.value * density).roundToInt()
         val touchSize = (dimensions.seekButtonSize.value * density).roundToInt()
-        val distance = ((controlsWidth - 2 * sidePadding - touchSize) / 2f)
-            .coerceAtLeast(0f).roundToInt()
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val distance = if (landscape) (width * dimensions.landscapeSeekOffsetFraction).roundToInt()
+            else ((controlsWidth - 2 * sidePadding - touchSize) / 2f).coerceAtLeast(0f).roundToInt()
+        val iconSize = if (landscape) dimensions.landscapeSeekIconSize(width / density)
+            else dimensions.seekIconSize.value
+        val circleSize = (iconSize * density).roundToInt()
         val centerX = width / 2f + if (forward) distance else -distance
         val left = (centerX - circleSize / 2f).roundToInt()
         val top = (centerY - circleSize / 2f).roundToInt()
@@ -127,7 +131,7 @@ internal class RelativeSeekOverlay(
 
         paint.color = Color.WHITE
         paint.alpha = alpha
-        paint.textSize = 10f * resources.displayMetrics.scaledDensity
+        paint.textSize = iconSize * 0.25f * resources.displayMetrics.scaledDensity
         paint.textSize *= minOf(1f, circleSize * 0.46f / paint.measureText(label))
         paint.textAlign = Paint.Align.CENTER
         canvas.drawText(label, centerX, centerY - (paint.ascent() + paint.descent()) / 2f, paint)
