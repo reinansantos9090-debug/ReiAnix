@@ -1995,6 +1995,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (audioGroups == 0) logPlayer("TRACKS_NO_AUDIO requestId=" + requestId.ifEmpty { "-" })
             if (textGroups == 0) logPlayer("TRACKS_NO_SUBTITLE requestId=" + requestId.ifEmpty { "-" })
             applySavedAnimeTrackChoices()
+            if (activeAnimePreferences?.audioOnly == true && !audioOnly && audioGroups > 0) {
+                setAudioOnly(true)
+            }
             captureTrackFormatSummaries()
             updateTrackButtons()
         }
@@ -4373,6 +4376,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         subtitleEmbeddedStyle = setting("audio.subtitle_embedded_style") != "false"
         subtitleColor = setting("audio.subtitle_color").ifBlank { "system" }
         subtitleFont = setting("audio.subtitle_font").ifBlank { "system" }
+        if (audioOnly) setAudioOnly(false)
         applyGlobalTrackPreferences()
         applySubtitlePreferences()
         syncComposePlayerUiState()
