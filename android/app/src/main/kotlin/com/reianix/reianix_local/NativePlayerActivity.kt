@@ -3934,7 +3934,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         }
                     }
-                    player.trackSelectionParameters = builder.build()
                     if (activeAnimePreferences != null) {
                         val format = option.group?.takeIf { option.trackIndex >= 0 }
                             ?.getTrackFormat(option.trackIndex)
@@ -3962,6 +3961,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
                         persistAnimePreferences()
                     }
+                    // Publish the new semantic choice first: onTracksChanged
+                    // must not restore a stale per-anime override in between.
+                    player.trackSelectionParameters = builder.build()
                     updateTrackButtons()
                     captureTrackFormatSummaries()
                     syncComposePlayerUiState()
