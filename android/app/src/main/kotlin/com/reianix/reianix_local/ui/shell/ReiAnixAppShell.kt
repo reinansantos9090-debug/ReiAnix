@@ -145,7 +145,7 @@ private fun ReiAnixBottomNavigation(
                 animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
                     spring(
                         dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMediumHigh,
+                        stiffness = Spring.StiffnessMedium,
                     )
                 } else {
                     snap()
