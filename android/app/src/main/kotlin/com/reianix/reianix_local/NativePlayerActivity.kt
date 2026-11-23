@@ -214,6 +214,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var smartSkipEnabled = true
     private var playerShortcuts = PlayerShortcutPolicy.default
     private var activeAnimePreferences: PlayerAnimePreferences? = null
+    private var activeAnimePreferencesKey: String? = null
     private val animePreferencesMutex = Mutex()
     @Volatile private var animePreferenceWriteVersion = 0L
     private var pendingFrameCapture: File? = null
@@ -958,10 +959,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             favoriteClipSession = null
         }
         super.onNewIntent(newIntent)
+        val previousAnimeKey = currentAnimePreferencesKey()
         setIntent(newIntent)
-        // A reused activity must not carry the previous anime's settings into
-        // the next episode before the canonical per-anime record is resolved.
-        activeAnimePreferences = null
+        // Reuse the in-memory profile for another episode of the SAME anime.
+        // This also avoids reading a stale disk snapshot while an async
+        // preference write from the previous episode is still completing.
+        if (previousAnimeKey != currentAnimePreferencesKey()) {
+            activeAnimePreferences = null
+            activeAnimePreferencesKey = null
+        }
         requestId = incomingRequestId
         originRequestId = incomingOriginRequestId
         originCreatedAtMs = incomingOriginCreatedAtMs
@@ -1122,6 +1128,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         applyGlobalTrackPreferences()
         applyAdvancedTrackConstraints()
         applySubtitlePreferences()
+        activeAnimePreferences?.let(::applySavedAnimePreferences)
         loadCaptionAppearance()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
@@ -4215,6 +4222,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun setSmartSkipEnabled(enabled: Boolean) {
         if (smartSkipEnabled == enabled) return
+        captionRevision++ // An older async preference read may not undo this tap.
         smartSkipEnabled = enabled
         if (!enabled) {
             skipLookupJob?.cancel()
@@ -4326,6 +4334,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // opt-in choice made explicitly from the open menu.
         captionRevision++
         activeAnimePreferences = snapshotCurrentAnimePreferences()
+        activeAnimePreferencesKey = currentAnimePreferencesKey()
         persistAnimePreferences()
         showFeedback("Preferências deste anime ativadas")
     }
@@ -4333,6 +4342,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun resetAnimePreferences() {
         val key = currentAnimePreferencesKey() ?: return
         activeAnimePreferences = null
+        activeAnimePreferencesKey = null
         captionRevision++
         val revision = captionRevision
         val version = ++animePreferenceWriteVersion
@@ -6276,7 +6286,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             subtitleColor = values["audio.subtitle_color"] ?: "system"
             subtitleFont = values["audio.subtitle_font"] ?: "system"
-            activeAnimePreferences = PlayerAnimePreferences.decode(animeKey?.let(values::get))
+            if (activeAnimePreferences == null || activeAnimePreferencesKey != animeKey) {
+                activeAnimePreferences = PlayerAnimePreferences.decode(animeKey?.let(values::get))
+                activeAnimePreferencesKey = animeKey.takeIf { activeAnimePreferences != null }
+            }
             activeAnimePreferences?.let(::applySavedAnimePreferences) ?: applySubtitlePreferences()
             updateSmartSkipButton()
             syncComposePlayerUiState()
