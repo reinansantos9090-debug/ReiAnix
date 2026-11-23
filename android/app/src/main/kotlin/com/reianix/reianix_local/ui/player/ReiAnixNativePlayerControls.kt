@@ -251,19 +251,23 @@ fun ReiAnixNativePlayerCenterControls(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
+        val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val dimensions = ReiAnixTokens.PlayerDimensions
         // Anchor all three actions to the SAME geometric center. The two seek
         // buttons use equal and opposite offsets, independent of screen aspect ratio
         // and independent of the visual shape of the mirrored seek glyph.
         BoxWithConstraints(
             modifier = Modifier
-                .widthIn(max = ReiAnixTokens.PlayerDimensions.centerControlsMaxWidth)
+                .widthIn(max = if (landscape) androidx.compose.ui.unit.Dp.Infinity else dimensions.centerControlsMaxWidth)
                 .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.PlayerDimensions.centerHorizontalPadding),
+                .padding(horizontal = if (landscape) 0.dp else dimensions.centerHorizontalPadding),
             contentAlignment = Alignment.Center,
         ) {
-            val seekDistance =
-                ((maxWidth - ReiAnixTokens.PlayerDimensions.seekButtonSize) / 2)
-                    .coerceAtLeast(0.dp)
+            val seekDistance = if (landscape) maxWidth * dimensions.landscapeSeekOffsetFraction
+                else ((maxWidth - dimensions.seekButtonSize) / 2).coerceAtLeast(0.dp)
+            val seekSize = if (landscape) dimensions.landscapeSeekIconSize(maxWidth.value).dp else dimensions.seekIconSize
+            val playSize = if (landscape) (maxWidth * 0.105f).coerceIn(dimensions.playIconSize, 96.dp)
+                else dimensions.playIconSize
             // Round ONCE, then mirror the same pixel offset in both directions.
             // Independent Dp rounding of +x and -x can differ by one pixel.
             val seekDistancePx = with(LocalDensity.current) { seekDistance.roundToPx() }
@@ -277,6 +281,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = if (accumulatedSeekSeconds < 0) -accumulatedSeekSeconds else seekSeconds,
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
+                    iconSize = seekSize,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
                 )
@@ -287,14 +292,14 @@ fun ReiAnixNativePlayerCenterControls(
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
-                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.centerButtonContainerSize),
+                    modifier = Modifier.size(maxOf(dimensions.centerButtonContainerSize, playSize)),
                     contentAlignment = Alignment.Center,
                 ) {
                     IconButton(
                         onClick = onPlayPause,
                         enabled = !state.episodeTransitionInProgress,
                         modifier = Modifier
-                            .size(ReiAnixTokens.PlayerDimensions.centerButtonSize)
+                            .size(maxOf(dimensions.centerButtonSize, playSize))
                             .semantics {
                                 contentDescription = when {
                                     state.episodeTransitionInProgress -> "Aguarde a troca de episódio"
@@ -322,7 +327,7 @@ fun ReiAnixNativePlayerCenterControls(
                                     } else {
                                         ReiAnixTokens.Colors.playerControl
                                     },
-                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                                    modifier = Modifier.size(playSize),
                                 )
                             }
                             state.isPlaying -> {
@@ -334,7 +339,7 @@ fun ReiAnixNativePlayerCenterControls(
                                     } else {
                                         ReiAnixTokens.Colors.playerControl
                                     },
-                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                                    modifier = Modifier.size(playSize),
                                 )
                             }
                             else -> {
@@ -346,7 +351,7 @@ fun ReiAnixNativePlayerCenterControls(
                                     } else {
                                         ReiAnixTokens.Colors.playerControl
                                     },
-                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.playIconSize),
+                                    modifier = Modifier.size(playSize),
                                 )
                             }
                         }
@@ -364,6 +369,7 @@ fun ReiAnixNativePlayerCenterControls(
                     seconds = if (accumulatedSeekSeconds > 0) accumulatedSeekSeconds else seekSeconds,
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
+                    iconSize = seekSize,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
                 )
@@ -377,6 +383,7 @@ private fun PlayerSeekIconButton(
     seconds: Long,
     description: String,
     forward: Boolean,
+    iconSize: androidx.compose.ui.unit.Dp,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
@@ -384,7 +391,7 @@ private fun PlayerSeekIconButton(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier
-            .size(ReiAnixTokens.PlayerDimensions.seekButtonSize)
+            .size(maxOf(ReiAnixTokens.PlayerDimensions.seekButtonSize, iconSize))
             .semantics {
                 contentDescription = description
                 stateDescription = if (enabled) "Habilitado" else "Desabilitado"
@@ -397,14 +404,17 @@ private fun PlayerSeekIconButton(
                 contentDescription = null,
                 tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier
-                    .size(ReiAnixTokens.PlayerDimensions.seekIconSize)
+                    .size(iconSize)
                     .graphicsLayer {
                         scaleX = if (forward) -1f else 1f
                     },
             )
             Text(
                 text = seconds.toString(),
-                style = ReiAnixTokens.TypographyTokens.chip.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                style = ReiAnixTokens.TypographyTokens.chip.copy(
+                    fontSize = (iconSize.value * 0.25f).sp,
+                    lineHeight = (iconSize.value * 0.30f).sp,
+                ),
                 color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.align(Alignment.Center),
             )
