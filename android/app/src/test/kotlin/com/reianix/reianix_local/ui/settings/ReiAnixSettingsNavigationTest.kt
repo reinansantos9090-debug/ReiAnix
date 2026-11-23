@@ -56,6 +56,14 @@ class ReiAnixSettingsNavigationTest {
         icons.forEach { assertNotEquals(Icons.Filled.Settings, it) }
     }
 
+    @Test fun newlyAddedPlayerPreferencesUseDistinctIcons() {
+        val aniskip = settingsIcon("player.aniskip_enabled")
+        val animePreferences = settingsIcon("player.anime_preferences_enabled")
+        assertNotEquals(Icons.Filled.Settings, aniskip)
+        assertNotEquals(Icons.Filled.Settings, animePreferences)
+        assertNotEquals(aniskip, animePreferences)
+    }
+
     @Test fun immersiveApplicationOptionLivesInGeneralSettings() {
         val general = settingsDestination("Geral")!!
         assertEquals("Modo imersivo", general.entries.first { it.key == "setting:app.immersive" }.title)
