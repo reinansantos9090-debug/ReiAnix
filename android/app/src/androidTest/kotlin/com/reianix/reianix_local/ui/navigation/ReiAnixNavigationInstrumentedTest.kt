@@ -218,25 +218,28 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
-    fun bottomNavigationIsShownOnDetailsButHiddenInPlayer() {
-        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertIsDisplayed()
+    fun bottomNavigationIsHiddenOnDetailsAndPlayerAndRestoredOnBack() {
+        // Item semantics directly identify the bar without relying on a
+        // transient NavHost transition or a separate test-only view.
+        val bottomItem = composeRule.onNodeWithContentDescription("Ajustes")
+        bottomItem.assertIsDisplayed()
 
-        navController.navigateToDetails("42", ReiAnixRoutes.HOME)
+        composeRule.runOnIdle {
+            navController.navigateToDetails("42", ReiAnixRoutes.HOME)
+        }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertIsDisplayed()
+        bottomItem.assertDoesNotExist()
 
-        composeRule.activity.onBackPressedDispatcher.onBackPressed()
+        composeRule.runOnIdle { navController.popBackStack() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertIsDisplayed()
+        bottomItem.assertIsDisplayed()
 
-        navController.navigateToDetails("42", ReiAnixRoutes.HOME)
-        navController.navigateToPlayer("episode-7", "42", ReiAnixRoutes.DETAILS_ORIGIN)
+        composeRule.runOnIdle {
+            navController.navigateToDetails("42", ReiAnixRoutes.HOME)
+            navController.navigateToPlayer("episode-7", "42", ReiAnixRoutes.DETAILS_ORIGIN)
+        }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertIsNotDisplayed()
+        bottomItem.assertDoesNotExist()
     }
 
     @Test
