@@ -127,7 +127,7 @@ internal class RelativeSeekOverlay(
 
         paint.color = Color.WHITE
         paint.alpha = alpha
-        paint.textSize = 10f * resources.displayMetrics.scaledDensity
+        paint.textSize = dimensions.seekNumberSize.value * resources.displayMetrics.scaledDensity
         paint.textSize *= minOf(1f, circleSize * 0.46f / paint.measureText(label))
         paint.textAlign = Paint.Align.CENTER
         canvas.drawText(label, centerX, centerY - (paint.ascent() + paint.descent()) / 2f, paint)

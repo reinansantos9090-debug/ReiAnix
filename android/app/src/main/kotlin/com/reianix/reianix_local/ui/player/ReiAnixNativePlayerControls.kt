@@ -404,7 +404,10 @@ private fun PlayerSeekIconButton(
             )
             Text(
                 text = seconds.toString(),
-                style = ReiAnixTokens.TypographyTokens.chip.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                style = ReiAnixTokens.TypographyTokens.chip.copy(
+                    fontSize = ReiAnixTokens.PlayerDimensions.seekNumberSize,
+                    lineHeight = 15.sp,
+                ),
                 color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.align(Alignment.Center),
             )
