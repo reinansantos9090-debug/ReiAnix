@@ -2800,12 +2800,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
                                     selected.joinToString(",") { it.key },
                                 ))
-                            }.getOrNull() ?: return@ReiAnixNativePlayerOptionsPanel
-                            playerShortcuts = validated
-                            persistCanonicalPlayerSetting(
-                                "player.shortcuts", validated.joinToString(",") { it.key },
-                            )
-                            syncComposePlayerUiState()
+                            }.getOrNull()
+                            if (validated != null) {
+                                playerShortcuts = validated
+                                persistCanonicalPlayerSetting(
+                                    "player.shortcuts", validated.joinToString(",") { it.key },
+                                )
+                                syncComposePlayerUiState()
+                            }
                         },
                         onAnimePreferencesChanged = { enable ->
                             if (enable) enableAnimePreferences() else resetAnimePreferences()
