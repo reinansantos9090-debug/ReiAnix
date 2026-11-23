@@ -845,7 +845,17 @@ fun ReiAnixNativePlayerBottomControls(
                         icon = Icons.Filled.MoreVert,
                         label = "Opções",
                         showLabel = !landscape,
-                        contentDescription = "Mais opções do player",
+                        contentDescription = buildString {
+                            append("Mais opções do player")
+                            state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let {
+                                append(". Velocidade ")
+                                append(String.format(java.util.Locale.ROOT, "%.2gx", it))
+                            }
+                            if (state.aspectLabel.isNotBlank()) {
+                                append(". Proporção ")
+                                append(state.aspectLabel)
+                            }
+                        },
                         onClick = onSource,
                         enabled = !state.episodeTransitionInProgress,
                     )

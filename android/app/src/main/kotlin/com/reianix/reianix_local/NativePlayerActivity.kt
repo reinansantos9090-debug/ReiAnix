@@ -4298,6 +4298,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun currentAnimePreferencesKey(): String? =
         PlayerAnimePreferences.keyFor(intent.getStringExtra("animeId"))
 
+    private fun currentTrackChoice(type: Int): PlayerAnimeTrackChoice {
+        if (!::player.isInitialized) return PlayerAnimeTrackChoice()
+        val params = player.trackSelectionParameters
+        if (type in params.disabledTrackTypes) return PlayerAnimeTrackChoice(mode = "off")
+        for (group in player.currentTracks.groups) {
+            if (group.type != type || !group.isSupported) continue
+            val override = params.overrides[group.mediaTrackGroup] ?: continue
+            val index = override.trackIndices.firstOrNull { index ->
+                index in 0 until group.length && group.isTrackSupported(index)
+            } ?: continue
+            val format = group.getTrackFormat(index)
+            return PlayerAnimeTrackChoice(
+                mode = "selected",
+                language = format.language.orEmpty(),
+                label = format.label.orEmpty(),
+                mimeType = format.sampleMimeType.orEmpty(),
+            )
+        }
+        return PlayerAnimeTrackChoice()
+    }
+
     private fun snapshotCurrentAnimePreferences(): PlayerAnimePreferences {
         val previous = activeAnimePreferences
         return PlayerAnimePreferences(
@@ -4346,7 +4367,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // Prevent an older in-flight configuration read from overwriting the
         // opt-in choice made explicitly from the open menu.
         captionRevision++
-        activeAnimePreferences = snapshotCurrentAnimePreferences()
+        activeAnimePreferences = snapshotCurrentAnimePreferences().copy(
+            // If the user enabled the anime profile AFTER choosing a track,
+            // preserve that current explicit selection from the first save.
+            audioTrack = currentTrackChoice(C.TRACK_TYPE_AUDIO),
+            subtitleTrack = currentTrackChoice(C.TRACK_TYPE_TEXT),
+        )
         activeAnimePreferencesKey = currentAnimePreferencesKey()
         persistAnimePreferences()
         showFeedback("Preferências deste anime ativadas")
