@@ -23,8 +23,8 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(5, five.size)
         assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.TIMER, true))
         assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.OPTIONS, false))
-        assertEquals("lock,episodes,next,options,capture", ReiAnixSettingsContract.normalize("player.shortcuts", five.joinToString(",") { it.key }))
-        assertEquals(listOf(PlayerShortcut.OPTIONS, PlayerShortcut.NEXT),
+        assertEquals("capture,lock,episodes,next,options", ReiAnixSettingsContract.normalize("player.shortcuts", five.joinToString(",") { it.key }))
+        assertEquals(listOf(PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
             PlayerShortcutPolicy.parse("options,next"))
     }
 
@@ -35,9 +35,25 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(PlayerShortcutPolicy.default, PlayerShortcutPolicy.parse("invalid"))
     }
 
+    @Test fun activatingAndDisablingKeepsOptionsLast() {
+        val activated = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAPTURE, true)
+        assertEquals(listOf(PlayerShortcut.CAPTURE, PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), activated)
+        val disabled = PlayerShortcutPolicy.toggle(activated, PlayerShortcut.CAPTURE, false)
+        assertEquals(PlayerShortcutPolicy.default, disabled)
+        assertEquals(activated, PlayerShortcutPolicy.move(activated, PlayerShortcut.OPTIONS, -1))
+        assertEquals("next,options", PlayerShortcutPolicy.normalize("options,next"))
+    }
+
     @Test fun movingPreservesIdsAndOrdering() {
         assertEquals(listOf(PlayerShortcut.EPISODES, PlayerShortcut.LOCK, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
             PlayerShortcutPolicy.move(PlayerShortcutPolicy.default, PlayerShortcut.EPISODES, -1))
+    }
+
+    @Test fun featureFlagsAreEnabledByDefaultAndCanBeDisabled() {
+        assertEquals("true", ReiAnixSettingsContract.defaultFor("player.aniskip_enabled"))
+        assertEquals("true", ReiAnixSettingsContract.defaultFor("player.anime_preferences_enabled"))
+        assertEquals("false", ReiAnixSettingsContract.normalize("player.anime_preferences_enabled", "off"))
     }
 
     @Test fun perAnimeSettingsRemainIsolatedAndPreserveTrackIdentity() {

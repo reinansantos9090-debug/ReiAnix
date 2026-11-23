@@ -89,6 +89,7 @@ object ReiAnixSettingsContract {
         int("library.continue_watching_limit", 10, 5, 10, 15, 20),
         bool("player.autoplay_next", true),
         bool("player.aniskip_enabled", true),
+        bool("player.anime_preferences_enabled", true),
         ReiAnixSettingDefinition(
             "player.shortcuts", ReiAnixSettingKind.SHORTCUTS,
             "lock,episodes,next,options",

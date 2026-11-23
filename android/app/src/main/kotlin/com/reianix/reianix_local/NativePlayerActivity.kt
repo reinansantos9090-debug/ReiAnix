@@ -238,7 +238,7 @@ class NativePlayerActivity : FragmentActivity() {
                     }.getOrDefault(false)
                     source.delete()
                     withContext(Dispatchers.Main) {
-                        if (!isDestroyed) showFeedback(if (saved) "Imagem salva" else "Não foi possível salvar a imagem", 1800L)
+                        if (!saved && !isDestroyed) showFeedback("Não foi possível salvar a imagem", 1800L)
                     }
                 }
             }
@@ -2804,9 +2804,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onMarkers = { showLocalMetadataEditor() },
                         onFavoriteScenes = { showFavoriteScenes() },
                         onCaptureFrame = { captureCurrentVideoFrame() },
-                        onSmartSkipChanged = { enabled ->
-                            setSmartSkipEnabled(enabled)
-                        },
                         onShortcutsChanged = { selected ->
                             val validated = runCatching {
                                 PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
@@ -2821,10 +2818,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                 syncComposePlayerUiState()
                             }
                         },
-                        onAnimePreferencesChanged = { enable ->
-                            if (enable) enableAnimePreferences() else resetAnimePreferences()
-                        },
-                        onAnimePreferencesReset = { resetAnimePreferences() },
                         onSubtitleAppearance = { showSubtitleAppearance() },
                         onAudioOnlyChanged = { enabled -> setAudioOnly(enabled) },
                         onAutoplayChanged = { enabled ->
@@ -4259,7 +4252,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val positionMs = player.currentPosition.coerceAtLeast(0L)
         val generation = playerGeneration
         val name = "ReiAnix_${System.currentTimeMillis()}.jpg"
-        showFeedback("Capturando imagem…", 1400L)
         lifecycleScope.launch {
             try {
                 val image = PlayerFrameCapture.capture(applicationContext, requestedUri, positionMs)
@@ -4276,10 +4268,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (Build.VERSION.SDK_INT >= 29) {
                     val saved = PlayerFrameCapture.saveToGallery(applicationContext, image, name)
                     image.delete()
-                    if (!isDestroyed) showFeedback(
-                        if (saved) "Imagem salva em Pictures/ReiAnix" else "Não foi possível salvar a imagem",
-                        1800L,
-                    )
+                    if (!saved && !isDestroyed) showFeedback("Não foi possível salvar a imagem", 1800L)
                 } else {
                     pendingFrameCapture = image
                     runCatching { frameSaveLauncher.launch(name) }.onFailure { error ->
@@ -6124,7 +6113,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
                 },
                 onSaved = {
-                    Toast.makeText(this@NativePlayerActivity, "Cena favorita salva", Toast.LENGTH_SHORT).show()
                     if (revision == favoriteSceneUiRevision) showFavoriteScenes()
                 },
                 onBack = { showFavoriteScenes() },
@@ -6329,13 +6317,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
             // On a same-anime handoff the already-applied in-memory snapshot
             // is more recent than an in-flight SQLite write. Do not apply
             // stale preferences or repeat Media3 track changes unnecessarily.
-            val reuse = activeAnimePreferences != null && activeAnimePreferencesKey == animeKey
+            val autoSaveEnabled = values["player.anime_preferences_enabled"] != "false"
+            val reuse = autoSaveEnabled && animeKey != null &&
+                activeAnimePreferences != null && activeAnimePreferencesKey == animeKey
             if (!reuse) {
                 subtitleColor = values["audio.subtitle_color"] ?: "system"
                 subtitleFont = values["audio.subtitle_font"] ?: "system"
-                activeAnimePreferences = PlayerAnimePreferences.decode(animeKey?.let(values::get))
+                // Disabling per-anime preferences only stops applying/saving:
+                // previously saved per-anime records remain intact in SQLite.
+                val saved = if (autoSaveEnabled) {
+                    PlayerAnimePreferences.decode(animeKey?.let(values::get))
+                } else null
+                activeAnimePreferences = null // Never copy a different anime’s track identity.
+                activeAnimePreferencesKey = null
+                activeAnimePreferences = saved ?: if (autoSaveEnabled && animeKey != null &&
+                    favoriteClipSession == null) snapshotCurrentAnimePreferences() else null
                 activeAnimePreferencesKey = animeKey.takeIf { activeAnimePreferences != null }
-                activeAnimePreferences?.let(::applySavedAnimePreferences) ?: applySubtitlePreferences()
+                // An anime with no saved record starts with global defaults and
+                // acquires its own profile automatically on the first change.
+                saved?.let(::applySavedAnimePreferences) ?: applySubtitlePreferences()
             }
             updateSmartSkipButton()
             syncComposePlayerUiState()

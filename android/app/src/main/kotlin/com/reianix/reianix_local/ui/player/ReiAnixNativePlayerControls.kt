@@ -805,92 +805,99 @@ fun ReiAnixNativePlayerBottomControls(
 
         Spacer(modifier = Modifier.height(timelineSpacerHeight))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = ReiAnixTokens.Spacing.none),
-            horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Defaults retain the original four controls. Only the icons
-            // selected by the user are composed, maximum five total.
-            state.shortcuts.forEach { shortcut ->
-                when (shortcut) {
-                    PlayerShortcut.LOCK -> PlayerBottomAction(
-                        icon = Icons.Filled.Lock,
-                        label = "Bloquear",
-                        showLabel = !landscape,
-                        contentDescription = "Bloquear toques",
-                        onClick = onToggleLock,
-                        enabled = !state.episodeTransitionInProgress,
-                        iconVisualScale = 0.75f,
-                    )
-                    PlayerShortcut.EPISODES -> PlayerBottomAction(
-                        icon = Icons.Filled.PlaylistPlay,
-                        label = "Episódios",
-                        showLabel = !landscape,
-                        contentDescription = "Abrir lista de episódios",
-                        onClick = onResize,
-                        enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
-                    )
-                    PlayerShortcut.NEXT -> PlayerBottomAction(
-                        icon = Icons.Filled.SkipNext,
-                        label = "Próximo episódio",
-                        showLabel = !landscape,
-                        contentDescription = "Próximo episódio",
-                        onClick = onNext,
-                        enabled = state.canNext && !state.episodeTransitionInProgress,
-                    )
-                    PlayerShortcut.OPTIONS -> PlayerBottomAction(
-                        icon = Icons.Filled.MoreVert,
-                        label = "Opções",
-                        showLabel = !landscape,
-                        contentDescription = buildString {
-                            append("Mais opções do player")
-                            state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let {
-                                append(". Velocidade ")
-                                append(String.format(java.util.Locale.ROOT, "%.2gx", it))
-                            }
-                            if (state.aspectLabel.isNotBlank()) {
-                                append(". Proporção ")
-                                append(state.aspectLabel)
-                            }
-                        },
-                        onClick = onSource,
-                        enabled = !state.episodeTransitionInProgress,
-                    )
-                    PlayerShortcut.CAPTURE -> PlayerBottomAction(
-                        icon = Icons.Filled.CameraAlt,
-                        label = "Capturar",
-                        showLabel = !landscape,
-                        contentDescription = "Capturar imagem do vídeo",
-                        onClick = onCaptureFrame,
-                        enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
-                    )
-                    PlayerShortcut.SPEED -> PlayerBottomAction(
-                        icon = Icons.Filled.Speed,
-                        label = "Velocidade",
-                        showLabel = !landscape,
-                        contentDescription = "Alterar velocidade do vídeo",
-                        onClick = onPlaybackSpeed,
-                        enabled = !state.episodeTransitionInProgress,
-                    )
-                    PlayerShortcut.SUBTITLES -> PlayerBottomAction(
-                        icon = Icons.Filled.Subtitles,
-                        label = "Legendas",
-                        showLabel = !landscape,
-                        contentDescription = "Selecionar legendas",
-                        onClick = onSubtitles,
-                        enabled = !state.episodeTransitionInProgress,
-                    )
-                    PlayerShortcut.TIMER -> PlayerBottomAction(
-                        icon = Icons.Filled.Timer,
-                        label = "Temporizador",
-                        showLabel = !landscape,
-                        contentDescription = "Temporizador de reprodução",
-                        onClick = onSleepTimer,
-                        enabled = !state.episodeTransitionInProgress,
-                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            // Preserve the four-icon layout exactly. At five, a symmetric 1/32
+            // width inset keeps the first and final button centers fixed while
+            // distributing all five equally (no icon pushed into the screen edge).
+            val sideInset = if (state.shortcuts.size == PlayerShortcutPolicy.MAX_COUNT) maxWidth / 32 else 0.dp
+            val displayShortcuts = state.shortcuts.filterNot { it == PlayerShortcut.OPTIONS } + PlayerShortcut.OPTIONS
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = sideInset),
+                horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Defaults retain the original four controls. Only the icons
+                // selected by the user are composed, maximum five total.
+                displayShortcuts.forEach { shortcut ->
+                    when (shortcut) {
+                        PlayerShortcut.LOCK -> PlayerBottomAction(
+                            icon = Icons.Filled.Lock,
+                            label = "Bloquear",
+                            showLabel = !landscape,
+                            contentDescription = "Bloquear toques",
+                            onClick = onToggleLock,
+                            enabled = !state.episodeTransitionInProgress,
+                            iconVisualScale = 0.75f,
+                        )
+                        PlayerShortcut.EPISODES -> PlayerBottomAction(
+                            icon = Icons.Filled.PlaylistPlay,
+                            label = "Episódios",
+                            showLabel = !landscape,
+                            contentDescription = "Abrir lista de episódios",
+                            onClick = onResize,
+                            enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.NEXT -> PlayerBottomAction(
+                            icon = Icons.Filled.SkipNext,
+                            label = "Próximo episódio",
+                            showLabel = !landscape,
+                            contentDescription = "Próximo episódio",
+                            onClick = onNext,
+                            enabled = state.canNext && !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.OPTIONS -> PlayerBottomAction(
+                            icon = Icons.Filled.MoreVert,
+                            label = "Opções",
+                            showLabel = !landscape,
+                            contentDescription = buildString {
+                                append("Mais opções do player")
+                                state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let {
+                                    append(". Velocidade ")
+                                    append(String.format(java.util.Locale.ROOT, "%.2gx", it))
+                                }
+                                if (state.aspectLabel.isNotBlank()) {
+                                    append(". Proporção ")
+                                    append(state.aspectLabel)
+                                }
+                            },
+                            onClick = onSource,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.CAPTURE -> PlayerBottomAction(
+                            icon = Icons.Filled.CameraAlt,
+                            label = "Capturar",
+                            showLabel = !landscape,
+                            contentDescription = "Capturar imagem do vídeo",
+                            onClick = onCaptureFrame,
+                            enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.SPEED -> PlayerBottomAction(
+                            icon = Icons.Filled.Speed,
+                            label = "Velocidade",
+                            showLabel = !landscape,
+                            contentDescription = "Alterar velocidade do vídeo",
+                            onClick = onPlaybackSpeed,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.SUBTITLES -> PlayerBottomAction(
+                            icon = Icons.Filled.Subtitles,
+                            label = "Legendas",
+                            showLabel = !landscape,
+                            contentDescription = "Selecionar legendas",
+                            onClick = onSubtitles,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.TIMER -> PlayerBottomAction(
+                            icon = Icons.Filled.Timer,
+                            label = "Temporizador",
+                            showLabel = !landscape,
+                            contentDescription = "Temporizador de reprodução",
+                            onClick = onSleepTimer,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
+                    }
                 }
             }
         }

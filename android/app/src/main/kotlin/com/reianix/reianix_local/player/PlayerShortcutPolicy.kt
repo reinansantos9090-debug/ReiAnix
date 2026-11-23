@@ -36,30 +36,40 @@ object PlayerShortcutPolicy {
         require(options.distinct().size == options.size && PlayerShortcut.OPTIONS in options) {
             "Shortcut configuration must be unique and contain Options"
         }
-        return options.joinToString(",") { it.key }
+        return pinnedOptionsLast(options).joinToString(",") { it.key }
     }
+
+    /** The menu is always the fixed rightmost button, including legacy saved orders. */
+    private fun pinnedOptionsLast(items: List<PlayerShortcut>): List<PlayerShortcut> =
+        items.filterNot { it == PlayerShortcut.OPTIONS } + PlayerShortcut.OPTIONS
 
     fun parse(value: String?): List<PlayerShortcut> = runCatching {
         normalize(value ?: default.joinToString(",") { it.key })
             .split(',').map { key -> PlayerShortcut.entries.first { it.key == key } }
     }.getOrDefault(default)
 
+    /** Enabling a shortcut places it first; the Options slot never moves. */
     fun toggle(current: List<PlayerShortcut>, shortcut: PlayerShortcut, selected: Boolean): List<PlayerShortcut> =
         when {
-            shortcut == PlayerShortcut.OPTIONS -> current
-            selected && shortcut in current -> current
-            selected && current.size < MAX_COUNT -> current + shortcut
-            !selected -> current.filterNot { it == shortcut }
-            else -> current
+            shortcut == PlayerShortcut.OPTIONS -> pinnedOptionsLast(current)
+            selected && shortcut in current -> pinnedOptionsLast(current)
+            selected && current.size < MAX_COUNT -> pinnedOptionsLast(listOf(shortcut) + current)
+            !selected -> pinnedOptionsLast(current.filterNot { it == shortcut })
+            else -> pinnedOptionsLast(current)
         }
 
+    /** Reorder only checked shortcuts; Options is immovable. */
     fun move(current: List<PlayerShortcut>, shortcut: PlayerShortcut, direction: Int): List<PlayerShortcut> {
-        val index = current.indexOf(shortcut)
-        val target = index + direction
-        if (index < 0 || target !in current.indices) return current
-        return current.toMutableList().apply {
-            this[index] = this[target]
-            this[target] = shortcut
+        if (shortcut == PlayerShortcut.OPTIONS || direction !in -1..1 || direction == 0) {
+            return pinnedOptionsLast(current)
         }
+        val movable = current.filterNot { it == PlayerShortcut.OPTIONS }.toMutableList()
+        val index = movable.indexOf(shortcut)
+        val target = index + direction
+        if (index < 0 || target !in movable.indices) return pinnedOptionsLast(current)
+        val displaced = movable[target]
+        movable[target] = shortcut
+        movable[index] = displaced
+        return pinnedOptionsLast(movable)
     }
 }

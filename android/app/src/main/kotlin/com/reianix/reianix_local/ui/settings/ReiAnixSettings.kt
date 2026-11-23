@@ -895,6 +895,24 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "player_playback" -> {
+                    item(key = "setting:player.aniskip_enabled") {
+                        BooleanSettingRow(
+                            keyName = "player.aniskip_enabled",
+                            title = "Detectar abertura e encerramento",
+                            description = "Usa AniSkip quando houver intervalos disponíveis. Marcadores manuais continuam funcionando.",
+                            checked = state.settings["player.aniskip_enabled"] != "false",
+                            onCheckedChange = { onUpdateSetting("player.aniskip_enabled", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.anime_preferences_enabled") {
+                        BooleanSettingRow(
+                            keyName = "player.anime_preferences_enabled",
+                            title = "Configurações individuais por anime",
+                            description = "Salva automaticamente áudio, legendas e outras preferências para cada anime. Desativar mantém os ajustes já salvos.",
+                            checked = state.settings["player.anime_preferences_enabled"] != "false",
+                            onCheckedChange = { onUpdateSetting("player.anime_preferences_enabled", it.toString()) },
+                        )
+                    }
                     item(key = "setting:player.autoplay_next") {
                         BooleanSettingRow(
                             keyName = "player.autoplay_next",
