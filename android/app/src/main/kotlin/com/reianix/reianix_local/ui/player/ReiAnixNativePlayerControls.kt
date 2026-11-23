@@ -812,15 +812,19 @@ fun ReiAnixNativePlayerBottomControls(
         Spacer(modifier = Modifier.height(timelineSpacerHeight))
 
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            // Preserve the four-icon layout exactly. At five, a symmetric 1/32
-            // width inset keeps the first and final button centers fixed while
-            // distributing all five equally (no icon pushed into the screen edge).
-            val sideInset = if (state.shortcuts.size == PlayerShortcutPolicy.MAX_COUNT) maxWidth / 32 else 0.dp
+            // At five, position the whole evenly-spaced row a little further
+            // left so its visual center matches the video area (not the black
+            // side margins). Keep the total insets unchanged, so every slot
+            // retains exactly the same width and center-to-center distance.
+            // The four-shortcut layout is intentionally unchanged.
+            val fiveShortcuts = state.shortcuts.size == PlayerShortcutPolicy.MAX_COUNT
+            val rowStartInset = if (fiveShortcuts) maxWidth / 64 else 0.dp
+            val rowEndInset = if (fiveShortcuts) maxWidth * (3f / 64f) else 0.dp
             val displayShortcuts = state.shortcuts.filterNot { it == PlayerShortcut.OPTIONS } + PlayerShortcut.OPTIONS
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = sideInset),
+                    .padding(start = rowStartInset, end = rowEndInset),
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -877,6 +881,7 @@ fun ReiAnixNativePlayerBottomControls(
                             showLabel = !landscape,
                             contentDescription = "Capturar imagem do vídeo",
                             onClick = onCaptureFrame,
+                            iconVisualScale = if (fiveShortcuts) 0.78f else 1f,
                             enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.SPEED -> PlayerBottomAction(
@@ -884,6 +889,7 @@ fun ReiAnixNativePlayerBottomControls(
                             label = "Velocidade",
                             showLabel = !landscape,
                             contentDescription = "Alterar velocidade do vídeo",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onPlaybackSpeed,
                             enabled = !state.episodeTransitionInProgress,
                         )
@@ -892,6 +898,7 @@ fun ReiAnixNativePlayerBottomControls(
                             label = "Legendas",
                             showLabel = !landscape,
                             contentDescription = "Selecionar legendas",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onSubtitles,
                             enabled = !state.episodeTransitionInProgress,
                         )
@@ -900,6 +907,7 @@ fun ReiAnixNativePlayerBottomControls(
                             label = "Temporizador",
                             showLabel = !landscape,
                             contentDescription = "Temporizador de reprodução",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onSleepTimer,
                             enabled = !state.episodeTransitionInProgress,
                         )

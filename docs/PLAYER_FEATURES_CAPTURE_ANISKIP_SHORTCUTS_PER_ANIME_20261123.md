@@ -29,7 +29,9 @@ Implementação planejada e autorizada em 23/11/2026. Alterações apenas na PR,
 - Ativar insere o atalho no **topo**; desativar devolve-o à lista de inativos.
 - Os atalhos ativos podem ser reorganizados segurando e arrastando; sem setas de subir/descer.
 - **Opções** permanece fixo na última posição (4ª ou 5ª) inclusive com preferências antigas.
-- Os 5 ícones usam células iguais e inset lateral calculado para preservar a posição do último botão; com 4 o layout permanece idêntico ao anterior.
+- Com 5 ícones, os centros permanecem igualmente espaçados e na mesma linha; o conjunto é deslocado para a esquerda com margens assimétricas (1/64 da largura inicial, 3/64 da largura final) para acompanhar a área do vídeo. **Opções** continua na 5ª posição, à direita do grupo.
+- Capturar imagem e os atalhos extras recebem escala visual específica no modo de 5 ícones para não parecerem maiores que os quatro ícones já aprovados.
+- Com 4 atalhos, dimensões, margens, escalas e ordem continuam exatamente como antes.
 - Sem mexer no centro, seekbar ou no player.
 - Persistência na linha canônica `player.shortcuts` com validação de IDs
   sem duplicação, teto de 5 e menu sempre acessível.
@@ -57,7 +59,7 @@ Implementação planejada e autorizada em 23/11/2026. Alterações apenas na PR,
 
 ## Validação essencial em aparelho
 
-1. Começar com quatro botões e ativar quinto; verificar alinhamento igual, mesmo tamanho e Opções fixo na direita.
+1. Começar com quatro botões (sem alteração visual), ativar quinto e verificar centros igualmente espaçados, escala da câmera normalizada, alinhamento horizontal, deslocamento leve do grupo à esquerda e Opções como 5º ícone à direita.
 2. Retirar um botão (exceto Opções), ativar outro (vai ao topo), arrastar para trocar a ordem, fechar/reabrir e confirmar persistência.
 3. Desligar AniSkip nas configurações, reabrir o player e confirmar que marcador remoto desaparece e o manual segue disponível.
 4. Capturar imagem durante reprodução local e conferir JPG na galeria sem os controles.
