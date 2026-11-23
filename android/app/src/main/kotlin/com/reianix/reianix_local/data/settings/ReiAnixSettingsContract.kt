@@ -6,7 +6,7 @@ package com.reianix.reianix_local.data.settings
  * for backward compatibility; this schema supplies type validation at the
  * Kotlin boundary without changing the database format.
  */
-enum class ReiAnixSettingKind { BOOLEAN, INTEGER, DECIMAL, ENUM, LANGUAGE }
+enum class ReiAnixSettingKind { BOOLEAN, INTEGER, DECIMAL, ENUM, LANGUAGE, SHORTCUTS }
 
 data class ReiAnixSettingDefinition(
     val key: String,
@@ -48,6 +48,8 @@ data class ReiAnixSettingDefinition(
                 require(value in choices) { "Unsupported option for $key" }
                 value
             }
+            ReiAnixSettingKind.SHORTCUTS ->
+                com.reianix.reianix_local.player.PlayerShortcutPolicy.normalize(value)
             ReiAnixSettingKind.LANGUAGE -> {
                 require(value.length <= 32 && (value.isEmpty() ||
                     Regex("[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*").matches(value))) {
@@ -86,6 +88,11 @@ object ReiAnixSettingsContract {
         bool("library.continue_watching", true),
         int("library.continue_watching_limit", 10, 5, 10, 15, 20),
         bool("player.autoplay_next", true),
+        bool("player.aniskip_enabled", true),
+        ReiAnixSettingDefinition(
+            "player.shortcuts", ReiAnixSettingKind.SHORTCUTS,
+            "lock,episodes,next,options",
+        ),
         bool("player.resume", true),
         bool("player.smart_resume", false),
         decimal("player.default_speed", "1.0", "0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0"),
