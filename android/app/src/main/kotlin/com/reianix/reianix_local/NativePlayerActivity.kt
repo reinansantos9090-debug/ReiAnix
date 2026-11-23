@@ -2918,6 +2918,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { seekBy(it) },
                         accumulatedSeekSeconds = accumulatedSeekSeconds.value,
+                        onSeekIconPositioned = relativeSeekOverlay::updateIconCenter,
                     )
                 }
             }

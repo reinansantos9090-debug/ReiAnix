@@ -73,6 +73,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -246,6 +247,7 @@ fun ReiAnixNativePlayerCenterControls(
     onPlayPause: () -> Unit,
     onSeekRelative: (Long) -> Unit,
     accumulatedSeekSeconds: Long = 0L,
+    onSeekIconPositioned: (Boolean, Offset) -> Unit = { _, _ -> },
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -288,6 +290,7 @@ fun ReiAnixNativePlayerCenterControls(
                     landscape = landscape,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(-seekSeconds * 1_000L) },
+                    onIconPositioned = onSeekIconPositioned,
                 )
             }
 
@@ -378,6 +381,7 @@ fun ReiAnixNativePlayerCenterControls(
                     landscape = landscape,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { onSeekRelative(seekSeconds * 1_000L) },
+                    onIconPositioned = onSeekIconPositioned,
                 )
             }
         }
@@ -394,6 +398,7 @@ private fun PlayerSeekIconButton(
     landscape: Boolean,
     enabled: Boolean = true,
     onClick: () -> Unit,
+    onIconPositioned: (Boolean, Offset) -> Unit,
 ) {
     IconButton(
         onClick = onClick,
@@ -413,6 +418,13 @@ private fun PlayerSeekIconButton(
                 tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier
                     .size(iconSize)
+                    .onGloballyPositioned { coordinates ->
+                        val center = Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)
+                        val windowCenter = coordinates.localToWindow(center)
+                        if (windowCenter.x.isFinite() && windowCenter.y.isFinite()) {
+                            onIconPositioned(forward, windowCenter)
+                        }
+                    }
                     .graphicsLayer {
                         scaleX = if (forward) -1f else 1f
                     },
