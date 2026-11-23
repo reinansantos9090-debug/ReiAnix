@@ -3,8 +3,10 @@ package com.reianix.reianix_local.player
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
 import kotlin.math.hypot
@@ -13,6 +15,7 @@ import kotlin.math.hypot
 internal class RelativeSeekOverlay(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val curvedEdge = Path()
     private val triangle = Path()
     private var totalMs = 0L
@@ -47,6 +50,18 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         visibility = INVISIBLE
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w > 0 && w != oldw) {
+            backgroundPaint.shader = LinearGradient(
+                0f, 0f, w * PANEL_WIDTH_FRACTION, 0f,
+                intArrayOf(0x52000000, 0x42000000, Color.TRANSPARENT),
+                floatArrayOf(0f, 0.5f, 0.9f),
+                Shader.TileMode.CLAMP,
+            )
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         val now = SystemClock.uptimeMillis()
         val sinceSeek = now - lastSeekAt
@@ -56,7 +71,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         }
 
         val forward = totalMs > 0
-        val panelWidth = width * 0.35f
+        val panelWidth = width * PANEL_WIDTH_FRACTION
         val centerX = if (forward) width - panelWidth / 2f else panelWidth / 2f
         val centerY = height / 2f
 
@@ -71,8 +86,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         curvedEdge.quadTo(panelWidth * 1.1f, centerY, panelWidth * 0.9f, height.toFloat())
         curvedEdge.lineTo(0f, height.toFloat())
         curvedEdge.close()
-        paint.color = 0x33FFFFFF
-        canvas.drawPath(curvedEdge, paint)
+        canvas.drawPath(curvedEdge, backgroundPaint)
         canvas.clipPath(curvedEdge)
         if (sinceSeek < RIPPLE_MS) {
             val progress = sinceSeek.toFloat() / RIPPLE_MS
@@ -110,6 +124,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
     }
 
     private companion object {
+        const val PANEL_WIDTH_FRACTION = 0.35f
         const val VISIBLE_MS = 750L
         const val RIPPLE_MS = 300L
         const val ARROW_STEP_MS = 150L
