@@ -1,25 +1,39 @@
 package com.reianix.reianix_local.player
 
+import androidx.core.content.ContextCompat
+import com.reianix.reianix_local.R
+import com.reianix.reianix_local.ui.theme.ReiAnixTokens
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
-import kotlin.math.hypot
 
 /** Draws short-lived relative seek feedback without intercepting player input. */
-internal class RelativeSeekOverlay(context: Context) : View(context) {
+internal class RelativeSeekOverlay(
+    context: Context,
+    private val onSecondsChanged: (Long) -> Unit,
+) : View(context) {
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val curvedEdge = Path()
-    private val triangle = Path()
+    private val circle = requireNotNull(ContextCompat.getDrawable(context, R.drawable.ic_player_seek_circle)).mutate()
+    private val circleSize = (ReiAnixTokens.PlayerDimensions.seekIconSize.value * density).roundToInt()
+    var showCircle = true
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
     private var totalMs = 0L
-    private var startedAt = 0L
     private var lastSeekAt = 0L
-    private var rippleX: Float? = null
-    private var rippleY: Float? = null
     private var label = ""
 
     init {
@@ -27,24 +41,36 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         visibility = INVISIBLE
     }
 
-    fun showSeek(deltaMs: Long, touchX: Float?, touchY: Float?) {
+    fun showSeek(deltaMs: Long) {
         val now = SystemClock.uptimeMillis()
         if (now - lastSeekAt >= VISIBLE_MS || (deltaMs > 0) != (totalMs > 0) || totalMs == 0L) {
-            startedAt = now
             totalMs = 0L
         }
         totalMs += deltaMs
-        label = if (totalMs > 0) "+${totalMs / 1_000L} s" else "−${-totalMs / 1_000L} s"
+        val totalSeconds = totalMs / 1_000L
+        label = abs(totalSeconds).toString()
+        onSecondsChanged(totalSeconds)
         lastSeekAt = now
-        rippleX = touchX
-        rippleY = touchY
         visibility = VISIBLE
         invalidate()
     }
 
     fun reset() {
+        if (totalMs != 0L) onSecondsChanged(0L)
         totalMs = 0L
         visibility = INVISIBLE
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w > 0 && w != oldw) {
+            backgroundPaint.shader = LinearGradient(
+                0f, 0f, w * PANEL_WIDTH_FRACTION, 0f,
+                intArrayOf(0x52000000, 0x42000000, Color.TRANSPARENT),
+                floatArrayOf(0f, 0.5f, 0.9f),
+                Shader.TileMode.CLAMP,
+            )
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -55,9 +81,10 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
             return
         }
 
+        val remainingFraction = ((VISIBLE_MS - sinceSeek).toFloat() / FADE_MS).coerceAtMost(1f)
+        val opacity = remainingFraction * remainingFraction * (3f - 2f * remainingFraction)
         val forward = totalMs > 0
-        val panelWidth = width * 0.35f
-        val centerX = if (forward) width - panelWidth / 2f else panelWidth / 2f
+        val panelWidth = width * PANEL_WIDTH_FRACTION
         val centerY = height / 2f
 
         canvas.save()
@@ -71,48 +98,44 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         curvedEdge.quadTo(panelWidth * 1.1f, centerY, panelWidth * 0.9f, height.toFloat())
         curvedEdge.lineTo(0f, height.toFloat())
         curvedEdge.close()
-        paint.color = 0x33FFFFFF
-        canvas.drawPath(curvedEdge, paint)
-        canvas.clipPath(curvedEdge)
-        if (sinceSeek < RIPPLE_MS) {
-            val progress = sinceSeek.toFloat() / RIPPLE_MS
-            val x = rippleX?.let { if (forward) width - it else it } ?: panelWidth / 2f
-            val y = rippleY ?: centerY
-            paint.color = Color.WHITE
-            paint.alpha = (35 * (1f - progress)).toInt()
-            canvas.drawCircle(x, y, hypot(panelWidth, height.toFloat()) * progress, paint)
-        }
+        backgroundPaint.alpha = (255 * opacity).toInt()
+        canvas.drawPath(curvedEdge, backgroundPaint)
         canvas.restore()
 
-        val animationTime = (now - startedAt) % ARROW_CYCLE_MS
-        val direction = if (forward) 1f else -1f
-        for (index in 0..2) {
-            val delay = index * ARROW_STEP_MS
-            val fadeIn = ((animationTime - delay).toFloat() / ARROW_STEP_MS).coerceIn(0f, 1f)
-            val fadeOut = ((animationTime - delay - 3 * ARROW_STEP_MS).toFloat() / ARROW_STEP_MS)
-                .coerceIn(0f, 1f)
-            paint.color = Color.WHITE
-            paint.alpha = (255 * (fadeIn - fadeOut)).toInt()
-            val x = centerX + (index - 1) * direction * 20f * density
-            val y = centerY - 7f * density
-            triangle.rewind()
-            triangle.moveTo(x - direction * 4f * density, y - 5f * density)
-            triangle.lineTo(x + direction * 4f * density, y)
-            triangle.lineTo(x - direction * 4f * density, y + 5f * density)
-            triangle.close()
-            canvas.drawPath(triangle, paint)
-        }
-        paint.color = Color.WHITE
-        paint.textSize = 12f * resources.displayMetrics.scaledDensity
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText(label, centerX, centerY + 14f * density, paint)
+        if (showCircle) drawCounter(canvas, forward, centerY, opacity)
         postInvalidateOnAnimation()
     }
 
+    private fun drawCounter(canvas: Canvas, forward: Boolean, centerY: Float, opacity: Float) {
+        val dimensions = ReiAnixTokens.PlayerDimensions
+        val controlsWidth = minOf(width.toFloat(), dimensions.centerControlsMaxWidth.value * density)
+        val sidePadding = (dimensions.centerHorizontalPadding.value * density).roundToInt()
+        val touchSize = (dimensions.seekButtonSize.value * density).roundToInt()
+        val distance = ((controlsWidth - 2 * sidePadding - touchSize) / 2f)
+            .coerceAtLeast(0f).roundToInt()
+        val centerX = width / 2f + if (forward) distance else -distance
+        val left = (centerX - circleSize / 2f).roundToInt()
+        val top = (centerY - circleSize / 2f).roundToInt()
+        val alpha = (255 * opacity).toInt()
+
+        circle.setBounds(left, top, left + circleSize, top + circleSize)
+        circle.alpha = alpha
+        canvas.save()
+        if (forward) canvas.scale(-1f, 1f, centerX, centerY)
+        circle.draw(canvas)
+        canvas.restore()
+
+        paint.color = Color.WHITE
+        paint.alpha = alpha
+        paint.textSize = 10f * resources.displayMetrics.scaledDensity
+        paint.textSize *= minOf(1f, circleSize * 0.46f / paint.measureText(label))
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText(label, centerX, centerY - (paint.ascent() + paint.descent()) / 2f, paint)
+    }
+
     private companion object {
+        const val PANEL_WIDTH_FRACTION = 0.35f
         const val VISIBLE_MS = 750L
-        const val RIPPLE_MS = 300L
-        const val ARROW_STEP_MS = 150L
-        const val ARROW_CYCLE_MS = 6 * ARROW_STEP_MS
+        const val FADE_MS = 200L
     }
 }

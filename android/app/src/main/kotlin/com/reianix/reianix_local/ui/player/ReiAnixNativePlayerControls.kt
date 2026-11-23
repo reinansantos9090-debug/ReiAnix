@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -67,6 +67,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.res.painterResource
+import com.reianix.reianix_local.R
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -243,6 +245,7 @@ fun ReiAnixNativePlayerCenterControls(
     seekSeconds: Long = 10L,
     onPlayPause: () -> Unit,
     onSeekRelative: (Long) -> Unit,
+    accumulatedSeekSeconds: Long = 0L,
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -267,12 +270,11 @@ fun ReiAnixNativePlayerCenterControls(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset { IntOffset(x = -seekDistancePx, y = 0) },
+                    .absoluteOffset { IntOffset(x = -seekDistancePx, y = 0) },
                 contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
-                    icon = Icons.Filled.Replay,
-                    seconds = seekSeconds,
+                    seconds = if (accumulatedSeekSeconds < 0) -accumulatedSeekSeconds else seekSeconds,
                     description = "Voltar $seekSeconds segundos",
                     forward = false,
                     enabled = !state.episodeTransitionInProgress,
@@ -355,12 +357,11 @@ fun ReiAnixNativePlayerCenterControls(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset { IntOffset(x = seekDistancePx, y = 0) },
+                    .absoluteOffset { IntOffset(x = seekDistancePx, y = 0) },
                 contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
-                    icon = Icons.Filled.Replay,
-                    seconds = seekSeconds,
+                    seconds = if (accumulatedSeekSeconds > 0) accumulatedSeekSeconds else seekSeconds,
                     description = "Avançar $seekSeconds segundos",
                     forward = true,
                     enabled = !state.episodeTransitionInProgress,
@@ -373,7 +374,6 @@ fun ReiAnixNativePlayerCenterControls(
 
 @Composable
 private fun PlayerSeekIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
     seconds: Long,
     description: String,
     forward: Boolean,
@@ -393,7 +393,7 @@ private fun PlayerSeekIconButton(
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
-                imageVector = icon,
+                painter = painterResource(R.drawable.ic_player_seek_circle),
                 contentDescription = null,
                 tint = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier
@@ -404,7 +404,7 @@ private fun PlayerSeekIconButton(
             )
             Text(
                 text = seconds.toString(),
-                style = ReiAnixTokens.TypographyTokens.chip.copy(fontSize = 12.sp, lineHeight = 14.sp),
+                style = ReiAnixTokens.TypographyTokens.chip.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = if (enabled) ReiAnixTokens.Colors.playerControl else ReiAnixTokens.Colors.playerControl.copy(alpha = 0.36f),
                 modifier = Modifier.align(Alignment.Center),
             )

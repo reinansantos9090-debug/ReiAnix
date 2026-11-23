@@ -129,6 +129,7 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var composeCenterView: ComposeView
     private lateinit var composeBottomView: ComposeView
     private val composePlayerUiState = mutableStateOf(ReiAnixNativePlayerUiState())
+    private val accumulatedSeekSeconds = mutableStateOf(0L)
     private val optionsPanelResetSignal = mutableStateOf(0)
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
@@ -2444,7 +2445,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         )
-        relativeSeekOverlay = RelativeSeekOverlay(this)
+        relativeSeekOverlay = RelativeSeekOverlay(this) { accumulatedSeekSeconds.value = it }
         root.addView(
             relativeSeekOverlay,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
@@ -2913,6 +2914,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         seekSeconds = (effectiveSeekMs / 1_000L).coerceAtLeast(1L),
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { seekBy(it) },
+                        accumulatedSeekSeconds = accumulatedSeekSeconds.value,
                     )
                 }
             }
@@ -3083,6 +3085,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             favoriteClipSourceDurationMs = favoriteClipSession?.takeUnless { it.restoring }?.sourceDurationMs ?: 0L,
         )
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
+        if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.showCircle = !unlockedOverlaysVisible
         val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
         if (::composeTopView.isInitialized) composeTopView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
         if (::composeCenterView.isInitialized) composeCenterView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
@@ -3871,7 +3874,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .create().also { showPlayerMenuDialog(it) }
     }
 
-    private fun seekBy(deltaMs: Long, touchX: Float? = null, touchY: Float? = null) {
+    private fun seekBy(deltaMs: Long, showControls: Boolean = true) {
         if (episodeChangePending) {
             logPlayer("PLAYER_COMMAND_IGNORED command=seek reason=episode_transition requestId=" + requestId.ifEmpty { "-" })
             return
@@ -3886,8 +3889,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // Relative seek gestures are frequent; the authoritative checkpoints remain
         // pause/completion/exit plus the periodic progress reporter.
         saveProgress("player_progress")
-        relativeSeekOverlay.showSeek(deltaMs, touchX, touchY)
-        if (touchX == null || controlsVisible) touchControls()
+        relativeSeekOverlay.showSeek(deltaMs)
+        if (showControls || controlsVisible) touchControls()
     }
 
     private fun showFeedback(message: String, durationMs: Long = 900L) {
@@ -6566,12 +6569,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     when (PlayerGesturePolicy.side(event.x, width)) {
                         PlayerGesturePolicy.Side.LEFT -> {
                             logPlayer("PLAYER_DOUBLE_TAP side=left requestId=" + requestId.ifEmpty { "-" })
-                            seekBy(-effectiveSeekMs, event.x, event.y)
+                            seekBy(-effectiveSeekMs, showControls = false)
                         }
 
                         PlayerGesturePolicy.Side.RIGHT -> {
                             logPlayer("PLAYER_DOUBLE_TAP side=right requestId=" + requestId.ifEmpty { "-" })
-                            seekBy(effectiveSeekMs, event.x, event.y)
+                            seekBy(effectiveSeekMs, showControls = false)
                         }
 
                         PlayerGesturePolicy.Side.CENTER -> {
