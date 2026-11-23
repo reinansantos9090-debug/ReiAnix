@@ -16,6 +16,8 @@ import androidx.compose.material.icons.outlined.List as OutlinedList
 import androidx.compose.material.icons.outlined.Search as OutlinedSearch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -36,6 +38,15 @@ import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.motion.reiAnixScreenEnterTransition
 import com.reianix.reianix_local.ui.motion.reiAnixScreenExitTransition
+import com.reianix.reianix_local.ui.motion.reiAnixDetailsEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixDetailsExitTransition
+import com.reianix.reianix_local.ui.motion.reiAnixDetailsPopEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixDetailsPopExitTransition
+import com.reianix.reianix_local.ui.motion.reiAnixScreenPopEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixScreenPopExitTransition
+import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
 import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
@@ -165,11 +176,17 @@ private val topLevelDestinations = listOf(
     ),
 )
 
+internal fun shouldNavigateToTopLevel(currentRoute: String?, requestedRoute: String): Boolean =
+    currentRoute != requestedRoute
+
 fun NavHostController.navigateToTopLevel(route: String) {
     if (topLevelDestinations.none { it.route == route }) {
         android.util.Log.w("ReiAnixNavigation", "Ignoring unknown top-level route=" + route)
         return
     }
+    // Do not animate or re-enter the already-active tab. Its saved sub-stack
+    // and LazyListState stay untouched; another tab still uses save/restore.
+    if (!shouldNavigateToTopLevel(currentDestination?.route, route)) return
     navigate(
         route,
         navOptions {
@@ -418,12 +435,20 @@ fun ReiAnixNavigationHost(
         }
     }
 
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
-    val detailOrigin = backStackEntry?.arguments
-        ?.getString(ReiAnixRoutes.ARG_ORIGIN)
-        ?.trim()
-        .orEmpty()
+    val entryState = navController.currentBackStackEntryAsState()
+    // Derived route/origin values do not invalidate the shell when the user
+    // follows an anime recommendation to another entry on the SAME route.
+    // NavHost itself still observes every back-stack entry normally.
+    val currentRoute by remember(entryState) {
+        derivedStateOf { entryState.value?.destination?.route }
+    }
+    val detailOrigin by remember(entryState) {
+        derivedStateOf {
+            entryState.value?.arguments?.getString(ReiAnixRoutes.ARG_ORIGIN)
+                ?.trim().orEmpty()
+        }
+    }
+    ReiAnixNavigationJankState(currentRoute)
     val selectedBottomRoute = when {
         currentRoute == ReiAnixRoutes.MY_LIST -> ReiAnixRoutes.LIBRARY
         currentRoute == ReiAnixRoutes.TIMELINE -> ReiAnixRoutes.HOME
@@ -457,10 +482,50 @@ fun ReiAnixNavigationHost(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
-            enterTransition = { reiAnixScreenEnterTransition() },
-            exitTransition = { reiAnixScreenExitTransition() },
-            popEnterTransition = { reiAnixScreenEnterTransition() },
-            popExitTransition = { reiAnixScreenExitTransition() },
+            enterTransition = {
+                when (reiAnixRouteAnimation(
+                    initialState.destination.route, targetState.destination.route,
+                    initialState.id == targetState.id,
+                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
+                )) {
+                    ReiAnixRouteAnimation.NONE -> EnterTransition.None
+                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsEnterTransition()
+                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenEnterTransition()
+                }
+            },
+            exitTransition = {
+                when (reiAnixRouteAnimation(
+                    initialState.destination.route, targetState.destination.route,
+                    initialState.id == targetState.id,
+                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
+                )) {
+                    ReiAnixRouteAnimation.NONE -> ExitTransition.None
+                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsExitTransition()
+                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenExitTransition()
+                }
+            },
+            popEnterTransition = {
+                when (reiAnixRouteAnimation(
+                    initialState.destination.route, targetState.destination.route,
+                    initialState.id == targetState.id,
+                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
+                )) {
+                    ReiAnixRouteAnimation.NONE -> EnterTransition.None
+                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsPopEnterTransition()
+                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenPopEnterTransition()
+                }
+            },
+            popExitTransition = {
+                when (reiAnixRouteAnimation(
+                    initialState.destination.route, targetState.destination.route,
+                    initialState.id == targetState.id,
+                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
+                )) {
+                    ReiAnixRouteAnimation.NONE -> ExitTransition.None
+                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsPopExitTransition()
+                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenPopExitTransition()
+                }
+            },
         ) {
             reiAnixGuardedComposable(navController, ReiAnixRoutes.HOME) { home() }
             reiAnixGuardedComposable(navController, ReiAnixRoutes.LIBRARY) { library() }

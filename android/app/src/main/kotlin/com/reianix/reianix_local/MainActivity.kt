@@ -50,6 +50,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.whenStarted
+import androidx.metrics.performance.JankStats
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModelFactory
 import com.reianix.reianix_local.viewmodel.ReiAnixSettingsViewModel
@@ -93,6 +94,10 @@ data class ReiAnixWelcomeFolderPaths(
 
 class MainActivity : ComponentActivity() {
     private val tag = "[REIANIX][ANDROID]"
+    // Opt-in only: set via 'adb shell setprop log.tag.ReiAnixJank DEBUG'
+    // before starting the app. Normal releases do not collect frames.
+    private val navigationJankEnabled = Log.isLoggable("ReiAnixJank", Log.DEBUG)
+    private var navigationJankStats: JankStats? = null
     private val MAX_SETTINGS_FILE_BYTES = 1024 * 1024
     private val SETTINGS_FILE_REQUEST_ID_REGEX = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     private lateinit var systemUiController: SystemUiController
@@ -1209,6 +1214,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (navigationJankEnabled) {
+            // Initialize before the Compose tree is created so its per-route
+            // PerformanceMetricsState tags can be attached from navigation.
+            navigationJankStats = JankStats.createAndTrack(window) { frame ->
+                if (frame.isJank) {
+                    Log.d("ReiAnixJank", frame.toString())
+                }
+            }.also { it.isTrackingEnabled = false }
+        }
         val launchIntent = intent
         MainEntryPoint.onActivityCreated(this)
         installSystemBackHandler()
@@ -2112,6 +2126,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        navigationJankStats?.isTrackingEnabled = true
         registerStorageReceiver()
         MediaStoreScanner.startChangeObserver(this) { scheduleMediaStoreIncrementalRescan() }
 
@@ -2439,6 +2454,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        navigationJankStats?.isTrackingEnabled = false
         // SAF tree observers are process-scoped and intentionally remain registered
         // while the Activity is backgrounded. MediaStore/UI observers keep their
         // existing lifecycle because they are separate capabilities.
@@ -2449,7 +2465,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-
+        navigationJankStats?.isTrackingEnabled = false
+        navigationJankStats = null
 
         cancelSafPickerWatchdog()
         if (::composeLibraryHost.isInitialized) composeLibraryHost.dispose()

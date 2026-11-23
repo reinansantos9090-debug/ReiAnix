@@ -4,6 +4,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -32,6 +33,40 @@ internal fun reiAnixScreenEnterTransition(): EnterTransition =
 internal fun reiAnixScreenExitTransition(): ExitTransition =
     fadeOut(animationSpec = screenTransitionSpec()) +
         scaleOut(animationSpec = screenTransitionSpec(), targetScale = SCREEN_TRANSITION_SCALE)
+
+/**
+ * Navigation back is a different interaction from navigation forward. Keep the
+ * same fade-and-scale effect (unlike the rejected fade-only PR), while slightly
+ * reducing the scale range on returning to an existing screen.
+ */
+internal fun reiAnixScreenPopEnterTransition(): EnterTransition =
+    fadeIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
+        scaleIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), initialScale = 0.96f)
+
+internal fun reiAnixScreenPopExitTransition(): ExitTransition =
+    fadeOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
+        scaleOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), targetScale = 0.96f)
+
+/**
+ * Detail transitions keep fade AND scale, but avoid transforming the large
+ * poster/episode tree through the full 10% size range. Benchmark results must
+ * determine whether this helps on the user's physical device.
+ */
+internal fun reiAnixDetailsEnterTransition(): EnterTransition =
+    fadeIn(animationSpec = screenTransitionSpec()) +
+        scaleIn(animationSpec = screenTransitionSpec(), initialScale = 0.97f)
+
+internal fun reiAnixDetailsExitTransition(): ExitTransition =
+    fadeOut(animationSpec = screenTransitionSpec()) +
+        scaleOut(animationSpec = screenTransitionSpec(), targetScale = 0.97f)
+
+internal fun reiAnixDetailsPopEnterTransition(): EnterTransition =
+    fadeIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
+        scaleIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), initialScale = 0.985f)
+
+internal fun reiAnixDetailsPopExitTransition(): ExitTransition =
+    fadeOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
+        scaleOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), targetScale = 0.985f)
 
 /** Animate the incoming content when an internal tab changes in place. */
 @Composable
