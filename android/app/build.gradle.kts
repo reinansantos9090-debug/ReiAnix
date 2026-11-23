@@ -53,14 +53,6 @@ android {
     }
 
     buildTypes {
-        // Separate, locally signed performance-test variant. Official release
-        // signing and behavior remain unchanged.
-        create("benchmark") {
-            initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
-            isDebuggable = false
-            matchingFallbacks += listOf("release")
-        }
         getByName("release") {
             // CI disables R8 for PR preview builds and keeps it enabled on main releases.
             isMinifyEnabled = reianixEnableR8
@@ -79,6 +71,16 @@ android {
             ndk {
                 abiFilters += "arm64-v8a"
             }
+        }
+        // Clone the FINAL release configuration (R8, ABI, assets), then
+        // override only the signing needed for an authorized local benchmark.
+        // Separate, locally signed performance-test variant. Official release
+        // signing and behavior remain unchanged.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
         }
     }
 }
@@ -104,6 +106,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.8")
     // Opt-in route-tagged frame diagnostics; disabled in normal app usage.
     implementation("androidx.metrics:metrics-performance:1.0.0")
+    // Only installed on the isolated benchmark variant for Macrobenchmark's
+    // compilation-profile setup; not added to the official release APK.
+    add("benchmarkImplementation", "androidx.profileinstaller:profileinstaller:1.4.1")
     debugImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
