@@ -37,7 +37,11 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalRippleConfiguration
+import androidx.compose.material3.RippleConfiguration
+import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -47,6 +51,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import com.reianix.reianix_local.player.PlayerTimeFormatter
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
@@ -192,7 +197,7 @@ fun ReiAnixNativePlayerTopControls(
             ),
     ) {
         // The top overlay contains only Back and the centered episode title.
-        IconButton(
+        PlayerIconButton(
             onClick = onBack,
             modifier = Modifier
                 .size(48.dp)
@@ -302,7 +307,7 @@ fun ReiAnixNativePlayerCenterControls(
                     modifier = Modifier.size(maxOf(dimensions.centerButtonContainerSize, playTouchSize)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    IconButton(
+                    PlayerIconButton(
                         onClick = onPlayPause,
                         enabled = !state.episodeTransitionInProgress,
                         modifier = Modifier
@@ -400,9 +405,10 @@ private fun PlayerSeekIconButton(
     onClick: () -> Unit,
     onIconPositioned: (Boolean, Offset) -> Unit,
 ) {
-    IconButton(
+    PlayerIconButton(
         onClick = onClick,
         enabled = enabled,
+        showPressFeedback = false,
         modifier = Modifier
             .size(maxOf(ReiAnixTokens.PlayerDimensions.seekButtonSize, touchSize))
             .semantics {
@@ -469,7 +475,7 @@ fun ReiAnixNativePlayerBottomControls(
                 ),
             contentAlignment = Alignment.BottomCenter,
         ) {
-            IconButton(
+            PlayerIconButton(
                 onClick = onToggleLock,
                 modifier = Modifier
                     .size(ReiAnixTokens.PlayerDimensions.lockAffordanceSize)
@@ -863,7 +869,7 @@ private fun RowScope.PlayerBottomAction(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconButton(
+        PlayerIconButton(
             onClick = onClick,
             enabled = enabled,
             modifier = Modifier
@@ -924,5 +930,32 @@ private class SeekPreviewPopupPosition(
         val y = (anchorBounds.top - popupContentSize.height - gapPx)
             .coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
         return IntOffset(x, y)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+private val playerIconRipple = RippleConfiguration(
+    color = Color.White,
+    rippleAlpha = RippleAlpha(
+        draggedAlpha = 0.16f,
+        focusedAlpha = 0.12f,
+        hoveredAlpha = 0.08f,
+        pressedAlpha = 0.5f,
+    ),
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    showPressFeedback: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(
+        LocalRippleConfiguration provides if (showPressFeedback) playerIconRipple else null,
+    ) {
+        IconButton(onClick = onClick, modifier = modifier, enabled = enabled, content = content)
     }
 }
