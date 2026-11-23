@@ -2612,7 +2612,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             rightMargin = dp(18)
         })
 
-        val previousButton = actionButton("−10", 70) { seekBy(-10_000L) }.apply {
+        val previousButton = actionButton("−10", 70, showPressFeedback = false) { seekBy(-10_000L) }.apply {
             contentDescription = "Voltar 10 segundos"
         }
         previousButton.tag = "reianix_seek_back"
@@ -2627,7 +2627,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         centerControls.addView(playPauseButton, weightParams(84))
 
-        val nextButton = actionButton("+10", 70) { seekBy(10_000L) }.apply {
+        val nextButton = actionButton("+10", 70, showPressFeedback = false) { seekBy(10_000L) }.apply {
             contentDescription = "Avançar 10 segundos"
         }
         nextButton.tag = "reianix_seek_forward"
@@ -6225,7 +6225,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun formatTime(valueMs: Long): String =
         PlayerTimeFormatter.format(valueMs)
 
-    private fun actionButton(label: String, widthDp: Int, action: (TextView) -> Unit): TextView {
+    private fun actionButton(
+        label: String,
+        widthDp: Int,
+        showPressFeedback: Boolean = true,
+        action: (TextView) -> Unit,
+    ): TextView {
         return TextView(this).apply {
             text = label
             contentDescription = label
@@ -6236,6 +6241,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             isClickable = true
             isFocusable = true
             setBackgroundColor(0x66000000)
+            if (showPressFeedback) {
+                val mask = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(Color.WHITE)
+                }
+                foreground = android.graphics.drawable.RippleDrawable(
+                    ColorStateList.valueOf(0x80FFFFFF.toInt()), null, mask,
+                )
+            }
             minWidth = dp(widthDp)
             minHeight = dp(44)
             setOnClickListener { action(this) }

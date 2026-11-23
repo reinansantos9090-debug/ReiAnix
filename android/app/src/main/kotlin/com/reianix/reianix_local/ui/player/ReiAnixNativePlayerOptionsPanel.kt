@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -356,7 +357,12 @@ private fun PlayerOptionNavigationAction(
         modifier = modifier
             .heightIn(min = 46.dp)
             .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(
+                interactionSource = null,
+                indication = ripple(color = Color.White),
+                enabled = enabled,
+                onClick = onClick,
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
@@ -388,7 +394,11 @@ private fun PlayerOptionsSubpageHeader(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            .clickable(onClick = onBack)
+            .clickable(
+                interactionSource = null,
+                indication = ripple(color = Color.White),
+                onClick = onBack,
+            )
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -423,7 +433,12 @@ private fun PlayerOptionActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 46.dp)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(
+                interactionSource = null,
+                indication = ripple(color = Color.White),
+                enabled = enabled,
+                onClick = onClick,
+            )
             .padding(horizontal = 14.dp, vertical = 2.dp)
             .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
