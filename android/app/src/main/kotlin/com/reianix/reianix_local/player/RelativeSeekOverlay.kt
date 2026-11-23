@@ -9,7 +9,6 @@ import android.graphics.Path
 import android.graphics.Shader
 import android.os.SystemClock
 import android.view.View
-import kotlin.math.hypot
 
 /** Draws short-lived relative seek feedback without intercepting player input. */
 internal class RelativeSeekOverlay(context: Context) : View(context) {
@@ -21,8 +20,6 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
     private var totalMs = 0L
     private var startedAt = 0L
     private var lastSeekAt = 0L
-    private var rippleX: Float? = null
-    private var rippleY: Float? = null
     private var label = ""
 
     init {
@@ -30,7 +27,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         visibility = INVISIBLE
     }
 
-    fun showSeek(deltaMs: Long, touchX: Float?, touchY: Float?) {
+    fun showSeek(deltaMs: Long) {
         val now = SystemClock.uptimeMillis()
         if (now - lastSeekAt >= VISIBLE_MS || (deltaMs > 0) != (totalMs > 0) || totalMs == 0L) {
             startedAt = now
@@ -39,8 +36,6 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         totalMs += deltaMs
         label = if (totalMs > 0) "+${totalMs / 1_000L} s" else "−${-totalMs / 1_000L} s"
         lastSeekAt = now
-        rippleX = touchX
-        rippleY = touchY
         visibility = VISIBLE
         invalidate()
     }
@@ -70,6 +65,8 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
             return
         }
 
+        val remainingFraction = ((VISIBLE_MS - sinceSeek).toFloat() / FADE_MS).coerceAtMost(1f)
+        val opacity = remainingFraction * remainingFraction * (3f - 2f * remainingFraction)
         val forward = totalMs > 0
         val panelWidth = width * PANEL_WIDTH_FRACTION
         val centerX = if (forward) width - panelWidth / 2f else panelWidth / 2f
@@ -86,16 +83,8 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
         curvedEdge.quadTo(panelWidth * 1.1f, centerY, panelWidth * 0.9f, height.toFloat())
         curvedEdge.lineTo(0f, height.toFloat())
         curvedEdge.close()
+        backgroundPaint.alpha = (255 * opacity).toInt()
         canvas.drawPath(curvedEdge, backgroundPaint)
-        canvas.clipPath(curvedEdge)
-        if (sinceSeek < RIPPLE_MS) {
-            val progress = sinceSeek.toFloat() / RIPPLE_MS
-            val x = rippleX?.let { if (forward) width - it else it } ?: panelWidth / 2f
-            val y = rippleY ?: centerY
-            paint.color = Color.WHITE
-            paint.alpha = (35 * (1f - progress)).toInt()
-            canvas.drawCircle(x, y, hypot(panelWidth, height.toFloat()) * progress, paint)
-        }
         canvas.restore()
 
         val animationTime = (now - startedAt) % ARROW_CYCLE_MS
@@ -106,7 +95,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
             val fadeOut = ((animationTime - delay - 3 * ARROW_STEP_MS).toFloat() / ARROW_STEP_MS)
                 .coerceIn(0f, 1f)
             paint.color = Color.WHITE
-            paint.alpha = (255 * (fadeIn - fadeOut)).toInt()
+            paint.alpha = (255 * opacity * (fadeIn - fadeOut)).toInt()
             val x = centerX + (index - 1) * direction * 20f * density
             val y = centerY - 7f * density
             triangle.rewind()
@@ -117,6 +106,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
             canvas.drawPath(triangle, paint)
         }
         paint.color = Color.WHITE
+        paint.alpha = (255 * opacity).toInt()
         paint.textSize = 12f * resources.displayMetrics.scaledDensity
         paint.textAlign = Paint.Align.CENTER
         canvas.drawText(label, centerX, centerY + 14f * density, paint)
@@ -126,7 +116,7 @@ internal class RelativeSeekOverlay(context: Context) : View(context) {
     private companion object {
         const val PANEL_WIDTH_FRACTION = 0.35f
         const val VISIBLE_MS = 750L
-        const val RIPPLE_MS = 300L
+        const val FADE_MS = 200L
         const val ARROW_STEP_MS = 150L
         const val ARROW_CYCLE_MS = 6 * ARROW_STEP_MS
     }
