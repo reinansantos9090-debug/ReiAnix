@@ -323,35 +323,48 @@ class ReiAnixNavigationInstrumentedTest {
             ReiAnixRoutes.SEARCH,
             ReiAnixRoutes.SETTINGS,
         ).forEach { origin ->
-            navController.navigateToTopLevel(origin)
-            navController.navigateToDetails("anime-$origin", origin)
+            val first = "anime-$origin"
+            val second = "recommended-2-$origin"
+            val third = "recommended-3-$origin"
+            composeRule.runOnIdle {
+                navController.navigateToTopLevel(origin)
+                navController.navigateToDetails(first, origin)
+            }
             composeRule.waitForIdle()
 
-            composeRule.onNodeWithText("animeId=anime-$origin").assertExists()
+            composeRule.onNodeWithText("animeId=$first").assertExists()
             composeRule.onNodeWithText("origin=$origin").assertExists()
-            composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-                .assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Ajustes").assertDoesNotExist()
+
+            // Same destination pattern but different anime IDs must push entries.
+            composeRule.runOnIdle { navController.navigateToDetails(second, origin) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("animeId=$second").assertExists()
+            assertEquals(first, navController.previousBackStackEntry?.arguments?.getString(ReiAnixRoutes.ARG_ANIME_ID))
+
+            composeRule.runOnIdle { navController.navigateToDetails(third, origin) }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("animeId=$third").assertExists()
+            assertEquals(second, navController.previousBackStackEntry?.arguments?.getString(ReiAnixRoutes.ARG_ANIME_ID))
+
+            // Back must restore each previous anime, then the originating tab.
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("animeId=$second").assertExists()
+            composeRule.onNodeWithContentDescription("Ajustes").assertDoesNotExist()
+
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("animeId=$first").assertExists()
+
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+            composeRule.waitForIdle()
+            assertEquals(origin, navController.currentBackStackEntry?.destination?.route)
             composeRule.onNodeWithText(
                 when (origin) {
                     ReiAnixRoutes.HOME -> "Início"
                     ReiAnixRoutes.LIBRARY -> "Biblioteca"
                     ReiAnixRoutes.SEARCH -> "Buscar"
-                    ReiAnixRoutes.SETTINGS -> "Ajustes"
-                    else -> "Buscar"
-                },
-            ).assertIsSelected()
-
-            composeRule.activity.onBackPressedDispatcher.onBackPressed()
-            composeRule.waitForIdle()
-
-            assertEquals(
-                origin,
-                navController.currentBackStackEntry?.destination?.route,
-            )
-            composeRule.onNodeWithText(
-                when (origin) {
-                    ReiAnixRoutes.HOME -> "Início"
-                    ReiAnixRoutes.LIBRARY -> "Biblioteca"
                     ReiAnixRoutes.SETTINGS -> "Ajustes"
                     else -> "Buscar"
                 },
@@ -383,9 +396,7 @@ class ReiAnixNavigationInstrumentedTest {
         composeRule.onNodeWithText("animeId=42").assertExists()
         composeRule.onNodeWithText("origin=" + ReiAnixRoutes.SEARCH).assertExists()
         assertTrue(navController.currentBackStackEntry?.destination?.route == ReiAnixRoutes.DETAILS)
-        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("Buscar").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Ajustes").assertDoesNotExist()
 
         composeRule.activity.onBackPressedDispatcher.onBackPressed()
         composeRule.waitForIdle()
@@ -404,9 +415,7 @@ class ReiAnixNavigationInstrumentedTest {
 
         composeRule.onNodeWithText("animeId=anime-library-42").assertExists()
         composeRule.onNodeWithText("origin=" + ReiAnixRoutes.LIBRARY).assertExists()
-        composeRule.onNodeWithContentDescription(ReiAnixRoutes.BOTTOM_NAV_CONTENT_DESCRIPTION)
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("Biblioteca").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Ajustes").assertDoesNotExist()
 
         composeRule.activity.onBackPressedDispatcher.onBackPressed()
         composeRule.waitForIdle()
