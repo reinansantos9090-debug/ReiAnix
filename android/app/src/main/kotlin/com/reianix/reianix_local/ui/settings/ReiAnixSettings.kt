@@ -669,9 +669,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             onCheckedChange = { onUpdateSetting("app.confirm_destructive", it.toString()) },
                         )
                     }
-                    item(key = "setting:releases.notifications") {
-                        ReiAnixReleaseAlertsSetting()
-                    }
                 }
 
                 "Player" -> {
@@ -735,6 +732,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             checked = state.settings["artwork.enabled"] == "true",
                             onCheckedChange = { onUpdateSetting("artwork.enabled", it.toString()) },
                         )
+                    }
+                    item(key = "setting:releases.notifications") {
+                        ReiAnixReleaseAlertsSetting()
                     }
                     item(key = "setting:artwork.cache_limit_mb") {
                         ChoiceSettingRow(
