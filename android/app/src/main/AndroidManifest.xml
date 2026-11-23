@@ -25,8 +25,6 @@
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
   <application android:name=".ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
-    <!-- Allows user-authorized USB/shell Macrobenchmark tracing; does not enable app debugging. -->
-    <profileable android:shell="true" />
     <!-- Read access is granted only to the external video app selected by the user. -->
     <provider
         android:name="androidx.core.content.FileProvider"

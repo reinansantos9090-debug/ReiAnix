@@ -53,6 +53,14 @@ android {
     }
 
     buildTypes {
+        // Separate, locally signed performance-test variant. Official release
+        // signing and behavior remain unchanged.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
+        }
         getByName("release") {
             // CI disables R8 for PR preview builds and keeps it enabled on main releases.
             isMinifyEnabled = reianixEnableR8

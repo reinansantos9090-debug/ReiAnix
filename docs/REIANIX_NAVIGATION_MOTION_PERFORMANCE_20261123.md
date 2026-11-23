@@ -43,12 +43,12 @@ adb shell setprop log.tag.ReiAnixJank INFO
 adb shell am force-stop com.reiflix.reiflix_local
 ```
 
-O benchmark AndroidX exige app instalado, configurado e Biblioteca com animes.
+O benchmark AndroidX utiliza a variante isolada `benchmark`, não altera a assinatura ou o perfilamento do release oficial. Exige app instalado, configurado e Biblioteca com animes.
 Não existe emulador ou workflow de instrumentação neste repositório.
 Execute manualmente o módulo **somente num aparelho físico de testes**:
 
 ```bash
-gradle -p android :macrobenchmark:connectedReleaseAndroidTest
+gradle -p android :macrobenchmark:connectedBenchmarkAndroidTest
 ```
 
 Antes de comparar, reinstale duas versões em condições equivalentes e compare

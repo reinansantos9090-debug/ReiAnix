@@ -15,14 +15,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
-        create("release") {
+        create("benchmark") {
             isDebuggable = false
         }
     }
 }
 androidComponents {
     beforeVariants(selector().all()) { builder ->
-        builder.enable = builder.buildType == "release"
+        builder.enable = builder.buildType == "benchmark"
     }
 }
 kotlin { jvmToolchain(17) }
