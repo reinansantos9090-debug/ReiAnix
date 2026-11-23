@@ -3,6 +3,8 @@ package com.reianix.reianix_local.ui.player
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import com.reianix.reianix_local.player.PlayerSkipSegment
+import com.reianix.reianix_local.player.PlayerShortcut
+import com.reianix.reianix_local.player.PlayerShortcutPolicy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -35,6 +37,10 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -116,6 +122,9 @@ data class ReiAnixNativePlayerUiState(
     val audioTrackSelectionEnabled: Boolean = false,
     val subtitleTrackSelectionEnabled: Boolean = false,
     val autoplayNext: Boolean = true,
+    val shortcuts: List<PlayerShortcut> = PlayerShortcutPolicy.default,
+    val smartSkipEnabled: Boolean = true,
+    val animePreferencesEnabled: Boolean = false,
     val horizontalSeekEnabled: Boolean = true,
     val zoomEnabled: Boolean = true,
     val volumeGesturesEnabled: Boolean = true,
@@ -454,6 +463,10 @@ fun ReiAnixNativePlayerBottomControls(
     onResize: () -> Unit,
     onSource: () -> Unit,
     onNext: () -> Unit,
+    onCaptureFrame: () -> Unit = {},
+    onPlaybackSpeed: () -> Unit = {},
+    onSubtitles: () -> Unit = {},
+    onSleepTimer: () -> Unit = {},
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
@@ -799,51 +812,77 @@ fun ReiAnixNativePlayerBottomControls(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PlayerBottomAction(
-                icon = Icons.Filled.Lock,
-                label = "Bloquear",
-                showLabel = !landscape,
-                contentDescription = "Bloquear toques",
-                onClick = onToggleLock,
-                enabled = !state.episodeTransitionInProgress,
-                iconVisualScale = 0.75f,
-            )
-            PlayerBottomAction(
-                icon = Icons.Filled.PlaylistPlay,
-                label = "Episódios",
-                showLabel = !landscape,
-                contentDescription = "Abrir lista de episódios",
-                onClick = onResize,
-                enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
-                active = false,
-            )
-            PlayerBottomAction(
-                icon = Icons.Filled.SkipNext,
-                label = "Próximo episódio",
-                showLabel = !landscape,
-                contentDescription = "Próximo episódio",
-                onClick = onNext,
-                enabled = state.canNext && !state.episodeTransitionInProgress,
-            )
-            PlayerBottomAction(
-                icon = Icons.Filled.MoreVert,
-                label = "Opções",
-                showLabel = !landscape,
-                contentDescription = buildString {
-                    append("Mais opções do player")
-                    val speed = state.playbackSpeed.takeIf { it.isFinite() && it > 0f }
-                    speed?.let {
-                        append(". Velocidade ")
-                        append(String.format(java.util.Locale.ROOT, "%.2gx", it))
-                    }
-                    if (state.aspectLabel.isNotBlank()) {
-                        append(". Proporção ")
-                        append(state.aspectLabel)
-                    }
-                },
-                onClick = onSource,
-                enabled = !state.episodeTransitionInProgress,
-            )
+            // Defaults retain the original four controls. Only the icons
+            // selected by the user are composed, maximum five total.
+            state.shortcuts.forEach { shortcut ->
+                when (shortcut) {
+                    PlayerShortcut.LOCK -> PlayerBottomAction(
+                        icon = Icons.Filled.Lock,
+                        label = "Bloquear",
+                        showLabel = !landscape,
+                        contentDescription = "Bloquear toques",
+                        onClick = onToggleLock,
+                        enabled = !state.episodeTransitionInProgress,
+                        iconVisualScale = 0.75f,
+                    )
+                    PlayerShortcut.EPISODES -> PlayerBottomAction(
+                        icon = Icons.Filled.PlaylistPlay,
+                        label = "Episódios",
+                        showLabel = !landscape,
+                        contentDescription = "Abrir lista de episódios",
+                        onClick = onResize,
+                        enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
+                    )
+                    PlayerShortcut.NEXT -> PlayerBottomAction(
+                        icon = Icons.Filled.SkipNext,
+                        label = "Próximo episódio",
+                        showLabel = !landscape,
+                        contentDescription = "Próximo episódio",
+                        onClick = onNext,
+                        enabled = state.canNext && !state.episodeTransitionInProgress,
+                    )
+                    PlayerShortcut.OPTIONS -> PlayerBottomAction(
+                        icon = Icons.Filled.MoreVert,
+                        label = "Opções",
+                        showLabel = !landscape,
+                        contentDescription = "Mais opções do player",
+                        onClick = onSource,
+                        enabled = !state.episodeTransitionInProgress,
+                    )
+                    PlayerShortcut.CAPTURE -> PlayerBottomAction(
+                        icon = Icons.Filled.CameraAlt,
+                        label = "Capturar",
+                        showLabel = !landscape,
+                        contentDescription = "Capturar imagem do vídeo",
+                        onClick = onCaptureFrame,
+                        enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
+                    )
+                    PlayerShortcut.SPEED -> PlayerBottomAction(
+                        icon = Icons.Filled.Speed,
+                        label = "Velocidade",
+                        showLabel = !landscape,
+                        contentDescription = "Alterar velocidade do vídeo",
+                        onClick = onPlaybackSpeed,
+                        enabled = !state.episodeTransitionInProgress,
+                    )
+                    PlayerShortcut.SUBTITLES -> PlayerBottomAction(
+                        icon = Icons.Filled.Subtitles,
+                        label = "Legendas",
+                        showLabel = !landscape,
+                        contentDescription = "Selecionar legendas",
+                        onClick = onSubtitles,
+                        enabled = !state.episodeTransitionInProgress,
+                    )
+                    PlayerShortcut.TIMER -> PlayerBottomAction(
+                        icon = Icons.Filled.Timer,
+                        label = "Temporizador",
+                        showLabel = !landscape,
+                        contentDescription = "Temporizador de reprodução",
+                        onClick = onSleepTimer,
+                        enabled = !state.episodeTransitionInProgress,
+                    )
+                }
+            }
         }
     }
 }

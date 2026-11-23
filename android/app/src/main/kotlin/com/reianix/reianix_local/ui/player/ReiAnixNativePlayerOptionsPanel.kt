@@ -35,6 +35,15 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FolderSpecial
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.IconButton
+import com.reianix.reianix_local.player.PlayerShortcut
+import com.reianix.reianix_local.player.PlayerShortcutPolicy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -68,6 +77,8 @@ private enum class PlayerOptionsPage {
     AUDIO,
     SUBTITLES,
     GESTURES,
+    SHORTCUTS,
+    ANIME,
     OTHER,
 }
 
@@ -102,6 +113,11 @@ fun ReiAnixNativePlayerOptionsPanel(
     onFavoriteScenes: () -> Unit = {},
     onSubtitleAppearance: () -> Unit = {},
     onAudioOnlyChanged: (Boolean) -> Unit = {},
+    onCaptureFrame: () -> Unit = {},
+    onSmartSkipChanged: (Boolean) -> Unit = {},
+    onShortcutsChanged: (List<PlayerShortcut>) -> Unit = {},
+    onAnimePreferencesChanged: (Boolean) -> Unit = {},
+    onAnimePreferencesReset: () -> Unit = {},
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
     LaunchedEffect(resetSignal) {
@@ -177,6 +193,33 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.BookmarkBorder,
                     label = "Salvar cena",
                     onClick = onFavoriteScenes,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.CameraAlt,
+                    label = "Capturar imagem",
+                    enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
+                    showChevron = false,
+                    onClick = onCaptureFrame,
+                )
+                PlayerOptionToggleRow(
+                    icon = Icons.Filled.FastForward,
+                    label = "Detectar abertura e encerramento",
+                    checked = state.smartSkipEnabled,
+                    enabled = !state.favoriteClipMode,
+                    onCheckedChange = onSmartSkipChanged,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Tune,
+                    label = "Personalizar atalhos",
+                    value = "${state.shortcuts.size}/5",
+                    onClick = { page = PlayerOptionsPage.SHORTCUTS },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.FolderSpecial,
+                    label = "Configurações deste anime",
+                    value = if (state.animePreferencesEnabled) "Ativas" else "Globais",
+                    enabled = !state.favoriteClipMode,
+                    onClick = { page = PlayerOptionsPage.ANIME },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.MoreHoriz,
@@ -282,6 +325,96 @@ fun ReiAnixNativePlayerOptionsPanel(
                 )
             }
 
+            PlayerOptionsPage.SHORTCUTS -> {
+                PlayerOptionsSubpageHeader(
+                    title = "Personalizar atalhos",
+                    onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                Text(
+                    text = "Escolha até 5 atalhos. Opções fica sempre disponível.",
+                    fontSize = 12.sp,
+                    color = Color(0xFFBBBBBB),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+                PlayerShortcut.entries.forEach { shortcut ->
+                    val isSelected = shortcut in state.shortcuts
+                    val index = state.shortcuts.indexOf(shortcut)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = shortcut.displayName,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (isSelected) {
+                            IconButton(
+                                enabled = index > 0,
+                                onClick = {
+                                    onShortcutsChanged(PlayerShortcutPolicy.move(state.shortcuts, shortcut, -1))
+                                },
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Mover ${shortcut.displayName} para cima", tint = Color.White)
+                            }
+                            IconButton(
+                                enabled = index < state.shortcuts.lastIndex,
+                                onClick = {
+                                    onShortcutsChanged(PlayerShortcutPolicy.move(state.shortcuts, shortcut, 1))
+                                },
+                            ) {
+                                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Mover ${shortcut.displayName} para baixo", tint = Color.White)
+                            }
+                        }
+                        Switch(
+                            checked = isSelected,
+                            enabled = shortcut != PlayerShortcut.OPTIONS &&
+                                (isSelected || state.shortcuts.size < PlayerShortcutPolicy.MAX_COUNT),
+                            onCheckedChange = { selected ->
+                                onShortcutsChanged(PlayerShortcutPolicy.toggle(state.shortcuts, shortcut, selected))
+                            },
+                            colors = SwitchDefaults.colors(checkedTrackColor = ReiAnixTokens.Colors.primary),
+                        )
+                    }
+                }
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Replay,
+                    label = "Restaurar 4 atalhos originais",
+                    showChevron = false,
+                    onClick = { onShortcutsChanged(PlayerShortcutPolicy.default) },
+                )
+            }
+            PlayerOptionsPage.ANIME -> {
+                PlayerOptionsSubpageHeader(
+                    title = "Configurações deste anime",
+                    onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                PlayerOptionToggleRow(
+                    icon = Icons.Filled.FolderSpecial,
+                    label = "Salvar para este anime",
+                    checked = state.animePreferencesEnabled,
+                    onCheckedChange = onAnimePreferencesChanged,
+                )
+                Text(
+                    text = if (state.animePreferencesEnabled) {
+                        "Velocidade, proporção, autoplay, áudio, legendas e aparência serão lembrados nos próximos episódios deste anime."
+                    } else {
+                        "Ative para usar configurações próprias. Desativado, o anime segue as preferências gerais."
+                    },
+                    fontSize = 12.sp,
+                    color = Color(0xFFBBBBBB),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+                if (state.animePreferencesEnabled) {
+                    PlayerOptionActionRow(
+                        icon = Icons.Filled.Replay,
+                        label = "Restaurar configurações globais",
+                        showChevron = false,
+                        onClick = onAnimePreferencesReset,
+                    )
+                }
+            }
             PlayerOptionsPage.OTHER -> {
                 PlayerOptionsSubpageHeader(
                     title = "Outras opções",

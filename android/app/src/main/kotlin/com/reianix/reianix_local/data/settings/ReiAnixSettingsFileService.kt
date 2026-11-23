@@ -129,7 +129,8 @@ class ReiAnixSettingsFileService(
                 value.toString()
             }
             ReiAnixSettingKind.ENUM,
-            ReiAnixSettingKind.LANGUAGE -> value.toString()
+            ReiAnixSettingKind.LANGUAGE,
+            ReiAnixSettingKind.SHORTCUTS -> value.toString()
         }
         return try {
             ReiAnixSettingsContract.normalize(key, raw)
@@ -143,7 +144,8 @@ class ReiAnixSettingsFileService(
             ReiAnixSettingKind.BOOLEAN -> normalized == "true"
             ReiAnixSettingKind.INTEGER -> normalized.toInt()
             ReiAnixSettingKind.DECIMAL -> normalized.toDouble()
-            ReiAnixSettingKind.ENUM, ReiAnixSettingKind.LANGUAGE -> normalized
+            ReiAnixSettingKind.ENUM, ReiAnixSettingKind.LANGUAGE,
+            ReiAnixSettingKind.SHORTCUTS -> normalized
             null -> normalized
         }
 
