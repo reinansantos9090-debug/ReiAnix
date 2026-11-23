@@ -94,6 +94,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.navigation:navigation-compose:2.9.8")
+    // Opt-in route-tagged frame diagnostics; disabled in normal app usage.
+    implementation("androidx.metrics:metrics-performance:1.0.0")
     debugImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

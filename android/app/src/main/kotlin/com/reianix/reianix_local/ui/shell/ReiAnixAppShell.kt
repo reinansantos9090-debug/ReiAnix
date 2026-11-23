@@ -1,8 +1,8 @@
 package com.reianix.reianix_local.ui.shell
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.snap
@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -80,15 +81,16 @@ fun ReiAnixAppShell(
             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
         },
         bottomBar = {
-            AnimatedVisibility(
-                visible = showBottomNavigation,
-                enter = expandVertically(animationSpec = tween(150)),
-                exit = shrinkVertically(animationSpec = tween(150)),
-            ) {
+            // Do not animate the MEASURED HEIGHT of the entire Scaffold during
+            // a route transition. The previous 150 ms expand/shrink forced
+            // repeated layout passes while Details was composing its hero.
+            // NavHost owns the screen animation; the content gets its full
+            // viewport immediately when the bar is no longer needed.
+            if (showBottomNavigation) {
                 ReiAnixBottomNavigation(
                     selectedRoute = selectedRoute,
                     destinations = bottomDestinations,
-                    onDestinationClick = { if (showBottomNavigation) onBottomDestinationClick(it) },
+                    onDestinationClick = onBottomDestinationClick,
                 )
             }
         },
@@ -136,6 +138,20 @@ private fun ReiAnixBottomNavigation(
                 },
                 label = "bottom-nav-color",
             )
+            // Tiny local spring, isolated to the icon's draw layer: unlike a
+            // full-screen scale it never changes the bar's measured height.
+            val iconScale by animateFloatAsState(
+                targetValue = if (selected) 1f else 0.97f,
+                animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumHigh,
+                    )
+                } else {
+                    snap()
+                },
+                label = "bottom-nav-icon-spring",
+            )
             NavigationBarItem(
                 selected = selected,
                 onClick = { onDestinationClick(destination.route) },
@@ -153,7 +169,12 @@ private fun ReiAnixBottomNavigation(
                         },
                         contentDescription = null,
                         tint = contentColor,
-                        modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
+                        modifier = Modifier
+                            .size(ReiAnixTokens.Dimensions.iconMedium)
+                            .graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            },
                     )
                 },
                 label = {
