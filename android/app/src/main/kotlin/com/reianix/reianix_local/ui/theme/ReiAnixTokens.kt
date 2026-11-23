@@ -302,6 +302,11 @@ object ReiAnixTokens {
         // Larger glyph for the 10-second circular seek controls; the 60.dp
         // IconButton hit target remains independent of this visual size.
         val seekIconSize = 40.dp
+        // The artwork has transparent margins. These view sizes yield roughly
+        // 40 dp of visible circle width and play/pause height.
+        val landscapeSeekGlyphSize = 62.dp
+        val landscapePlayGlyphSize = 68.dp
+        val landscapeSeekCounterSize = 19.sp
         const val landscapeSeekOffsetFraction = 0.25f
         fun landscapeSeekIconSize(widthDp: Float): Float = (widthDp * 0.09f).coerceIn(40f, 88f)
         val centerButtonContainerSize = 76.dp
