@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.player
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +37,11 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.DragIndicator
+import com.reianix.reianix_local.player.PlayerShortcut
+import com.reianix.reianix_local.player.PlayerShortcutPolicy
 import androidx.compose.material3.ripple
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
@@ -46,8 +53,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -69,6 +79,7 @@ private enum class PlayerOptionsPage {
     AUDIO,
     SUBTITLES,
     GESTURES,
+    SHORTCUTS,
     OTHER,
 }
 
@@ -103,6 +114,8 @@ fun ReiAnixNativePlayerOptionsPanel(
     onFavoriteScenes: () -> Unit = {},
     onSubtitleAppearance: () -> Unit = {},
     onAudioOnlyChanged: (Boolean) -> Unit = {},
+    onCaptureFrame: () -> Unit = {},
+    onShortcutsChanged: (List<PlayerShortcut>) -> Unit = {},
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
     LaunchedEffect(resetSignal) {
@@ -178,6 +191,19 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.BookmarkBorder,
                     label = "Salvar cena",
                     onClick = onFavoriteScenes,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.CameraAlt,
+                    label = "Capturar imagem",
+                    enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
+                    showChevron = false,
+                    onClick = onCaptureFrame,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Tune,
+                    label = "Personalizar atalhos",
+                    value = "${state.shortcuts.size}/5",
+                    onClick = { page = PlayerOptionsPage.SHORTCUTS },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.MoreHoriz,
@@ -283,6 +309,94 @@ fun ReiAnixNativePlayerOptionsPanel(
                 )
             }
 
+            PlayerOptionsPage.SHORTCUTS -> {
+                PlayerOptionsSubpageHeader(
+                    title = "Personalizar atalhos",
+                    onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                Text(
+                    text = "Escolha até 5 atalhos. Segure e arraste os ativos para reorganizar. Opções fica sempre em último.",
+                    fontSize = 12.sp,
+                    color = Color(0xFFBBBBBB),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+                val currentShortcuts by rememberUpdatedState(state.shortcuts)
+                val currentOnShortcutsChanged by rememberUpdatedState(onShortcutsChanged)
+                val stepPx = with(LocalDensity.current) { 48.dp.toPx() }
+                // Selected controls are listed in their actual player order; disabled
+                // controls stay below them. Options is fixed and cannot be dragged.
+                val ordered = state.shortcuts + PlayerShortcut.entries.filterNot { it in state.shortcuts }
+                ordered.forEach { shortcut ->
+                    key(shortcut) {
+                        val isSelected = shortcut in state.shortcuts
+                        val draggable = isSelected && shortcut != PlayerShortcut.OPTIONS
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .padding(horizontal = 12.dp)
+                                .then(
+                                    if (draggable) Modifier.pointerInput(shortcut, stepPx) {
+                                        var accumulatedY = 0f
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = { accumulatedY = 0f },
+                                            onDragEnd = { accumulatedY = 0f },
+                                            onDragCancel = { accumulatedY = 0f },
+                                            onDrag = { change, delta ->
+                                                change.consume()
+                                                accumulatedY += delta.y
+                                                if (kotlin.math.abs(accumulatedY) >= stepPx) {
+                                                    val direction = if (accumulatedY > 0f) 1 else -1
+                                                    val moved = PlayerShortcutPolicy.move(currentShortcuts, shortcut, direction)
+                                                    if (moved != currentShortcuts) {
+                                                        currentOnShortcutsChanged(moved)
+                                                        accumulatedY -= direction * stepPx
+                                                    } else {
+                                                        accumulatedY = 0f
+                                                    }
+                                                }
+                                            },
+                                        )
+                                    } else Modifier,
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (draggable) {
+                                Icon(
+                                    Icons.Filled.DragIndicator,
+                                    contentDescription = "Segure e arraste ${shortcut.displayName}",
+                                    tint = Color(0xFFBBBBBB),
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.size(22.dp))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = shortcut.displayName,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Switch(
+                                checked = isSelected,
+                                enabled = shortcut != PlayerShortcut.OPTIONS &&
+                                    (isSelected || state.shortcuts.size < PlayerShortcutPolicy.MAX_COUNT),
+                                onCheckedChange = { selected ->
+                                    onShortcutsChanged(PlayerShortcutPolicy.toggle(state.shortcuts, shortcut, selected))
+                                },
+                                colors = SwitchDefaults.colors(checkedTrackColor = ReiAnixTokens.Colors.primary),
+                            )
+                        }
+                    }
+                }
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Replay,
+                    label = "Restaurar 4 atalhos originais",
+                    showChevron = false,
+                    onClick = { onShortcutsChanged(PlayerShortcutPolicy.default) },
+                )
+            }
             PlayerOptionsPage.OTHER -> {
                 PlayerOptionsSubpageHeader(
                     title = "Outras opções",

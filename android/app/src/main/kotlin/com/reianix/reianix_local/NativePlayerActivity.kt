@@ -11,6 +11,12 @@ import com.reianix.reianix_local.player.FavoriteSceneDialogs
 import com.reianix.reianix_local.player.PlayerEnhancementPolicy
 import com.reianix.reianix_local.player.PlayerSkipSegment
 import com.reianix.reianix_local.player.AniSkipSegments
+import com.reianix.reianix_local.player.PlayerFrameCapture
+import com.reianix.reianix_local.player.PlayerShortcut
+import com.reianix.reianix_local.player.PlayerShortcutPolicy
+import com.reianix.reianix_local.player.PlayerAnimePreferences
+import com.reianix.reianix_local.player.PlayerAnimeTrackChoice
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.media3.ui.CaptionStyleCompat
 import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.ExternalVideoChooser
@@ -205,6 +211,39 @@ class NativePlayerActivity : FragmentActivity() {
     private var subtitleEmbeddedStyle = true
     private var audioOnly = false
     private var smartSkipButton: TextView? = null
+    private var smartSkipEnabled = true
+    private var smartSkipGeneration = 0L
+    private var frameCaptureInProgress = false
+    private var playerShortcuts = PlayerShortcutPolicy.default
+    private var activeAnimePreferences: PlayerAnimePreferences? = null
+    private var activeAnimePreferencesKey: String? = null
+    private val animePreferencesMutex = Mutex()
+    @Volatile private var animePreferenceWriteVersion = 0L
+    private var pendingFrameCapture: File? = null
+    private val frameSaveLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("image/jpeg"),
+    ) { target ->
+        val source = pendingFrameCapture
+        pendingFrameCapture = null
+        if (source != null) {
+            if (target == null) {
+                source.delete()
+            } else {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val saved = runCatching {
+                        contentResolver.openOutputStream(target)?.use { output ->
+                            source.inputStream().use { it.copyTo(output) }
+                            true
+                        } == true
+                    }.getOrDefault(false)
+                    source.delete()
+                    withContext(Dispatchers.Main) {
+                        if (!saved && !isDestroyed) showFeedback("Não foi possível salvar a imagem", 1800L)
+                    }
+                }
+            }
+        }
+    }
     private var subtitleColor = "system"
     private var subtitleFont = "system"
     private var captionRevision = 0L
@@ -922,7 +961,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
             favoriteClipSession = null
         }
         super.onNewIntent(newIntent)
+        val previousAnimeKey = currentAnimePreferencesKey()
         setIntent(newIntent)
+        // Reuse the in-memory profile for another episode of the SAME anime.
+        // This also avoids reading a stale disk snapshot while an async
+        // preference write from the previous episode is still completing.
+        if (previousAnimeKey != currentAnimePreferencesKey()) {
+            activeAnimePreferences = null
+            activeAnimePreferencesKey = null
+        }
         requestId = incomingRequestId
         originRequestId = incomingOriginRequestId
         originCreatedAtMs = incomingOriginCreatedAtMs
@@ -1083,6 +1130,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         applyGlobalTrackPreferences()
         applyAdvancedTrackConstraints()
         applySubtitlePreferences()
+        activeAnimePreferences?.let(::applySavedAnimePreferences)
         loadCaptionAppearance()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
@@ -1955,6 +2003,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             )
             if (audioGroups == 0) logPlayer("TRACKS_NO_AUDIO requestId=" + requestId.ifEmpty { "-" })
             if (textGroups == 0) logPlayer("TRACKS_NO_SUBTITLE requestId=" + requestId.ifEmpty { "-" })
+            applySavedAnimeTrackChoices()
+            if (activeAnimePreferences?.audioOnly == true && !audioOnly && audioGroups > 0) {
+                setAudioOnly(true)
+            }
             captureTrackFormatSummaries()
             updateTrackButtons()
         }
@@ -2751,6 +2803,21 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         },
                         onMarkers = { showLocalMetadataEditor() },
                         onFavoriteScenes = { showFavoriteScenes() },
+                        onCaptureFrame = { captureCurrentVideoFrame() },
+                        onShortcutsChanged = { selected ->
+                            val validated = runCatching {
+                                PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
+                                    selected.joinToString(",") { it.key },
+                                ))
+                            }.getOrNull()
+                            if (validated != null) {
+                                playerShortcuts = validated
+                                persistCanonicalPlayerSetting(
+                                    "player.shortcuts", validated.joinToString(",") { it.key },
+                                )
+                                syncComposePlayerUiState()
+                            }
+                        },
                         onSubtitleAppearance = { showSubtitleAppearance() },
                         onAudioOnlyChanged = { enabled -> setAudioOnly(enabled) },
                         onAutoplayChanged = { enabled ->
@@ -2945,6 +3012,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onToggleLock = { setLocked(!locked) },
                         onResize = { showEpisodePlaylist() },
                         onSource = { toggleMorePanel() },
+                        onCaptureFrame = { captureCurrentVideoFrame() },
+                        onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
+                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
+                        onSleepTimer = { showSleepTimerSelection() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
                                 requestEpisode("player_next_request")
@@ -3073,6 +3144,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
             audioTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_AUDIO) > 0,
             subtitleTrackSelectionEnabled = supportedTrackCount(C.TRACK_TYPE_TEXT) > 0,
             autoplayNext = favoriteClipSession == null && autoplayNext,
+            shortcuts = playerShortcuts,
+            smartSkipEnabled = smartSkipEnabled,
+            animePreferencesEnabled = activeAnimePreferences != null,
             horizontalSeekEnabled = horizontalSeekEnabled,
             volumeGesturesEnabled = volumeGesturesEnabled,
             brightnessGesturesEnabled = brightnessGesturesEnabled,
@@ -3862,6 +3936,35 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         }
                     }
+                    if (activeAnimePreferences != null) {
+                        val format = option.group?.takeIf { option.trackIndex >= 0 }
+                            ?.getTrackFormat(option.trackIndex)
+                        val choice = when (option.trackIndex) {
+                            -2 -> PlayerAnimeTrackChoice(mode = "off")
+                            -1 -> PlayerAnimeTrackChoice()
+                            else -> PlayerAnimeTrackChoice(
+                                mode = "selected",
+                                language = format?.language.orEmpty(),
+                                label = format?.label.orEmpty(),
+                                mimeType = format?.sampleMimeType.orEmpty(),
+                            )
+                        }
+                        if (trackType == C.TRACK_TYPE_AUDIO) {
+                            activeAnimePreferences = activeAnimePreferences?.copy(audioTrack = choice)
+                            preferredAudioLanguage = choice.language
+                        } else {
+                            activeAnimePreferences = activeAnimePreferences?.copy(subtitleTrack = choice)
+                            preferredSubtitleLanguage = choice.language
+                            subtitleMode = when (choice.mode) {
+                                "off" -> "never"
+                                "selected" -> "always"
+                                else -> "auto"
+                            }
+                        }
+                        persistAnimePreferences()
+                    }
+                    // Publish the new semantic choice first: onTracksChanged
+                    // must not restore a stale per-anime override in between.
                     player.trackSelectionParameters = builder.build()
                     updateTrackButtons()
                     captureTrackFormatSummaries()
@@ -4045,6 +4148,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private val playerSettingWriteLocks = ConcurrentHashMap<String, Mutex>()
 
     private fun persistCanonicalPlayerSetting(key: String, value: String): Boolean {
+        if (activeAnimePreferences != null && key in setOf(
+                "player.default_speed", "player.aspect_ratio", "player.autoplay_next",
+                "player.zoom_enabled", "audio.subtitle_scale",
+                "audio.subtitle_bottom_padding", "audio.subtitle_embedded_style",
+                "audio.subtitle_color", "audio.subtitle_font",
+                "audio.preferred_language", "audio.preferred_subtitle_language",
+                "audio.subtitles",
+            )
+        ) {
+            persistAnimePreferences()
+            return true
+        }
         val mutationRequestId = UUID.randomUUID().toString()
         val normalizedKey = key.trim()
         val normalizedValue = try {
@@ -4098,6 +4213,282 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 " requestId=" + mutationRequestId,
         )
         return true
+    }
+
+    private fun setSmartSkipEnabled(enabled: Boolean) {
+        if (smartSkipEnabled == enabled) return
+        smartSkipGeneration++ // Do not undo an explicit user tap with stale SQLite data.
+        smartSkipEnabled = enabled
+        if (!enabled) {
+            skipLookupJob?.cancel()
+            remoteSkipSegments = emptyList()
+            skipLookupGeneration = -1L
+            skipLookupDuration = -1L
+        } else if (::player.isInitialized && player.duration > 0L) {
+            requestSmartSkipSegments(player.duration)
+        }
+        persistCanonicalPlayerSetting("player.aniskip_enabled", enabled.toString())
+        updateSmartSkipButton()
+        syncComposePlayerUiState()
+    }
+
+    /**
+     * Capture only when requested. The worker decodes the local media URI,
+     * never the overlaid player surface. API 29+ uses scoped MediaStore;
+     * older devices use the system document picker without storage access.
+     */
+    private fun captureCurrentVideoFrame() {
+        if (!::player.isInitialized || !::uri.isInitialized ||
+            episodeChangePending || favoriteClipSession != null ||
+            sessionState != SessionState.ACTIVE || pendingFrameCapture != null ||
+            frameCaptureInProgress
+        ) {
+            showFeedback("Captura indisponível neste momento")
+            return
+        }
+        frameCaptureInProgress = true
+        val requestedUri = uri
+        setMorePanelVisible(false)
+        val positionMs = player.currentPosition.coerceAtLeast(0L)
+        val generation = playerGeneration
+        val name = "ReiAnix_${System.currentTimeMillis()}.jpg"
+        lifecycleScope.launch {
+            try {
+                val image = PlayerFrameCapture.capture(applicationContext, requestedUri, positionMs)
+                if (image == null) {
+                    showFeedback("Não foi possível capturar essa cena", 1800L)
+                    return@launch
+                }
+                if (isDestroyed || isFinishing || generation != playerGeneration ||
+                    !::uri.isInitialized || uri != requestedUri
+                ) {
+                    image.delete()
+                    return@launch
+                }
+                if (Build.VERSION.SDK_INT >= 29) {
+                    val saved = PlayerFrameCapture.saveToGallery(applicationContext, image, name)
+                    image.delete()
+                    if (!saved && !isDestroyed) showFeedback("Não foi possível salvar a imagem", 1800L)
+                } else {
+                    pendingFrameCapture = image
+                    runCatching { frameSaveLauncher.launch(name) }.onFailure { error ->
+                        pendingFrameCapture = null
+                        image.delete()
+                        logPlayer("FRAME_SAVE_PICKER_FAILED", error)
+                        showFeedback("Não foi possível abrir o seletor de arquivos", 1800L)
+                    }
+                }
+            } finally {
+                frameCaptureInProgress = false
+            }
+        }
+    }
+
+    private fun currentAnimePreferencesKey(): String? =
+        PlayerAnimePreferences.keyFor(intent.getStringExtra("animeId"))
+
+    private fun currentTrackChoice(type: Int): PlayerAnimeTrackChoice {
+        if (!::player.isInitialized) return PlayerAnimeTrackChoice()
+        val params = player.trackSelectionParameters
+        if (type in params.disabledTrackTypes) return PlayerAnimeTrackChoice(mode = "off")
+        for (group in player.currentTracks.groups) {
+            if (group.type != type || !group.isSupported) continue
+            val override = params.overrides[group.mediaTrackGroup] ?: continue
+            val index = override.trackIndices.firstOrNull { index ->
+                index in 0 until group.length && group.isTrackSupported(index)
+            } ?: continue
+            val format = group.getTrackFormat(index)
+            return PlayerAnimeTrackChoice(
+                mode = "selected",
+                language = format.language.orEmpty(),
+                label = format.label.orEmpty(),
+                mimeType = format.sampleMimeType.orEmpty(),
+            )
+        }
+        return PlayerAnimeTrackChoice()
+    }
+
+    private fun snapshotCurrentAnimePreferences(): PlayerAnimePreferences {
+        val previous = activeAnimePreferences
+        return PlayerAnimePreferences(
+            speed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
+            aspect = if (aspectModeLabel == "Preencher") "fill" else "fit",
+            autoplay = autoplayNext,
+            zoomEnabled = zoomEnabled,
+            audioOnly = audioOnly,
+            audioLanguage = preferredAudioLanguage,
+            subtitleLanguage = preferredSubtitleLanguage,
+            subtitleMode = subtitleMode,
+            subtitleScale = subtitleScale,
+            subtitlePadding = subtitleBottomPaddingPercent,
+            subtitleEmbedded = subtitleEmbeddedStyle,
+            subtitleColor = subtitleColor,
+            subtitleFont = subtitleFont,
+            audioTrack = previous?.audioTrack ?: PlayerAnimeTrackChoice(),
+            subtitleTrack = previous?.subtitleTrack ?: PlayerAnimeTrackChoice(),
+        )
+    }
+
+    private fun persistAnimePreferences() {
+        val key = currentAnimePreferencesKey() ?: return
+        if (activeAnimePreferences == null) return
+        val snapshot = snapshotCurrentAnimePreferences()
+        activeAnimePreferences = snapshot
+        val version = ++animePreferenceWriteVersion
+        lifecycleScope.launch(Dispatchers.IO) {
+            animePreferencesMutex.withLock {
+                if (version == animePreferenceWriteVersion) {
+                    runCatching {
+                        ReiAnixSqliteSettingsRepository(applicationContext)
+                            .setPreference(key, snapshot.encode())
+                    }.onFailure { logPlayer("ANIME_PREFERENCES_WRITE_FAILED", it) }
+                }
+            }
+        }
+        syncComposePlayerUiState()
+    }
+
+    private fun enableAnimePreferences() {
+        if (currentAnimePreferencesKey() == null || favoriteClipSession != null) {
+            showFeedback("Abra um episódio vinculado a um anime para usar esta opção")
+            return
+        }
+        // Prevent an older in-flight configuration read from overwriting the
+        // opt-in choice made explicitly from the open menu.
+        captionRevision++
+        activeAnimePreferences = snapshotCurrentAnimePreferences().copy(
+            // If the user enabled the anime profile AFTER choosing a track,
+            // preserve that current explicit selection from the first save.
+            audioTrack = currentTrackChoice(C.TRACK_TYPE_AUDIO),
+            subtitleTrack = currentTrackChoice(C.TRACK_TYPE_TEXT),
+        )
+        activeAnimePreferencesKey = currentAnimePreferencesKey()
+        persistAnimePreferences()
+        showFeedback("Preferências deste anime ativadas")
+    }
+
+    private fun resetAnimePreferences() {
+        val key = currentAnimePreferencesKey() ?: return
+        activeAnimePreferences = null
+        activeAnimePreferencesKey = null
+        captionRevision++
+        val revision = captionRevision
+        val version = ++animePreferenceWriteVersion
+        syncComposePlayerUiState()
+        lifecycleScope.launch {
+            val values = withContext(Dispatchers.IO) {
+                animePreferencesMutex.withLock {
+                    runCatching {
+                        val repository = ReiAnixSqliteSettingsRepository(applicationContext)
+                        if (version == animePreferenceWriteVersion) repository.removePreference(key)
+                        repository.allPreferences()
+                    }.getOrDefault(emptyMap())
+                }
+            }
+            if (revision == captionRevision && currentAnimePreferencesKey() == key &&
+                sessionState == SessionState.ACTIVE
+            ) {
+                applyGlobalPlayerPreferences(values)
+                showFeedback("Configurações gerais restauradas")
+            }
+        }
+    }
+
+    private fun applyGlobalPlayerPreferences(values: Map<String, String>) {
+        if (!::player.isInitialized) return
+        val setting: (String) -> String = { key ->
+            values[key] ?: ReiAnixSettingsContract.defaultFor(key).orEmpty()
+        }
+        player.setPlaybackSpeed(
+            PlayerGesturePolicy.normalizePlaybackSpeed(setting("player.default_speed").toFloatOrNull() ?: 1f),
+        )
+        autoplayNext = setting("player.autoplay_next") != "false"
+        zoomEnabled = setting("player.zoom_enabled") != "false"
+        val aspect = setting("player.aspect_ratio").takeIf { it == "fill" } ?: "fit"
+        intent.putExtra("setting_player_aspect_ratio", aspect)
+        playerView.resizeMode = resizeModeFromSetting(aspect)
+        aspectModeLabel = aspectLabelFromSetting(aspect)
+        preferredAudioLanguage = setting("audio.preferred_language")
+        preferredSubtitleLanguage = setting("audio.preferred_subtitle_language")
+        subtitleMode = setting("audio.subtitles").ifBlank { "auto" }
+        subtitleScale = setting("audio.subtitle_scale").toFloatOrNull() ?: 1f
+        subtitleBottomPaddingPercent = setting("audio.subtitle_bottom_padding").toIntOrNull() ?: 8
+        subtitleEmbeddedStyle = setting("audio.subtitle_embedded_style") != "false"
+        subtitleColor = setting("audio.subtitle_color").ifBlank { "system" }
+        subtitleFont = setting("audio.subtitle_font").ifBlank { "system" }
+        if (audioOnly) setAudioOnly(false)
+        applyGlobalTrackPreferences()
+        applySubtitlePreferences()
+        syncComposePlayerUiState()
+    }
+
+    private fun applySavedAnimePreferences(preferences: PlayerAnimePreferences) {
+        if (!::player.isInitialized || !::playerView.isInitialized) return
+        player.setPlaybackSpeed(
+            PlayerGesturePolicy.normalizePlaybackSpeed(preferences.speed),
+        )
+        autoplayNext = preferences.autoplay
+        zoomEnabled = preferences.zoomEnabled
+        preferredAudioLanguage = preferences.audioLanguage
+        preferredSubtitleLanguage = preferences.subtitleLanguage
+        subtitleMode = preferences.subtitleMode
+        subtitleScale = preferences.subtitleScale
+        subtitleBottomPaddingPercent = preferences.subtitlePadding
+        subtitleEmbeddedStyle = preferences.subtitleEmbedded
+        subtitleColor = preferences.subtitleColor
+        subtitleFont = preferences.subtitleFont
+        playerView.resizeMode = resizeModeFromSetting(preferences.aspect)
+        aspectModeLabel = aspectLabelFromSetting(preferences.aspect)
+        intent.putExtra("setting_player_aspect_ratio", preferences.aspect)
+        applyGlobalTrackPreferences()
+        applySavedAnimeTrackChoices()
+        applySubtitlePreferences()
+        // Changing the Media3 audio-only service is deferred until tracks
+        // are available. Never switch playback into a failed state on start.
+        if (preferences.audioOnly != audioOnly &&
+            supportedTrackCount(C.TRACK_TYPE_AUDIO) > 0
+        ) setAudioOnly(preferences.audioOnly)
+        syncComposePlayerUiState()
+    }
+
+    private fun applySavedAnimeTrackChoices() {
+        val preferences = activeAnimePreferences ?: return
+        if (!::player.isInitialized) return
+        val current = player.trackSelectionParameters
+        val builder = current.buildUpon()
+        fun applyTrack(type: Int, choice: PlayerAnimeTrackChoice) {
+            builder.clearOverridesOfType(type)
+            val disabled = choice.mode == "off" ||
+                (type == C.TRACK_TYPE_TEXT && preferences.subtitleMode == "never")
+            builder.setTrackTypeDisabled(type, disabled)
+            if (disabled || choice.mode != "selected") return
+            val candidates = player.currentTracks.groups
+                .filter { it.type == type && it.isSupported }
+                .flatMap { group ->
+                    (0 until group.length)
+                        .filter { group.isTrackSupported(it) }
+                        .map { index -> group to index }
+                }
+            val match = candidates.firstOrNull { (group, index) ->
+                val format = group.getTrackFormat(index)
+                choice.label.isNotBlank() && choice.label.equals(format.label.orEmpty(), true) &&
+                    (choice.language.isBlank() || choice.language.equals(format.language.orEmpty(), true)) &&
+                    (choice.mimeType.isBlank() || choice.mimeType == format.sampleMimeType)
+            } ?: candidates.firstOrNull { (group, index) ->
+                val format = group.getTrackFormat(index)
+                choice.language.isNotBlank() && choice.language.equals(format.language.orEmpty(), true) &&
+                    (choice.mimeType.isBlank() || choice.mimeType == format.sampleMimeType)
+            }
+            // No matching track in this episode: the preferred language or
+            // the Media3 automatic selector remains the safe fallback.
+            if (match != null) {
+                builder.setOverrideForType(TrackSelectionOverride(match.first.mediaTrackGroup, match.second))
+            }
+        }
+        applyTrack(C.TRACK_TYPE_AUDIO, preferences.audioTrack)
+        applyTrack(C.TRACK_TYPE_TEXT, preferences.subtitleTrack)
+        val selected = builder.build()
+        if (selected != current) player.trackSelectionParameters = selected
     }
 
     private fun gestureSettingLabel(label: String, enabled: Boolean): String =
@@ -5408,6 +5799,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(sleepTimerTick)
         sleepTimerDialog?.dismiss()
         sleepTimerDialog = null
+        pendingFrameCapture?.delete()
+        pendingFrameCapture = null
 
         val shouldReportExit = isFinishing && !suppressExitEvent && !exitReported && !isChangingConfigurations
         if (shouldReportExit) {
@@ -5579,11 +5972,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (favoriteClipSession != null) return emptyList()
         val manual = if (::uri.isInitialized && localMetadata.mediaId == uri.toString()) localMetadata
             else PlayerLocalMetadataStore.Metadata.empty()
-        return PlayerEnhancementPolicy.segments(manual, remoteSkipSegments, durationMs)
+        return PlayerEnhancementPolicy.segments(
+            manual, if (smartSkipEnabled) remoteSkipSegments else emptyList(), durationMs,
+        )
     }
 
     private fun requestSmartSkipSegments(durationMs: Long) {
-        if (favoriteClipSession != null) return
+        if (!smartSkipEnabled || favoriteClipSession != null) return
         if (!::player.isInitialized || !::uri.isInitialized || durationMs <= 0L ||
             errorVisible || episodeChangePending || sessionState != SessionState.ACTIVE ||
             (skipLookupGeneration == playerGeneration && skipLookupDuration == durationMs)) return
@@ -5718,7 +6113,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
                 },
                 onSaved = {
-                    Toast.makeText(this@NativePlayerActivity, "Cena favorita salva", Toast.LENGTH_SHORT).show()
                     if (revision == favoriteSceneUiRevision) showFavoriteScenes()
                 },
                 onBack = { showFavoriteScenes() },
@@ -5896,16 +6290,55 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun loadCaptionAppearance() {
         val revision = ++captionRevision
+        val skipGenerationAtLoad = smartSkipGeneration
+        val animeKey = currentAnimePreferencesKey()
         lifecycleScope.launch {
             val values = withContext(Dispatchers.IO) {
                 runCatching { ReiAnixSqliteSettingsRepository(applicationContext).allPreferences() }
                     .getOrDefault(emptyMap())
             }
-            if (revision == captionRevision && sessionState == SessionState.ACTIVE) {
+            if (revision != captionRevision || sessionState != SessionState.ACTIVE ||
+                animeKey != currentAnimePreferencesKey()
+            ) return@launch
+            playerShortcuts = PlayerShortcutPolicy.parse(values["player.shortcuts"])
+            if (skipGenerationAtLoad == smartSkipGeneration) {
+                val enableSkip = values["player.aniskip_enabled"] != "false"
+                if (smartSkipEnabled != enableSkip) {
+                    smartSkipEnabled = enableSkip
+                    skipLookupJob?.cancel()
+                    remoteSkipSegments = emptyList()
+                    skipLookupGeneration = -1L
+                    skipLookupDuration = -1L
+                    if (enableSkip && ::player.isInitialized && player.duration > 0L) {
+                        requestSmartSkipSegments(player.duration)
+                    }
+                }
+            }
+            // On a same-anime handoff the already-applied in-memory snapshot
+            // is more recent than an in-flight SQLite write. Do not apply
+            // stale preferences or repeat Media3 track changes unnecessarily.
+            val autoSaveEnabled = values["player.anime_preferences_enabled"] != "false"
+            val reuse = autoSaveEnabled && animeKey != null &&
+                activeAnimePreferences != null && activeAnimePreferencesKey == animeKey
+            if (!reuse) {
                 subtitleColor = values["audio.subtitle_color"] ?: "system"
                 subtitleFont = values["audio.subtitle_font"] ?: "system"
-                applySubtitlePreferences()
+                // Disabling per-anime preferences only stops applying/saving:
+                // previously saved per-anime records remain intact in SQLite.
+                val saved = if (autoSaveEnabled) {
+                    PlayerAnimePreferences.decode(animeKey?.let(values::get))
+                } else null
+                activeAnimePreferences = null // Never copy a different anime’s track identity.
+                activeAnimePreferencesKey = null
+                activeAnimePreferences = saved ?: if (autoSaveEnabled && animeKey != null &&
+                    favoriteClipSession == null) snapshotCurrentAnimePreferences() else null
+                activeAnimePreferencesKey = animeKey.takeIf { activeAnimePreferences != null }
+                // An anime with no saved record starts with global defaults and
+                // acquires its own profile automatically on the first change.
+                saved?.let(::applySavedAnimePreferences) ?: applySubtitlePreferences()
             }
+            updateSmartSkipButton()
+            syncComposePlayerUiState()
         }
     }
 
@@ -6000,6 +6433,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
         audioOnly = enabled
+        if (activeAnimePreferences != null) persistAnimePreferences()
         player.setWakeMode(if (enabled) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NONE)
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled).build()
