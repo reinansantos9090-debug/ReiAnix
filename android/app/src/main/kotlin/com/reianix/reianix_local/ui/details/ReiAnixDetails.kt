@@ -114,6 +114,8 @@ import com.reianix.reianix_local.ui.artwork.ReiAnixBackdrop
 import com.reianix.reianix_local.ui.discovery.ReiAnixMarathonDialog
 import com.reianix.reianix_local.ui.artwork.ReiAnixEpisodeThumbnail
 import com.reianix.reianix_local.ui.artwork.ReiAnixPoster
+import com.reianix.reianix_local.ui.model.ReiAnixLibraryUiState
+import kotlinx.coroutines.flow.StateFlow
 import com.reianix.reianix_local.ui.model.ReiAnixConsumptionState
 import com.reianix.reianix_local.ui.model.presentationStateLabel
 import com.reianix.reianix_local.ui.model.ReiAnixDetailsAnimeUiModel
@@ -257,6 +259,7 @@ fun ReiAnixDetailsRoute(
             if (isForegroundDetails()) playEpisode(episodeId, canonicalId)
         },
         onToggleFavorite = viewModel::toggleFavorite,
+        recommendationLibraryState = viewModel.uiState,
         onOpenRecommendedAnime = { recommendedId ->
             if (isForegroundDetails()) navController.navigateToDetails(recommendedId.toString(), origin)
         },
@@ -306,6 +309,7 @@ fun ReiAnixDetailsScreen(
     onRetry: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    recommendationLibraryState: StateFlow<ReiAnixLibraryUiState>? = null,
     onOpenRecommendedAnime: (Long) -> Unit = {},
     onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
@@ -344,6 +348,7 @@ fun ReiAnixDetailsScreen(
                         onRefresh = onRetry,
                         onWatch = onWatch,
                         onToggleFavorite = onToggleFavorite,
+                        recommendationLibraryState = recommendationLibraryState,
                         onOpenRecommendedAnime = onOpenRecommendedAnime,
                         onSetEpisodeWatched = onSetEpisodeWatched,
                         onManageAniList = onManageAniList,
@@ -508,6 +513,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onRefresh: () -> Unit,
     onWatch: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    recommendationLibraryState: StateFlow<ReiAnixLibraryUiState>?,
     onOpenRecommendedAnime: (Long) -> Unit,
     onSetEpisodeWatched: (Long, Boolean) -> Unit,
     onManageAniList: () -> Unit,
@@ -620,7 +626,11 @@ private fun ColumnScope.ReiAnixDetailsReady(
             contentType = "details-recommendations",
         ) {
             Box(modifier = Modifier.fillMaxWidth().testTag("details-recommendations")) {
-                ReiAnixPersonalExtras(animeId = anime.id, onOpenAnime = onOpenRecommendedAnime)
+                ReiAnixPersonalExtras(
+                    animeId = anime.id,
+                    libraryState = recommendationLibraryState,
+                    onOpenAnime = onOpenRecommendedAnime,
+                )
             }
         }
 
