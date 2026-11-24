@@ -54,34 +54,6 @@ internal object ExternalVideoChooser {
             putExtra(Intent.EXTRA_TITLE, title)
         }
 
-    data class InstalledPlayer(val component: ComponentName, val label: String)
-
-    fun installedPlayers(context: Context, mediaUri: Uri? = null): List<InstalledPlayer> {
-        val intent = if (mediaUri != null) createVideoViewIntent(context, mediaUri)
-            else Intent(Intent.ACTION_VIEW).setDataAndType(
-                Uri.parse("content://${context.packageName}.videoexports/video"), "video/*",
-            )
-        val manager = context.packageManager
-        @Suppress("DEPRECATION")
-        return manager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-            .filter { it.activityInfo.packageName != context.packageName && it.activityInfo.exported }
-            .map {
-                InstalledPlayer(
-                    ComponentName(it.activityInfo.packageName, it.activityInfo.name),
-                    it.loadLabel(manager).toString(),
-                )
-            }
-            .distinctBy { it.component }
-            .sortedBy { it.label.lowercase(Locale.ROOT) }
-    }
-
-    fun createExplicitIntent(context: Context, localUri: Uri, component: ComponentName): Intent {
-        require(installedPlayers(context, localUri).any { it.component == component }) {
-            "O reprodutor externo não está disponível."
-        }
-        return createVideoViewIntent(context, localUri).setComponent(component)
-    }
-
     fun createIntent(context: Context, localUri: Uri): Intent {
         val viewVideo = createVideoViewIntent(context, localUri)
         val sharedUri = requireNotNull(viewVideo.data)

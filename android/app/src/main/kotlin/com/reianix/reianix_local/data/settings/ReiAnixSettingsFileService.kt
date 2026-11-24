@@ -130,7 +130,6 @@ class ReiAnixSettingsFileService(
             }
             ReiAnixSettingKind.ENUM,
             ReiAnixSettingKind.LANGUAGE,
-            ReiAnixSettingKind.COMPONENT,
             ReiAnixSettingKind.SHORTCUTS -> value.toString()
         }
         return try {
@@ -146,7 +145,6 @@ class ReiAnixSettingsFileService(
             ReiAnixSettingKind.INTEGER -> normalized.toInt()
             ReiAnixSettingKind.DECIMAL -> normalized.toDouble()
             ReiAnixSettingKind.ENUM, ReiAnixSettingKind.LANGUAGE,
-            ReiAnixSettingKind.COMPONENT,
             ReiAnixSettingKind.SHORTCUTS -> normalized
             null -> normalized
         }

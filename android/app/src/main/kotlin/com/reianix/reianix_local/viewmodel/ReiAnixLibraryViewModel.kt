@@ -2782,8 +2782,9 @@ class ReiAnixLibraryViewModel(
         requestId: String,
         status: String,
         error: String? = null,
+        externalChooser: Boolean = false,
     ) {
-        repository.reportNativePlayerHandoff(requestId, status, error)
+        repository.reportNativePlayerHandoff(requestId, status, error, externalChooser)
         val normalizedStatus = status.trim().uppercase(Locale.ROOT)
         val eventName = when (normalizedStatus) {
             "COMPLETED", "ACCEPTED", "SUCCESS" -> "PLAYER_HANDOFF_ACCEPTED"
@@ -3006,22 +3007,14 @@ class ReiAnixLibraryViewModel(
                         false
                     } else {
 
-                        val playbackMode = preferenceValue("player.default_player")
-                        if (favoriteScene == null && playbackMode in setOf("external", "ask")) {
-                            val component = android.content.ComponentName.unflattenFromString(
-                                preferenceValue("player.external_component"),
-                            )
+                        if (favoriteScene == null &&
+                            ReiAnixSettingsContract.defaultPlayerMode(preferenceValue("player.default_player")) == "external"
+                        ) {
                             val chooser = com.reianix.reianix_local.player.ExternalVideoChooser
-                            val target = if (playbackMode == "external" && component != null &&
-                                chooser.installedPlayers(appContext, mediaUri).any { it.component == component }) {
-                                chooser.createExplicitIntent(appContext, mediaUri, component)
-                            } else {
-                                com.reianix.reianix_local.player.PlaybackTargetActivity.createIntent(
-                                    appContext, mediaUri, intent, playbackMode == "external",
-                                )
-                            }
-                            appContext.startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                            reportNativePlayerHandoff(requestId, "COMPLETED")
+                                .createIntent(appContext, mediaUri)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            appContext.startActivity(chooser)
+                            reportNativePlayerHandoff(requestId, "COMPLETED", externalChooser = true)
                             return@withContext true
                         }
 

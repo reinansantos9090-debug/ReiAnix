@@ -3,15 +3,14 @@
 Em **Configurações → Player → Reprodução → Reprodutor padrão**, escolha:
 
 - **Reprodutor interno** (padrão): abre diretamente o player Media3 do ReiAnix.
-- **Reprodutor externo**: usa o aplicativo escolhido em **Aplicativo externo**. Se nenhum estiver selecionado ou o aplicativo não estiver mais disponível, permite escolher novamente.
-- **Perguntar sempre**: oferece o ReiAnix e os aplicativos compatíveis instalados antes de abrir o episódio.
+- **Reprodutor externo**: ao tocar em um episódio, abre diretamente o seletor nativo “Abrir com...” do Android, sem iniciar o player interno. Escolha um aplicativo compatível a cada abertura.
 
-O menu de opções durante a reprodução não contém mais “Abrir com...”. A opção Transmitir continua independente.
+O ReiAnix não memoriza o aplicativo escolhido. O antigo modo “Perguntar sempre” volta ao padrão interno. O menu durante a reprodução não contém mais “Abrir com...”; Transmitir continua independente.
 
 ## Segurança e limitações
 
-- Somente aplicativos instalados que aceitam `ACTION_VIEW` com `video/*` são oferecidos; o próprio ReiAnix é excluído da lista externa.
-- URIs SAF/MediaStore são encaminhadas com uma permissão temporária de leitura. Arquivos locais usam o FileProvider existente.
-- A reprodução interna continua utilizando a identidade canônica do episódio, o progresso e as configurações existentes. Players externos não têm integração garantida com o progresso, as legendas ou o avanço automático do ReiAnix.
-- Cenas favoritas continuam no player interno para preservar seus recortes.
-- A compatibilidade depende do aplicativo escolhido e precisa ser validada em dispositivo real.
+- O seletor usa `Intent.createChooser` com `ACTION_VIEW` e MIME `video/*`. A aparência, a lista de aplicativos e os perfis exibidos são controlados pelo Android.
+- URIs SAF/MediaStore são compartilhadas com permissão temporária de leitura e ClipData. Arquivos locais usam o FileProvider existente.
+- O player interno conserva o progresso, as configurações e a identidade do episódio. Players externos não têm integração garantida com o progresso, legendas ou avanço automático do ReiAnix.
+- Cenas favoritas continuam no player interno para preservar os recortes.
+- A compatibilidade deve ser validada em dispositivo real.

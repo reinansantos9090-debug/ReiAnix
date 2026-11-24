@@ -475,6 +475,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
         requestId: String,
         status: String,
         error: String? = null,
+        externalChooser: Boolean = false,
     ) {
         val normalizedRequestId = requestId.trim()
         val normalizedStatus = status.trim().uppercase()
@@ -483,7 +484,7 @@ class ReiAnixLibraryRepository(context: Context) : AutoCloseable {
             stateMutex.withLock {
                 _state.value = _state.value.copy(
                     lastCommandId = normalizedRequestId,
-                    lastCommandAction = "native_player_handoff",
+                    lastCommandAction = if (externalChooser) "external_player_handoff" else "native_player_handoff",
                     lastCommandStatus = normalizedStatus,
                     lastCommandError = error?.trim()?.takeIf { it.isNotEmpty() }?.take(500),
                 )

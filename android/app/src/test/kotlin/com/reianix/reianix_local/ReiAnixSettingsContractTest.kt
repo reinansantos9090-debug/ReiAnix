@@ -8,24 +8,22 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ReiAnixSettingsContractTest {
-    @Test fun playbackTargetDefaultsToInternalAndResetsWithPlayer() {
-        val key = "player.default_player"
-        val component = "player.external_component"
+    @Test fun playbackTargetHasOnlyInternalAndExternalModes() {
+        val key = ReiAnixSettingsContract.DEFAULT_PLAYER_KEY
         assertEquals("internal", ReiAnixSettingsContract.defaultFor(key))
-        assertEquals("", ReiAnixSettingsContract.defaultFor(component))
-        for (mode in listOf("internal", "external", "ask")) {
-            assertEquals(mode, ReiAnixSettingsContract.normalize(key, mode))
-        }
-        assertEquals("org.videolan.vlc/org.videolan.vlc.Player",
-            ReiAnixSettingsContract.normalize(component, "org.videolan.vlc/org.videolan.vlc.Player"))
+        assertEquals(setOf("internal", "external"), ReiAnixSettingsContract.definitions[key]?.choices)
+        assertEquals("internal", ReiAnixSettingsContract.defaultPlayerMode(null))
+        assertEquals("internal", ReiAnixSettingsContract.defaultPlayerMode("ask"))
+        assertEquals("internal", ReiAnixSettingsContract.defaultPlayerMode("invalid"))
+        assertEquals("external", ReiAnixSettingsContract.defaultPlayerMode("external"))
+        assertEquals("internal", ReiAnixSettingsContract.normalize(key, "ask"))
+        assertEquals("internal", ReiAnixSettingsContract.withDefaults(mapOf(key to "ask"))[key])
+        assertEquals("external", ReiAnixSettingsContract.withDefaults(mapOf(key to "external"))[key])
         assertThrows(IllegalArgumentException::class.java) {
             ReiAnixSettingsContract.normalize(key, "invalid")
         }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReiAnixSettingsContract.normalize(component, "invalid")
-        }
         assertEquals(true, key in ReiAnixSettingsContract.keysForReset(playerOnly = true))
-        assertEquals(true, component in ReiAnixSettingsContract.keysForReset(playerOnly = true))
+        assertNull(ReiAnixSettingsContract.defaultFor("player.external_component"))
     }
 
     @Test fun knownDefaultsAndTypesMatchLegacyContract() {
