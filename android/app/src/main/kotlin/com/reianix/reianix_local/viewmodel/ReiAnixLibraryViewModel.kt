@@ -2814,6 +2814,14 @@ class ReiAnixLibraryViewModel(
         )
     }
 
+    internal fun cancelNativePlayerHandoff(requestId: String) {
+        synchronized(nativePlayerHandoffLock) {
+            if (pendingNativePlayerHandoffRequestId == requestId) {
+                pendingNativePlayerHandoffRequestId = null
+            }
+        }
+    }
+
     fun openEpisode(episodeId: Long, expectedAnimeId: Long? = null, favoriteSceneId: String? = null): String? {
         val requestId = UUID.randomUUID().toString()
         val duplicateRequestId = synchronized(nativePlayerHandoffLock) {

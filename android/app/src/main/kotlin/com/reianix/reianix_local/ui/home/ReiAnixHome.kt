@@ -110,7 +110,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.navigation.navigateToMyList
-import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.player.rememberEpisodeLauncher
 import com.reianix.reianix_local.ui.navigation.navigateToTopLevel
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
@@ -130,6 +130,7 @@ fun ReiAnixHomeRoute(
     continueWatchingLimit: Int = 10,
     onOpenCollector: () -> Unit = {},
 ) {
+    val playEpisode = rememberEpisodeLauncher(viewModel)
     val state by viewModel.homeState.collectAsStateWithLifecycle()
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
     val personalListMutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
@@ -154,13 +155,7 @@ fun ReiAnixHomeRoute(
                 origin = ReiAnixRoutes.HOME,
             )
         },
-        onWatch = { episodeId, animeId ->
-            navController.navigateToPlayer(
-                episodeId = episodeId.toString(),
-                animeId = animeId.toString(),
-                origin = ReiAnixRoutes.HOME,
-            )
-        },
+        onWatch = playEpisode,
         onToggleFavorite = viewModel::toggleFavorite,
         onOpenMyList = { navController.navigateToMyList() },
         onOpenLibrary = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
