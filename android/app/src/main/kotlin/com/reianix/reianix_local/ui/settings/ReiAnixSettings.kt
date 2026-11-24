@@ -947,7 +947,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         BooleanSettingRow(
                             keyName = "player.aniskip_enabled",
                             title = "Detectar abertura e encerramento",
-                            description = "Usa AniSkip quando houver intervalos disponíveis. Marcadores manuais continuam funcionando.",
+                            description = "Compara AniSkip, IntroDB e SkipDB e analisa áudio local quando necessário. Dados do SkipDB: skipdb.tv (ODbL 1.0). Marcadores manuais continuam funcionando.",
                             checked = state.settings["player.aniskip_enabled"] != "false",
                             onCheckedChange = { onUpdateSetting("player.aniskip_enabled", it.toString()) },
                         )

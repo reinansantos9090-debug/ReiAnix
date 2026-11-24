@@ -11,6 +11,14 @@ import com.reianix.reianix_local.player.FavoriteSceneDialogs
 import com.reianix.reianix_local.player.PlayerEnhancementPolicy
 import com.reianix.reianix_local.player.PlayerSkipSegment
 import com.reianix.reianix_local.player.AniSkipSegments
+import com.reianix.reianix_local.player.ComplementarySkipSources
+import com.reianix.reianix_local.player.SkipConsensus
+import com.reianix.reianix_local.player.SkipEvidence
+import com.reianix.reianix_local.player.SkipProvider
+import com.reianix.reianix_local.player.SkipProviderResult
+import com.reianix.reianix_local.player.LocalSkipAudio
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import com.reianix.reianix_local.player.PlayerShortcut
 import com.reianix.reianix_local.player.PlayerShortcutPolicy
 import com.reianix.reianix_local.player.tv.ReiAnixTvPicker
@@ -5976,12 +5984,55 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val repository = ReiAnixAppDependencies.from(applicationContext).sqliteLibraryRepository
                     val episode = repository.getEpisode(episodeId) ?: return@withContext emptyList<PlayerSkipSegment>()
                     val anime = repository.getAnime(episode.animeId) ?: return@withContext emptyList<PlayerSkipSegment>()
-                    val anilistId = anime.anilistId ?: return@withContext emptyList<PlayerSkipSegment>()
-                    if (anime.anilistMatchManual != true && anime.anilistMatchStatus != "matched") return@withContext emptyList<PlayerSkipSegment>()
                     val number = PlayerEnhancementPolicy.aniSkipEpisodeNumber(
                         episode.season, episode.number, episode.absoluteNumber, episode.episodeType,
-                    ) ?: return@withContext emptyList<PlayerSkipSegment>()
-                    AniSkipSegments(applicationContext).fetch(anilistId, number, durationMs)
+                    )
+                    val anilistId = anime.anilistId?.takeIf {
+                        anime.anilistMatchManual == true || anime.anilistMatchStatus == "matched"
+                    }
+                    if (episode.season < 1 || episode.episodeType?.lowercase(java.util.Locale.ROOT) in
+                        setOf("special", "ova", "oad", "ona", "extra", "movie")) return@withContext emptyList<PlayerSkipSegment>()
+                    // Remote queries use only catalog IDs, episode numbers and duration.
+                    val results = coroutineScope {
+                        val ani = async {
+                            if (anilistId == null || number == null) SkipProviderResult()
+                            else SkipProviderResult(AniSkipSegments(applicationContext)
+                                .fetch(anilistId, number, durationMs).map {
+                                    SkipEvidence(SkipProvider.ANISKIP, it, true)
+                                })
+                        }
+                        val other = async {
+                            if (anilistId == null || number == null || anime.format?.equals("TV", true) != true)
+                                emptyList()
+                            else ComplementarySkipSources().fetch(anilistId, episode.season, number, anime.episodesCount, durationMs)
+                        }
+                        listOf(ani.await()) + other.await()
+                    }
+                    val remote = SkipConsensus.choose(results, durationMs)
+                    // Only decode locally if another source is needed. Limit to the
+                    // same season, distinct episodes and existing accessible media.
+                    val missingKinds = setOf("op", "ed") - remote.map { it.kind }.toSet() -
+                        results.flatMap { it.absentKinds }.toSet()
+                    if (missingKinds.isEmpty()) return@withContext remote
+                    val currentNumber = PlayerEnhancementPolicy.episodeNumber(episode.number)
+                        ?: return@withContext remote
+                    val references = repository.listEpisodes(episode.animeId)
+                        .asSequence()
+                        .filter { it.id != episode.id && it.season == episode.season && it.missing != true &&
+                            (it.episodeType == null || it.episodeType.equals("regular", true)) }
+                        .mapNotNull { row ->
+                            val n = PlayerEnhancementPolicy.episodeNumber(row.number) ?: return@mapNotNull null
+                            if (n == currentNumber || kotlin.math.abs(n.toLong() - currentNumber) > 4L) null else row to n
+                        }
+                        .sortedBy { kotlin.math.abs(it.second.toLong() - currentNumber) }
+                        .distinctBy { it.second }
+                        .mapNotNull { (row, _) ->
+                            val candidate = normalizeLocalReference(row.path) ?: return@mapNotNull null
+                            if (candidate == source) null else LocalSkipAudio.Reference(
+                                candidate, localMetadataStore.get(candidate.toString()))
+                        }.distinctBy { it.uri }.take(2).toList()
+                    val local = LocalSkipAudio(applicationContext).detect(source, references, durationMs, missingKinds)
+                    SkipConsensus.addLocal(remote, local, results, durationMs)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) { emptyList<PlayerSkipSegment>() }

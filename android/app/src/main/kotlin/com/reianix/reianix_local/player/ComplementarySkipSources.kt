@@ -45,7 +45,10 @@ internal object SkipConsensus {
     fun addLocal(remote: List<PlayerSkipSegment>, local: List<PlayerSkipSegment>,
                  results: List<SkipProviderResult>, duration: Long): List<PlayerSkipSegment> {
         val blocked = results.flatMap { it.absentKinds }.toSet()
-        return PlayerEnhancementPolicy.trustedRemoteSegments(remote + local.filter { candidate ->
+        val confirmedRemote = remote.filter { candidate ->
+            local.filter { it.kind == candidate.kind }.all { agree(it, candidate) }
+        }
+        return PlayerEnhancementPolicy.trustedRemoteSegments(confirmedRemote + local.filter { candidate ->
             candidate.kind !in blocked && remote.none { it.kind == candidate.kind } &&
                 results.flatMap { it.evidence }.filter { it.segment.kind == candidate.kind }
                     .all { agree(it.segment, candidate) }
@@ -64,7 +67,10 @@ internal class ComplementarySkipSources {
         val mapping = get("https://animap.id/api/map/anilist/$anilistId") ?: return emptyList()
         val id = exactImdb(mapping, anilistId) ?: return emptyList()
         val reverse = get("https://animap.id/api/map/imdb/$id") ?: return emptyList()
-        if (exactImdb(reverse, anilistId) != id) return emptyList()
+        if (exactImdb(reverse, anilistId) != id || ids(mapping, "mal_id") != ids(reverse, "mal_id")) return emptyList()
+        // The legacy grouped endpoint is documented for IMDb crosswalks; v1
+        // currently does not expose an IMDb lookup. Reject sequel/offset guesses.
+        if (ids(mapping, "tmdb_id").isEmpty()) return emptyList()
         val key = SkipImdbEpisode(id, 1, episode)
         val query = "imdb_id=$id&season=1&episode=$episode"
         val seconds = String.format(Locale.US, "%.3f", duration / 1000.0)
@@ -124,13 +130,16 @@ internal class ComplementarySkipSources {
         private val backoff = mutableMapOf<String, Long>()
         private val imdbPattern = Regex("tt[0-9]{7,10}")
         private fun ids(json: JSONObject, key: String): List<String> {
-            val a = json.optJSONArray(key) ?: return emptyList()
-            return (0 until a.length()).map { a.optString(it) }.distinct()
+            val a = json.optJSONArray(key)
+            if (a != null) return (0 until a.length()).map { a.optString(it) }.distinct().sorted()
+            return if (json.has(key) && !json.isNull(key)) listOf(json.optString(key)) else emptyList()
         }
 
         fun exactImdb(json: JSONObject, anilistId: Long): String? {
             if (ids(json, "anilist_id") != listOf(anilistId.toString()) ||
                 ids(json, "mal_id").singleOrNull()?.toLongOrNull()?.let { it > 0 } != true) return null
+            val tmdb = json.optJSONArray("tmdb_id") ?: return null
+            if (tmdb.length() != 1 || tmdb.optJSONObject(0)?.optString("type") != "tv") return null
             return ids(json, "imdb_id").singleOrNull()?.takeIf { imdbPattern.matches(it) }
         }
 
@@ -161,7 +170,7 @@ internal class ComplementarySkipSources {
             return SkipProviderResult(listOf("intro" to "op", "outro" to "ed").mapNotNull { (field, kind) ->
                 val item = segments.optJSONObject(field) ?: return@mapNotNull null
                 val confidence = item.optDouble("confidence")
-                if (item.optString("match") != "exact" || item.optBoolean("adjusted") ||
+                if (item.optString("match") != "exact" || !item.has("adjusted") || item.optBoolean("adjusted") ||
                     !confidence.isFinite() || confidence !in 0.85..1.0 ||
                     abs(item.optLong("offset_ms", Long.MAX_VALUE).toDouble()) > 2000) return@mapNotNull null
                 val segment = PlayerSkipSegment(kind, item.optLong("start_ms", -1), item.optLong("end_ms", -1))
