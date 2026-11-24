@@ -22,6 +22,28 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(5, expected.size)
     }
 
+    @Test fun centerPlayerGroupAlignsWithMiddleFiveShortcutWithoutChangingSpacing() {
+        val shortcuts = PlayerShortcutPolicy.default
+        assertEquals(PlayerShortcut.SPEED, shortcuts[2])
+        assertEquals(PlayerShortcut.OPTIONS, shortcuts.last())
+        val fraction = PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION
+        for (screenWidth in listOf(360f, 720f, 1504f)) {
+            val left = screenWidth * fraction
+            val right = screenWidth * (fraction * 3f)
+            val middleShortcutX = left + (screenWidth - left - right) / 2f
+            val groupShift = screenWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(shortcuts)
+            val playX = screenWidth / 2f + groupShift
+            assertEquals(middleShortcutX, playX, 0.001f)
+            // Seek positions are symmetric about Play and receive the same shift.
+            val seekDistance = screenWidth * 0.25f
+            val backX = screenWidth / 2f - seekDistance + groupShift
+            val forwardX = screenWidth / 2f + seekDistance + groupShift
+            assertEquals(seekDistance, playX - backX, 0.001f)
+            assertEquals(seekDistance, forwardX - playX, 0.001f)
+        }
+        val four = shortcuts.filterNot { it == PlayerShortcut.SPEED }
+        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four), 0f)
+    }
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
         val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
         assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,

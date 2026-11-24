@@ -87,3 +87,10 @@ O salvamento bem-sucedido de cenas favoritas também não exibe toast de confirm
 - Instalações novas recebem cinco ícones; configurações salvas anteriormente (inclusive de quatro ícones) continuam personalizadas.
 - Um atalho de captura salvo em versões antigas é eliminado da configuração com os demais atalhos preservados, sem reativação automática de opções desativadas.
 - A remoção não apaga nenhum arquivo de imagem que já esteja na galeria.
+
+## Alinhamento do trio de controles centrais (24/11/2026)
+
+- Com 5 atalhos, deslocar Play/Pause e os dois botões de ±10 segundos como **um único grupo**, 1/64 da largura visível à esquerda. Esse é exatamente o deslocamento do centro da terceira célula da barra inferior para o alinhamento com Velocidade (padrão).
+- Preservar a distância simétrica entre Play e cada controle de 10 segundos, dimensões, áreas de toque e posições verticais.
+- Com 4 atalhos, manter as posições anteriores. O deslocamento acompanha a largura disponível sem valores fixos em pixels.
+- Conferir visualmente na paisagem e retrato, inclusive com mudança de orientação, buscando alinhamento dos centros e nenhuma piscada ou alteração dos gestos.
