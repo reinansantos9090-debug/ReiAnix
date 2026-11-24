@@ -56,6 +56,27 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals("false", ReiAnixSettingsContract.normalize("player.anime_preferences_enabled", "off"))
     }
 
+    @Test fun draggingNeverReordersOptionsOrDisabledShortcuts() {
+        val five = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAPTURE, true)
+        val afterDrag = PlayerShortcutPolicy.move(five, PlayerShortcut.CAPTURE, 1)
+        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.CAPTURE, PlayerShortcut.EPISODES,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), afterDrag)
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.OPTIONS, -1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.TIMER, -1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.NEXT, 1))
+    }
+
+    @Test fun dragPreviewHysteresisPreventsJitterAtBoundary() {
+        val px = 48f
+        assertEquals(1, PlayerShortcutPolicy.dragPreviewIndex(1, 1, px * 0.60f, px, 3))
+        assertEquals(2, PlayerShortcutPolicy.dragPreviewIndex(1, 1, px * 0.70f, px, 3))
+        assertEquals(2, PlayerShortcutPolicy.dragPreviewIndex(1, 2, px * 0.45f, px, 3))
+        assertEquals(1, PlayerShortcutPolicy.dragPreviewIndex(1, 2, px * 0.30f, px, 3))
+        assertEquals(3, PlayerShortcutPolicy.dragPreviewIndex(1, 1, px * 5f, px, 3))
+        assertEquals(0, PlayerShortcutPolicy.dragPreviewIndex(2, 2, px * -5f, px, 3))
+        assertEquals(1, PlayerShortcutPolicy.dragPreviewIndex(1, 1, Float.NaN, px, 3))
+    }
+
     @Test fun perAnimeSettingsRemainIsolatedAndPreserveTrackIdentity() {
         val onePiece = PlayerAnimePreferences(
             speed = 1.25f,

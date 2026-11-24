@@ -58,6 +58,24 @@ object PlayerShortcutPolicy {
             else -> pinnedOptionsLast(current)
         }
 
+    /** Preview target with hysteresis, avoiding back-and-forth flicker at row boundaries. */
+    fun dragPreviewIndex(
+        startIndex: Int,
+        previousIndex: Int,
+        offsetPx: Float,
+        rowHeightPx: Float,
+        lastMovableIndex: Int,
+    ): Int {
+        if (!offsetPx.isFinite() || !rowHeightPx.isFinite() ||
+            rowHeightPx <= 0f || lastMovableIndex < 0
+        ) return previousIndex
+        val position = startIndex + offsetPx / rowHeightPx
+        var result = previousIndex.coerceIn(0, lastMovableIndex)
+        while (position > result + 0.65f && result < lastMovableIndex) result++
+        while (position < result - 0.65f && result > 0) result--
+        return result
+    }
+
     /** Reorder only checked shortcuts; Options is immovable. */
     fun move(current: List<PlayerShortcut>, shortcut: PlayerShortcut, direction: Int): List<PlayerShortcut> {
         if (shortcut == PlayerShortcut.OPTIONS || direction !in -1..1 || direction == 0) {

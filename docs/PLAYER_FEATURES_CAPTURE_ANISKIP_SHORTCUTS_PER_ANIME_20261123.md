@@ -28,6 +28,9 @@ Implementação planejada e autorizada em 23/11/2026. Alterações apenas na PR,
 - Outros: Capturar imagem, Velocidade, Legendas, Temporizador.
 - Ativar insere o atalho no **topo**; desativar devolve-o à lista de inativos.
 - Os atalhos ativos podem ser reorganizados segurando e arrastando; sem setas de subir/descer.
+- O editor de atalhos não mostra os seis pontinhos: segure em qualquer área do nome de um atalho ativo para arrastar; o interruptor fica fora da área de arraste.
+- Durante o arraste, o item recebe fundo claro translúcido com cantos arredondados, leve escala e sombra animadas; ao soltar, retorna suavemente ao lugar.
+- Ao mudar a ordem, os demais itens deslizam suavemente até suas novas posições, sem movimentar Opções nem permitir arrastar atalhos desativados.
 - **Opções** permanece fixo na última posição (4ª ou 5ª) inclusive com preferências antigas.
 - Com 5 ícones, os centros permanecem igualmente espaçados e na mesma linha; o conjunto é deslocado para a esquerda com margens assimétricas (1/64 da largura inicial, 3/64 da largura final) para acompanhar a área do vídeo. **Opções** continua na 5ª posição, à direita do grupo.
 - Capturar imagem e os atalhos extras recebem escala visual específica no modo de 5 ícones para não parecerem maiores que os quatro ícones já aprovados.
@@ -60,7 +63,7 @@ Implementação planejada e autorizada em 23/11/2026. Alterações apenas na PR,
 ## Validação essencial em aparelho
 
 1. Começar com quatro botões (sem alteração visual), ativar quinto e verificar centros igualmente espaçados, escala da câmera normalizada, alinhamento horizontal, deslocamento leve do grupo à esquerda e Opções como 5º ícone à direita.
-2. Retirar um botão (exceto Opções), ativar outro (vai ao topo), arrastar para trocar a ordem, fechar/reabrir e confirmar persistência.
+2. Retirar um botão (exceto Opções), ativar outro (vai ao topo), segurar o nome (não os seis pontinhos), arrastar e conferir fundo claro, sombra, transição dos vizinhos e encaixe ao soltar. Confirmar que tocar no switch não arrasta, depois fechar/reabrir e verificar persistência.
 3. Desligar AniSkip nas configurações, reabrir o player e confirmar que marcador remoto desaparece e o manual segue disponível.
 4. Capturar imagem durante reprodução local e conferir JPG na galeria sem os controles.
 5. Com salvamento automático ligado por padrão, alterar velocidade 1,25×, áudio japonês, legenda portuguesa amarela no anime A; testar episódios seguintes, fechar/reabrir e voltar ao mesmo anime.
@@ -73,3 +76,11 @@ Os testes Kotlin/JVM manuais não são disparados por este trabalho; o workflow
 oficial de PR pode executar seus próprios checks.
 
 O salvamento bem-sucedido de cenas favoritas também não exibe toast de confirmação.
+
+## Ajustes posteriores de 24/11/2026 — PR #438
+
+- No menu principal, **Personalizar atalhos** aparece imediatamente antes de **Velocidade**; **Capturar imagem** aparece imediatamente depois de **Outras opções**.
+- Para eliminar tremidas, o arraste mantém a ordem visual original enquanto o dedo se move. Apenas as opções vizinhas deslizam para abrir espaço; nenhuma lista é reordenada a cada movimento.
+- A posição prévia usa histerese para evitar oscilações ao cruzar a metade de uma linha, com limite que impede deslocar **Opções**.
+- Ao soltar, o item se acomoda e a nova ordem é persistida numa única atualização, sem salto intermediário; o fundo claro, a elevação e o switch independente são mantidos.
+- Validação em aparelho: arrastar repetidas vezes em ambos os sentidos, alternar perto do limite entre posições, conferir encaixe sem cruzamento/tremida, testar switches e confirmar a ordenação do menu.
