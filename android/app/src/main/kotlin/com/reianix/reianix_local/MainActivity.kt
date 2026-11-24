@@ -1199,10 +1199,10 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun publishInteractionProfileIfChanged(force: Boolean = false) {
+    private fun publishInteractionProfileIfChanged() {
         val profile = DeviceInteractionProfile.detect(this)
         val fingerprint = profile.fingerprint()
-        if (!force && fingerprint == interactionProfileFingerprint) return
+        if (fingerprint == interactionProfileFingerprint) return
         interactionProfileFingerprint = fingerprint
         NativeMailbox.writeBestEffort(
             this,
@@ -1308,8 +1308,20 @@ class MainActivity : ComponentActivity() {
         // validation fails. Database-dependent native operations remain gated by the
         // process bootstrap, but diagnostics and export are only opened by an explicit
         // user action in Settings; startup never redirects the user to a recovery/diagnostic UI.
+        // Let the ViewModel start waiting for the process decision now so it
+        // can load the local catalog while the restored navigation tree mounts.
+        val library = libraryViewModel
         lifecycleScope.launch {
-            val recoveryRequired = appDependencies.bootstrap.validateCanonicalDatabase()
+            val bootstrap = appDependencies.bootstrap
+            bootstrap.awaitStarted()
+            if (isFinishing || isDestroyed) return@launch
+
+            val startup = bootstrap.state.value
+            val recoveryRequired = when {
+                startup.recoveryRequired -> true
+                startup.stage == ReiAnixBootstrapStage.READY -> false
+                else -> bootstrap.validateCanonicalDatabase()
+            }
             if (isFinishing || isDestroyed) return@launch
 
             nativeBootstrapDecisionComplete = true
@@ -1330,8 +1342,8 @@ class MainActivity : ComponentActivity() {
                     }
             }
             if (recoveryRequired) _welcomeNeedsSetup.value = false
-            composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
-            composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
+            composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, library, settingsViewModel)
+            composeLibraryHost.show(ReiAnixRoutes.HOME)
             if (recoveryRequired) {
                 Log.i(
                     tag,
@@ -2214,8 +2226,8 @@ class MainActivity : ComponentActivity() {
         // A permission transition is an explicit capability change. Ordinary
         // foreground/background transitions never initiate a library scan.
         if (
-            hasPersistedSafTreeGrant() &&
-            (mediaAccessChangedToUsable || broadBecameAvailable)
+            (mediaAccessChangedToUsable || broadBecameAvailable) &&
+            hasPersistedSafTreeGrant()
         ) {
             val source = when {
                 mediaAccessChangedToUsable && broadBecameAvailable -> null
@@ -2243,7 +2255,11 @@ class MainActivity : ComponentActivity() {
         if (!activityResumed || !bootstrapAllowsNativeOperations()) return
         lastObservedMediaAccess = MediaStoreScanner.accessLevel(this)
         lastObservedBroadAccess = BroadStorageScanner.hasAccess(this)
-        publishStorageStatus()
+        // Durable mailbox writes and volume inspection should not block the
+        // first frame when Android recreates the Activity.
+        lifecycleScope.launch(Dispatchers.IO) {
+            publishStorageStatus()
+        }
         synchronizeSafTreeChangeObservers()
         dispatchPendingSafTreeChanges()
     }
@@ -2601,7 +2617,7 @@ class MainActivity : ComponentActivity() {
             // Activities may temporarily reveal their own system UI; focus/resume
             // re-applies this single host policy when ReiAnix returns foreground.
             systemUiController.applyAppPreference(appImmersiveEnabled, appSystemBarTheme)
-            publishInteractionProfileIfChanged(force = true)
+            publishInteractionProfileIfChanged()
             ViewCompat.requestApplyInsets(window.decorView)
         }
     }
@@ -4826,8 +4842,6 @@ class MainActivity : ComponentActivity() {
 
         if (hasFocus) {
             applyApplicationSystemUi()
-         publishInteractionProfileIfChanged()
-            ViewCompat.requestApplyInsets(window.decorView)
             if (activityResumed && safPickerPending) {
                 if (
                     safPickerPhase == SafPickerPhase.WAITING_RESULT &&
@@ -4854,7 +4868,6 @@ class MainActivity : ComponentActivity() {
         super.onConfigurationChanged(newConfig)
         Log.i(tag, "CONFIGURATION_CHANGED orientation=${newConfig.orientation}")
         applyApplicationSystemUi()
-        ViewCompat.requestApplyInsets(window.decorView)
     }
     private fun publishNativeComposeAccountChanged(requestId: String) {
         runCatching {
