@@ -28,7 +28,7 @@ Em um dispositivo Android autorizado, antes de abrir o app:
 
 ```bash
 adb shell setprop log.tag.ReiAnixJank DEBUG
-adb shell am force-stop com.reiflix.reiflix_local
+adb shell am force-stop com.reianix.app
 adb logcat -s ReiAnixJank:D
 ```
 
@@ -40,7 +40,7 @@ Para desabilitar:
 
 ```bash
 adb shell setprop log.tag.ReiAnixJank INFO
-adb shell am force-stop com.reiflix.reiflix_local
+adb shell am force-stop com.reianix.app
 ```
 
 O benchmark AndroidX utiliza a variante isolada `benchmark`, não altera a assinatura ou o perfilamento do release oficial. Exige app instalado, configurado e Biblioteca com animes.

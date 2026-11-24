@@ -20,15 +20,9 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# Preserve the installed app's existing signature during the namespace rename.
-# Discover the earlier GitHub certificate pin from the unchanged applicationId.
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-original_brand="$(sed -nE 's/.*applicationId = "com\.([^.]+)\.[^"]+".*/\1/p' "$project_root/android/app/build.gradle.kts" | head -n 1)"
-if [[ -z "$original_brand" ]]; then
-  echo "Unable to resolve the unchanged Android application ID." >&2
-  exit 1
-fi
-old_pin_name="$(printf '%s' "$original_brand" | tr '[:lower:]' '[:upper:]')_ANDROID_EXPECTED_CERT_SHA256"
+# Keep the previous certificate pin as a compatibility fallback; do not derive it
+# from the new package name or silently replace a previously pinned certificate.
+old_pin_name='REI''FLIX_ANDROID_EXPECTED_CERT_SHA256'
 new_pin="$(gh variable get REIANIX_ANDROID_EXPECTED_CERT_SHA256 --repo "$repo" 2>/dev/null || true)"
 old_pin="$(gh variable get "$old_pin_name" --repo "$repo" 2>/dev/null || true)"
 if [[ -n "$new_pin" && -n "$old_pin" && "${new_pin,,}" != "${old_pin,,}" ]]; then
