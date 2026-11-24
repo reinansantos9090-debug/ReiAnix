@@ -3,15 +3,11 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
-        // Maven Central is rate-limiting multiple Robolectric runtime artifacts
-        // with HTTP 429 on GitHub Actions (android-all-instrumented and
-        // nativeruntime-dist-compat). Prefer its Google Cloud mirror for the
-        // entire org.robolectric group, not only the framework jars; leave
-        // every other dependency on the existing repository order.
+        // The Google-hosted Maven Central mirror also serves test dependencies
+        // such as JUnit and ASM, which can hit HTTP 429 on GitHub Actions.
         maven {
-            name = "GoogleHostedRobolectricMirror"
+            name = "GoogleHostedMavenCentralMirror"
             url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
-            content { includeGroup("org.robolectric") }
         }
         mavenCentral()
     }
