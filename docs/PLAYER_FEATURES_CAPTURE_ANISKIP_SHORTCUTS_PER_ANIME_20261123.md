@@ -76,3 +76,11 @@ Os testes Kotlin/JVM manuais não são disparados por este trabalho; o workflow
 oficial de PR pode executar seus próprios checks.
 
 O salvamento bem-sucedido de cenas favoritas também não exibe toast de confirmação.
+
+## Ajustes posteriores de 24/11/2026 — PR #438
+
+- No menu principal, **Personalizar atalhos** aparece imediatamente antes de **Velocidade**; **Capturar imagem** aparece imediatamente depois de **Outras opções**.
+- Para eliminar tremidas, o arraste mantém a ordem visual original enquanto o dedo se move. Apenas as opções vizinhas deslizam para abrir espaço; nenhuma lista é reordenada a cada movimento.
+- A posição prévia usa histerese para evitar oscilações ao cruzar a metade de uma linha, com limite que impede deslocar **Opções**.
+- Ao soltar, o item se acomoda e a nova ordem é persistida numa única atualização, sem salto intermediário; o fundo claro, a elevação e o switch independente são mantidos.
+- Validação em aparelho: arrastar repetidas vezes em ambos os sentidos, alternar perto do limite entre posições, conferir encaixe sem cruzamento/tremida, testar switches e confirmar a ordenação do menu.
