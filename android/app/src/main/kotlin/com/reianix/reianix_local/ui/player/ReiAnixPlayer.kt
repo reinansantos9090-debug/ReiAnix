@@ -6,8 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import com.reianix.reianix_local.ui.ReiAnixLoadingState
 import com.reianix.reianix_local.ui.ReiAnixRecoverableErrorState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,6 +16,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -30,6 +32,7 @@ import androidx.navigation.NavHostController
 import com.reianix.reianix_local.ui.navigation.ReiAnixPlayerArgs
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import kotlinx.coroutines.flow.first
 
 /**
  * Compose navigation boundary for the existing native Media3 player.
@@ -115,7 +118,6 @@ fun ReiAnixPlayerRoute(
             PlayerHandoffMessage(
                 title = "Não foi possível abrir o player",
                 message = "A identificação do episódio local é inválida.",
-                showProgress = false,
                 onRetry = null,
             )
         }
@@ -125,7 +127,6 @@ fun ReiAnixPlayerRoute(
                 title = "Não foi possível abrir o episódio",
                 message = libraryState.lastCommandError
                     ?: "A mídia local não pôde ser enviada ao player.",
-                showProgress = false,
                 onRetry = {
                     launchRequestId = viewModel.openEpisode(
                         episodeId,
@@ -135,14 +136,7 @@ fun ReiAnixPlayerRoute(
             )
         }
 
-        else -> {
-            PlayerHandoffMessage(
-                title = "Abrindo player",
-                message = "Preparando a reprodução local…",
-                showProgress = true,
-                onRetry = null,
-            )
-        }
+        else -> Unit
     }
 }
 
@@ -150,21 +144,9 @@ fun ReiAnixPlayerRoute(
 private fun PlayerHandoffMessage(
     title: String,
     message: String,
-    showProgress: Boolean,
     onRetry: (() -> Unit)?,
 ) {
-    if (showProgress) {
-        ReiAnixLoadingState(
-            title = title,
-            message = message,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .semantics {
-                    contentDescription = "ReiAnixPlayerHandoff"
-                },
-        )
-    } else if (onRetry != null) {
+    if (onRetry != null) {
         ReiAnixRecoverableErrorState(
             title = title,
             message = message,
@@ -201,4 +183,53 @@ private fun PlayerHandoffMessage(
             )
         }
     }
+}
+
+/** Opens the native activity directly, keeping the current screen in the back stack. */
+@Composable
+internal fun rememberEpisodeLauncher(viewModel: ReiAnixLibraryViewModel): (Long, Long) -> Unit {
+    var requestId by remember(viewModel) { mutableStateOf<String?>(null) }
+    var lastEpisode by remember(viewModel) { mutableStateOf<Pair<Long, Long>?>(null) }
+    var launchError by remember(viewModel) { mutableStateOf<String?>(null) }
+    val launch = remember(viewModel) {
+        { episodeId: Long, animeId: Long ->
+            if (requestId == null) {
+                requestId = viewModel.openEpisode(episodeId, expectedAnimeId = animeId)
+                if (requestId != null) lastEpisode = episodeId to animeId
+            }
+        }
+    }
+
+    val activeRequest = requestId
+    if (activeRequest != null) {
+        BackHandler { /* Keep the current screen while native launch is pending. */ }
+        DisposableEffect(viewModel, activeRequest) {
+            onDispose { viewModel.cancelNativePlayerHandoff(activeRequest) }
+        }
+        LaunchedEffect(viewModel, activeRequest) {
+            val result = viewModel.uiState.first { state -> state.lastCommandId == activeRequest }
+            if (result.lastCommandStatus == "FAILED") {
+                launchError = result.lastCommandError ?: "A mídia local não pôde ser enviada ao player."
+            }
+            requestId = null
+        }
+    }
+
+    launchError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { launchError = null },
+            title = { Text("Não foi possível abrir o episódio") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    launchError = null
+                    lastEpisode?.let { (episodeId, animeId) -> launch(episodeId, animeId) }
+                }) { Text("Tentar novamente") }
+            },
+            dismissButton = {
+                TextButton(onClick = { launchError = null }) { Text("Fechar") }
+            },
+        )
+    }
+    return launch
 }

@@ -59,7 +59,7 @@ import com.reianix.reianix_local.ui.ReiAnixTopBar
 import com.reianix.reianix_local.ui.collections.ReiAnixWatchStatusCollections
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
-import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.player.rememberEpisodeLauncher
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
 import kotlinx.coroutines.CancellationException
@@ -304,11 +304,10 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
     var retry by remember { mutableStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     val openAnime: (Long) -> Unit = { id -> navController.navigateToDetails(id.toString(), ReiAnixRoutes.PROFILE) }
-    val playEpisode: (Long, Long) -> Unit = { episodeId, animeId ->
-        navController.navigateToPlayer(episodeId.toString(), animeId.toString(), ReiAnixRoutes.PROFILE)
-    }
+
     val goBack: () -> Unit = { if (section != "profile") section = "profile" else navController.popBackStack() }
     BackHandler(enabled = section != "profile" && section !in setOf("edit", "customize")) { goBack() }
+    val playEpisode = rememberEpisodeLauncher(viewModel)
 
     LaunchedEffect(library, retry, section == "history" || section == "favorites") {
         loading = true

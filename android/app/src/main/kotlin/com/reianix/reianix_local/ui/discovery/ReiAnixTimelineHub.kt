@@ -41,7 +41,7 @@ import com.reianix.reianix_local.ui.collections.ReiAnixRouletteTab
 import com.reianix.reianix_local.ui.collector.ReiAnixCollectorJourneyTab
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
-import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.player.rememberEpisodeLauncher
 import com.reianix.reianix_local.ui.theme.LocalReiAnixResponsiveMetrics
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveRoot
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
@@ -58,6 +58,7 @@ fun ReiAnixTimelineHubRoute(
     viewModel: ReiAnixLibraryViewModel,
     initialSection: String,
 ) {
+    val playEpisode = rememberEpisodeLauncher(viewModel)
     val allowedSections = listOf("animes", "roleta", "colecionador")
     var selectedTab by rememberSaveable(initialSection) {
         mutableStateOf(initialSection.takeIf(allowedSections::contains) ?: "animes")
@@ -172,13 +173,7 @@ fun ReiAnixTimelineHubRoute(
                                     origin = ReiAnixRoutes.HOME,
                                 )
                             },
-                            onWatch = { episodeId, animeId ->
-                                navController.navigateToPlayer(
-                                    episodeId = episodeId.toString(),
-                                    animeId = animeId.toString(),
-                                    origin = ReiAnixRoutes.HOME,
-                                )
-                            },
+                            onWatch = playEpisode,
                         )
                     }
                     "colecionador" -> ReiAnixCollectorJourneyTab(

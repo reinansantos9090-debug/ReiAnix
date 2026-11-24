@@ -65,7 +65,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,8 +91,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.navigation.NavBackStackEntry
@@ -128,7 +125,7 @@ import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
 import com.reianix.reianix_local.ui.model.ReiAnixSeasonUiModel
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import com.reianix.reianix_local.ui.navigation.isActiveDetailsDestination
-import com.reianix.reianix_local.ui.navigation.navigateToPlayer
+import com.reianix.reianix_local.ui.player.rememberEpisodeLauncher
 import com.reianix.reianix_local.ui.navigation.navigateToDetails
 import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.ui.theme.ReiAnixResponsiveBreakpoints
@@ -236,13 +233,8 @@ fun ReiAnixDetailsRoute(
         if (aniListState.associationRevision > 0L) viewModel.refreshDetails(canonicalId)
     }
 
-    // Guard only the short navigation hand-off. NavHost/launchSingleTop remains
-    // the canonical navigation policy, while this prevents a double tap from
-    // issuing two player navigations before the destination is committed.
-    var playerLaunchInFlight by remember(canonicalId) {
-        mutableStateOf(false)
-    }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val playEpisode = rememberEpisodeLauncher(viewModel)
     val detailsEntryId = (lifecycleOwner as? NavBackStackEntry)?.id
 
     fun isForegroundDetails(): Boolean = isActiveDetailsDestination(
@@ -251,34 +243,7 @@ fun ReiAnixDetailsRoute(
         currentRoute = navController.currentDestination?.route,
     )
 
-    // The guard covers only the navigation hand-off. A resume releases it only
-    // after this Details destination has first left the RESUMED state.
-    var detailsWasPaused by remember(canonicalId) {
-        mutableStateOf(false)
-    }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE,
-                Lifecycle.Event.ON_STOP -> {
-                    detailsWasPaused = true
-                }
 
-                Lifecycle.Event.ON_RESUME -> {
-                    if (detailsWasPaused) {
-                        playerLaunchInFlight = false
-                        detailsWasPaused = false
-                    }
-                }
-
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
 
     ReiAnixDetailsScreen(
         state = state,
@@ -289,16 +254,7 @@ fun ReiAnixDetailsRoute(
         },
         onRetry = { viewModel.refreshDetails(canonicalId) },
         onWatch = { episodeId ->
-            // Ignore callbacks from an outgoing Details screen that is still
-            // visible under NavHost's cross-fade after returning to Library.
-            if (!playerLaunchInFlight && isForegroundDetails()) {
-                playerLaunchInFlight = true
-                navController.navigateToPlayer(
-                    episodeId = episodeId.toString(),
-                    animeId = canonicalId.toString(),
-                    origin = origin,
-                )
-            }
+            if (isForegroundDetails()) playEpisode(episodeId, canonicalId)
         },
         onToggleFavorite = viewModel::toggleFavorite,
         onOpenRecommendedAnime = { recommendedId ->
