@@ -60,6 +60,20 @@ class ExternalVideoChooserTest {
             assertEquals("content", target.data?.scheme)
             assertFalse(target.dataString?.startsWith("file:") == true)
             assertTrue(target.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+
+            // AndroidX FileProvider caches its roots by authority. Keep both
+            // file:// handoffs in one Robolectric sandbox so its static cache
+            // cannot reference a cacheDir from a previous @Test instance.
+            val wvc = ExternalVideoChooser.createWebVideoCasterIntent(
+                context, Uri.fromFile(localFile), "Episódio local",
+            )
+            assertEquals(Intent.ACTION_VIEW, wvc.action)
+            assertEquals("com.instantbits.cast.webvideo", wvc.`package`)
+            assertEquals("content", wvc.data?.scheme)
+            assertEquals("video/*", wvc.type)
+            assertEquals("Episódio local", wvc.getStringExtra("title"))
+            assertTrue(wvc.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+            assertEquals(wvc.data, wvc.clipData?.getItemAt(0)?.uri)
         } finally {
             localFile.delete()
         }
@@ -79,23 +93,6 @@ class ExternalVideoChooserTest {
         assertEquals("Episódio 3", handoff.getStringExtra("title"))
         assertTrue(handoff.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         assertEquals(videoUri, handoff.clipData?.getItemAt(0)?.uri)
-    }
-
-    @Test fun wrapsLegacyFileSafelyBeforeSendingToWebVideoCaster() {
-        val context = RuntimeEnvironment.getApplication()
-        val localFile = File(context.cacheDir, "wvc-roku-test.mp4")
-        localFile.writeBytes(byteArrayOf(1, 2, 3))
-        try {
-            val handoff = ExternalVideoChooser.createWebVideoCasterIntent(
-                context, Uri.fromFile(localFile), "Episódio local",
-            )
-            assertEquals("content", handoff.data?.scheme)
-            assertEquals("com.instantbits.cast.webvideo", handoff.`package`)
-            assertTrue(handoff.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
-            assertEquals(handoff.data, handoff.clipData?.getItemAt(0)?.uri)
-        } finally {
-            localFile.delete()
-        }
     }
 
     @Test fun doesNotShareUntrustedUriSchemesWithWebVideoCaster() {
