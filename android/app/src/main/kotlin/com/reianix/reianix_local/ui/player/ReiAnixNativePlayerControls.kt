@@ -262,19 +262,24 @@ fun ReiAnixNativePlayerCenterControls(
     accumulatedSeekSeconds: Long = 0L,
     onSeekIconPositioned: (Boolean, Offset) -> Unit = { _, _ -> },
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val dimensions = ReiAnixTokens.PlayerDimensions
-        // Anchor all three actions to the SAME geometric center. The two seek
-        // buttons use equal and opposite offsets, independent of screen aspect ratio
-        // and independent of the visual shape of the mirrored seek glyph.
+        // The bottom row of five shortcuts has unequal side insets. Shift the
+        // entire center group by that same offset so Play sits above its middle
+        // (Speed by default) icon. Both ten-second controls move with Play,
+        // retaining identical spacing and hit targets. Four shortcuts stay put.
+        val groupShiftPx = with(LocalDensity.current) {
+            (maxWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(state.shortcuts)).roundToPx()
+        }
         BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = if (landscape) androidx.compose.ui.unit.Dp.Infinity else dimensions.centerControlsMaxWidth)
                 .fillMaxWidth()
+                .absoluteOffset { IntOffset(x = groupShiftPx, y = 0) }
                 .padding(horizontal = if (landscape) 0.dp else dimensions.centerHorizontalPadding),
             contentAlignment = Alignment.Center,
         ) {
@@ -816,8 +821,9 @@ fun ReiAnixNativePlayerBottomControls(
             // retains exactly the same width and center-to-center distance.
             // The four-shortcut layout is intentionally unchanged.
             val fiveShortcuts = state.shortcuts.size == PlayerShortcutPolicy.MAX_COUNT
-            val rowStartInset = if (fiveShortcuts) maxWidth / 64 else 0.dp
-            val rowEndInset = if (fiveShortcuts) maxWidth * (3f / 64f) else 0.dp
+            val insetUnit = maxWidth * PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION
+            val rowStartInset = if (fiveShortcuts) insetUnit else 0.dp
+            val rowEndInset = if (fiveShortcuts) insetUnit * 3f else 0.dp
             val displayShortcuts = state.shortcuts.filterNot { it == PlayerShortcut.OPTIONS } + PlayerShortcut.OPTIONS
             Row(
                 modifier = Modifier
@@ -826,8 +832,8 @@ fun ReiAnixNativePlayerBottomControls(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Defaults retain the original four controls. Only the icons
-                // selected by the user are composed, maximum five total.
+                // Only the shortcuts selected by the user are composed; the
+                // five-icon default keeps Options in the final position.
                 displayShortcuts.forEach { shortcut ->
                     when (shortcut) {
                         PlayerShortcut.LOCK -> PlayerBottomAction(

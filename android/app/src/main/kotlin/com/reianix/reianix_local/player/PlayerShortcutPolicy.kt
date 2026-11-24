@@ -25,6 +25,15 @@ object PlayerShortcutPolicy {
 
     const val MAX_COUNT = 5
 
+    // The five-slot bottom row uses 1/64 of screen width as its left inset
+    // and 3/64 as its right inset. Its middle column is 1/64 to the left
+    // of the geometric screen center.
+    const val FIVE_SHORTCUT_INSET_UNIT_FRACTION = 1f / 64f
+
+    /** Translate the entire Play/Pause + backward/forward group together. */
+    fun centerActionGroupShiftFraction(shortcuts: List<PlayerShortcut>): Float =
+        if (shortcuts.size == MAX_COUNT) -FIVE_SHORTCUT_INSET_UNIT_FRACTION else 0f
+
     fun normalize(raw: String): String {
         val keys = raw.split(',').map { it.trim() }
         require(keys.size in 1..MAX_COUNT && keys.none { it.isBlank() } &&
