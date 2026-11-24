@@ -46,6 +46,15 @@ O login Android usa Credential Manager. O workflow de release aceita o Web Clien
 
 O catálogo, as preferências, o progresso e o cache local são mantidos no armazenamento privado do aplicativo. Os vídeos locais não são enviados para servidores; as solicitações de metadados/capas usam os serviços correspondentes.
 
+## Contato oficial e documentos legais
+
+Suporte, privacidade (LGPD) e direitos autorais: [reianix.oficial@gmail.com](mailto:reianix.oficial@gmail.com).
+
+- [Política de privacidade](docs/privacy.html)
+- [Termos de uso](docs/terms.html)
+
+Os documentos também estão disponíveis offline em Configurações → Sobre. Consulte [as instruções de publicação](docs/PLAY_LEGAL_PUBLICATION.md) para disponibilizá-los no GitHub Pages.
+
 ## Licença
 
 O ReiAnix é distribuído sob a Apache License 2.0. Consulte [LICENSE](LICENSE) para os termos completos.

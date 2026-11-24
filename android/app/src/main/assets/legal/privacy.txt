@@ -21,8 +21,8 @@ A identificação por imagem pode enviar ao Trace.moe miniaturas JPEG extraídas
 # MyMemory
 Recebe trechos de sinopses e códigos de idioma para tradução. Não é utilizado para enviar notas pessoais, credenciais ou vídeos. A tradução pode estar indisponível devido à cota do serviço. https://mymemory.translated.net/
 
-# AniSkip e fontes auxiliares de intervalos
-A detecção de abertura, encerramento e recapitulação consulta identificadores e informações do episódio, como número e duração. O AniSkip não recebe o vídeo. Versões que ainda incluam a integração alternativa podem consultar Ani.zip e IntroDB para obter correspondências e intervalos. Essas fontes auxiliares estão previstas para remoção na versão de lançamento. https://aniskip.com/
+# AniSkip
+A detecção de abertura, encerramento e recapitulação consulta identificadores e informações do episódio, como número e duração. O AniSkip não recebe o vídeo. https://aniskip.com/
 
 # Transmissão e reprodução externa
 Quando o usuário escolhe transmitir, Google Cast e mecanismos de rede local (DLNA/UPnP) podem descobrir dispositivos, compartilhar informações de mídia e disponibilizar o vídeo escolhido ao receptor. O servidor local pode utilizar HTTP na rede privada. Ao abrir em outro aplicativo, inclusive Web Video Caster, o ReiAnix pode conceder acesso ao vídeo selecionado e compartilhar seu título ou URI. O aplicativo ou dispositivo destinatário trata esses dados segundo suas próprias regras. Use redes e receptores confiáveis. https://developers.google.com/cast | https://www.webvideocaster.com/
@@ -40,7 +40,7 @@ Dados locais permanecem enquanto necessários às funções ou até que o usuár
 Serviços externos podem tratar dados em outros países conforme suas políticas e as normas aplicáveis. Nos termos da LGPD, você pode solicitar confirmação do tratamento, acesso, correção, eliminação quando aplicável, informações sobre compartilhamento, revogação de consentimento e exercer os demais direitos previstos em lei. Também pode apresentar reclamação à ANPD. Para dados tratados diretamente por um fornecedor externo, consulte seus canais de privacidade.
 
 # 8. Contato e solicitações
-O mantenedor pode ser contatado pelo canal oficial do projeto: https://github.com/reinansantos9090-debug/ReiAnix/issues/new. Esse canal é público: solicite orientação sem publicar dados pessoais, tokens, caminhos privados, fotos ou backups. Para solicitações que exijam informações privadas, peça um canal reservado antes de enviar qualquer informação. Consulte também a página de suporte da ficha oficial do aplicativo na Google Play quando estiver disponível.
+Para dúvidas sobre privacidade, exercício de direitos da LGPD, exclusão de dados e suporte, entre em contato diretamente com o responsável pelo ReiAnix pelo e-mail reianix.oficial@gmail.com. Ao escrever, seu endereço de e-mail, o conteúdo da mensagem e eventuais anexos serão tratados para atender à solicitação e mantidos pelo tempo necessário ao atendimento e ao cumprimento de obrigações legais aplicáveis. Não envie senhas, tokens, vídeos ou backups completos. Não publique dados pessoais nos chamados públicos do GitHub.
 
 # 9. Crianças e conteúdo de terceiros
 O aplicativo não é um serviço de streaming nem oferece um catálogo próprio de vídeos. O conteúdo dos arquivos e os metadados de terceiros podem ter classificações diferentes. Responsáveis devem supervisionar o uso por menores. Não solicitamos intencionalmente informações pessoais de crianças para criar uma conta própria. Caso haja dúvida sobre tratamento de dados de menores, utilize o canal de contato.
