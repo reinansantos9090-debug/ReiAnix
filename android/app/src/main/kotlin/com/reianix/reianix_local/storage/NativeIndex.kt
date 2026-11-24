@@ -5,7 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.storage.StorageManager
 import android.provider.MediaStore
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader

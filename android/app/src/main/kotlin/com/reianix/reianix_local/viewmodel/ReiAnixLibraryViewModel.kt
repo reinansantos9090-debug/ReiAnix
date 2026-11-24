@@ -2,7 +2,7 @@ package com.reianix.reianix_local.viewmodel
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import com.reianix.reianix_local.MainActivity
 import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import com.reianix.reianix_local.ReiAnixAppDependencies

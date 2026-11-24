@@ -5,8 +5,9 @@ import java.util.Locale
 
 /** Only explicit adult labels, never title guesses or ordinary mature themes. */
 internal object ReiAnixAdultArtworkPolicy {
+    private val explicitLabels = setOf("hentai", "adult", "adulto", "adult only", "adults only", "r18", "r18+", "rx", "18+ explícito")
     fun blocked(genres: Iterable<String>): Boolean = genres.any {
-        it.trim().lowercase(Locale.ROOT) in setOf("hentai", "adult", "adulto", "adult only", "adults only", "r18", "r18+", "rx", "18+ explícito")
+        it.trim().lowercase(Locale.ROOT) in explicitLabels
     }
 
     fun blockedJson(raw: String?): Boolean {

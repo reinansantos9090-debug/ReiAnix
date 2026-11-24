@@ -101,7 +101,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val legacyGenres = parseStringArray(anime.genresJson)
         val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name } else legacyGenres
         val adultArtwork = ReiAnixAdultArtworkPolicy.blocked(genreNames) ||
-            ReiAnixAdultArtworkPolicy.blocked(legacyGenres)
+            ReiAnixAdultArtworkPolicy.blocked(legacyGenres) || ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson)
         val animeArtwork = if (adultArtwork) emptyList() else row.animeArtwork
         val backdrop = animeArtwork.firstOrNull {
             it.artworkType.equals("backdrop", ignoreCase = true) ||

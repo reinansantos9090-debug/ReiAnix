@@ -4,7 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import com.reianix.reianix_local.data.media.MediaFilenameParser
 import com.reianix.reianix_local.data.sqlite.NativeDiscoveredMedia
 import com.reianix.reianix_local.data.sqlite.NativeLibraryScanSnapshot

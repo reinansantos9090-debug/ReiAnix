@@ -5,7 +5,7 @@ import android.content.Intent
 import com.reianix.reianix_local.MainActivity
 import com.reianix.reianix_local.bridge.NativeInternalIntentGuard
 import android.os.FileObserver
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.storage.VideoThumbnailExtractor
