@@ -42,6 +42,8 @@ class ReiAnixSettingsNavigationTest {
         assertNotEquals(settingsIcon("about:privacy"), settingsIcon("about:terms"))
         assertEquals("legal/privacy.txt", ReiAnixLegalDocument.PRIVACY.asset)
         assertEquals("legal/terms.txt", ReiAnixLegalDocument.TERMS.asset)
+        assertEquals("https://reinansantos9090-debug.github.io/ReiAnix-Legal/privacy.html", ReiAnixLegalDocument.PRIVACY.publicUrl)
+        assertEquals("https://reinansantos9090-debug.github.io/ReiAnix-Legal/terms.html", ReiAnixLegalDocument.TERMS.publicUrl)
     }
 
     @Test fun licensesHaveUniqueEntriesAndIncludeTheProjectAndFont() {

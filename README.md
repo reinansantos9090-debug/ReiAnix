@@ -50,10 +50,10 @@ O catálogo, as preferências, o progresso e o cache local são mantidos no arma
 
 Suporte, privacidade (LGPD) e direitos autorais: [reianix.oficial@gmail.com](mailto:reianix.oficial@gmail.com).
 
-- [Política de privacidade](docs/privacy.html)
-- [Termos de uso](docs/terms.html)
+- [Política de privacidade](https://reinansantos9090-debug.github.io/ReiAnix-Legal/privacy.html)
+- [Termos de uso](https://reinansantos9090-debug.github.io/ReiAnix-Legal/terms.html)
 
-Os documentos também estão disponíveis offline em Configurações → Sobre. Consulte [as instruções de publicação](docs/PLAY_LEGAL_PUBLICATION.md) para disponibilizá-los no GitHub Pages.
+Os documentos também estão disponíveis offline em Configurações → Sobre. Consulte [as instruções de publicação](docs/PLAY_LEGAL_PUBLICATION.md) para manter a publicação no repositório público separado ReiAnix-Legal.
 
 ## Licença
 
