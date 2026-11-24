@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <queries>
-        <package android:name="com.reiflix.reiflix_local" />
+        <package android:name="com.reianix.app" />
     </queries>
     <application />
 </manifest>

@@ -32,9 +32,9 @@ picos; a atribuição da causa exige rastreamento de frames reais no dispositivo
 Para comparar versões **Release** instaladas no mesmo dispositivo, com a mesma
 quantidade de animes e mesmo tamanho de cards:
 ```bash
-adb shell dumpsys gfxinfo com.reiflix.reiflix_local reset
+adb shell dumpsys gfxinfo com.reianix.app reset
 # Abra a Home e role até o final da Biblioteca da mesma forma em cada APK.
-adb shell dumpsys gfxinfo com.reiflix.reiflix_local framestats > reianix-framestats.txt
+adb shell dumpsys gfxinfo com.reianix.app framestats > reianix-framestats.txt
 ```
 
 As métricas desejadas são P50/P90/P95/P99 da duração dos frames,

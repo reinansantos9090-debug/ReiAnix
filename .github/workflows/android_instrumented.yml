@@ -154,7 +154,7 @@ jobs:
           capture "$out/adb_devices.txt" adb devices -l
           capture "$out/sdk.txt" adb shell getprop ro.build.version.sdk
           capture "$out/activity_top.txt" adb shell dumpsys activity top
-          capture "$out/package.txt" adb shell dumpsys package com.reiflix.reiflix_local
+          capture "$out/package.txt" adb shell dumpsys package com.reianix.app
           capture "$out/logcat.txt" adb logcat -d -b all -v threadtime
           {
             echo "## Android runtime diagnostics"

@@ -22,7 +22,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.reiflix.reiflix_local"
+        applicationId = "com.reianix.app"
         minSdk = 24
         targetSdk = 36
         versionCode = providers.gradleProperty("reianixBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2

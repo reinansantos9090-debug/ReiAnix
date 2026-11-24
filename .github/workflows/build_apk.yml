@@ -103,6 +103,7 @@ jobs:
           fi
           test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
           grep -Fq 'android:name="com.reianix.reianix_local.MainActivity"' android/app/src/main/AndroidManifest.xml
+          bash scripts/verify_reianix_identity.sh
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
@@ -190,6 +191,7 @@ jobs:
               branch: $branch,
               timestamp_utc: $timestamp_utc,
               android_runtime: "native-kotlin-compose",
+              android_application_id: "com.reianix.app",
               android_entrypoint: "com.reianix.reianix_local.MainActivity",
               python_runtime_packaged: false,
               flet_runtime_packaged: false,
@@ -255,7 +257,7 @@ jobs:
           apk="${{ steps.apk.outputs.path }}"
           aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           badging="$("$aapt2" dump badging "$apk")"
-          echo "$badging" | grep -Fq "package: name='com.reiflix.reiflix_local'"
+          echo "$badging" | grep -Fq "package: name='com.reianix.app'"
           echo "$badging" | grep -Fq "versionCode='$GITHUB_RUN_NUMBER'"
           echo "$badging" | grep -Fq "versionName='0.2.1'"
           echo "$badging" | grep -Fq "targetSdkVersion:'36'"

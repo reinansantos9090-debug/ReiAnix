@@ -34,6 +34,10 @@ O app descobre vídeos por MediaStore, pela pasta escolhida via Storage Access F
 
 O player inclui retomada de progresso, velocidade de 0,5x a 2x, ajuste de imagem, autoplay do próximo episódio e timer de sono. A compatibilidade com arquivos, codecs e permissões reais deve ser validada no dispositivo Android de destino.
 
+## Identidade Android e atualização
+
+O identificador definitivo para a Google Play é `com.reianix.app`. O namespace Kotlin permanece `com.reianix.reianix_local`. A alteração do identificador cria uma instalação separada no Android; não é uma atualização direta da instalação anterior. Antes de remover a versão antiga, exporte o backup para uma pasta compartilhada, instale a nova versão, restaure o backup e conceda novamente o acesso às pastas. Os vídeos armazenados em pastas compartilhadas permanecem no dispositivo; arquivos privados da instalação antiga não são transferidos automaticamente. Faça login novamente se necessário. Evite manter as duas instalações ativas ao autenticar o AniList, pois ambas podem registrar o mesmo callback. A chave de assinatura existente é preservada.
+
 ## Login Google opcional
 
 O login Android usa Credential Manager. O workflow de release aceita o Web Client ID público pela variável de repositório `REIANIX_GOOGLE_WEB_CLIENT_ID` (ou secret com o mesmo nome). Não armazene client secrets ou tokens no repositório ou no APK. Sem o identificador, o aplicativo permanece compilável e informa que o login precisa ser configurado.

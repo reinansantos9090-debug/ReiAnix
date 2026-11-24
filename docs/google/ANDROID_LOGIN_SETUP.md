@@ -9,7 +9,7 @@ No mesmo projeto do Google Cloud:
 1. Configure a tela de consentimento OAuth.
 2. Crie um OAuth Client ID do tipo **Web application**.
 3. Use o valor terminado em `apps.googleusercontent.com` como `REIANIX_GOOGLE_WEB_CLIENT_ID`.
-4. Crie também um OAuth Client ID do tipo **Android** para `com.reianix.reianix_local`.
+4. Crie também um OAuth Client ID do tipo **Android** para `com.reianix.app`.
 5. Cadastre no cliente Android os fingerprints SHA-1 e SHA-256 do certificado que assina o APK instalado.
 
 Não é necessário habilitar Google Drive, Gmail, Contacts ou APIs de arquivos.
@@ -22,7 +22,7 @@ Se nenhum valor estiver configurado, o APK continua compilável, mas o aplicativ
 
 ## 3. Descobrir a assinatura do APK
 
-Depois de compilar, o workflow executa `apksigner --print-certs` e mostra os fingerprints SHA-1/SHA-256 nos logs do GitHub Actions. Eles devem corresponder ao certificado usado pelo APK instalado. Se a assinatura mudar, atualize o cliente OAuth Android correspondente.
+Depois de compilar, o workflow executa `apksigner --print-certs` e mostra os fingerprints SHA-1/SHA-256 nos logs do GitHub Actions. Eles devem corresponder ao certificado usado pelo APK instalado. Se a assinatura mudar, atualize o cliente OAuth Android correspondente. Para a distribuição pela Google Play, registre também o certificado de assinatura do app fornecido pelo Play App Signing, além do certificado dos APKs de distribuição direta quando forem diferentes.
 
 ## 4. Dados da conta
 

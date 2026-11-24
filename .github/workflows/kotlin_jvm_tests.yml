@@ -91,7 +91,7 @@ jobs:
           git diff --check
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Verify only the unchanged Android application ID uses legacy naming
+      - name: Verify permanent ReiAnix application ID and branding
         run: bash scripts/verify_reianix_identity.sh
 
       - name: Run focused Android JVM contract tests and compile release Kotlin sources

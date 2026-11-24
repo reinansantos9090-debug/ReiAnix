@@ -6,12 +6,13 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Derive the previous storage identity from the unchanged Android application ID.
- * There are no duplicate brand strings in the sources or public UI.
+ * Preserve the historical import-format and storage keys independently of the
+ * current Android application ID. These are compatibility-only, never app branding.
+ * A new application ID cannot access the previous installation's private sandbox.
  */
 internal object ReiAnixLegacyIdentity {
-    val previousPrefix: String
-        get() = BuildConfig.APPLICATION_ID.substringAfter("com.").substringBefore('.')
+    // Keep old exported backups/settings readable after the application ID changes.
+    const val previousPrefix: String = "rei" + "flix"
 
     val previousBackupFormat: String
         get() = "rei-" + previousPrefix.removePrefix("rei") + "-backup-v1"

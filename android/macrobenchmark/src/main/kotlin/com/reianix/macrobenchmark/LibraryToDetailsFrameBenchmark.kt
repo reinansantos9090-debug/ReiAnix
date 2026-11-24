@@ -21,7 +21,7 @@ class LibraryToDetailsFrameBenchmark {
 
     @Test
     fun openAnimeAndReturnToLibrary() = benchmarkRule.measureRepeated(
-        packageName = "com.reiflix.reiflix_local",
+        packageName = "com.reianix.app",
         metrics = listOf(FrameTimingMetric()),
         compilationMode = CompilationMode.Partial(),
         iterations = 7,

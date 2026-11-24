@@ -115,11 +115,11 @@ if [ "$status" -ne 0 ]; then
       echo "DIAGNOSTIC_COMMAND_FAILED=foreground_activity"
     fi
     echo "--- package state ---"
-    if ! adb -s "$serial" shell dumpsys package com.reiflix.reiflix_local | grep -E "versionName|versionCode|enabled=|stopped=|pkgFlags" | head -n 40; then
+    if ! adb -s "$serial" shell dumpsys package com.reianix.app | grep -E "versionName|versionCode|enabled=|stopped=|pkgFlags" | head -n 40; then
       echo "DIAGNOSTIC_COMMAND_FAILED=package_state"
     fi
     echo "--- logcat errors ---"
-    if ! adb -s "$serial" logcat -d -v threadtime -t 1200 | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|Application Not Responding|com.reianix.reianix_local|serious_python|flutter" | tail -n 240; then
+    if ! adb -s "$serial" logcat -d -v threadtime -t 1200 | grep -E "FATAL EXCEPTION|AndroidRuntime|ANR in|Application Not Responding|com.reianix.app|com.reianix.reianix_local|serious_python|flutter" | tail -n 240; then
       echo "DIAGNOSTIC_COMMAND_FAILED=logcat_errors"
     fi
   } | tee "$output_dir/runtime-failure-diagnostics.txt"
