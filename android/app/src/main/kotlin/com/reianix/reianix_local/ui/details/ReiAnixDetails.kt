@@ -1,5 +1,8 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent
+import com.reianix.reianix_local.ui.privacy.TraceMoeConsentDialog
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -192,6 +195,7 @@ fun ReiAnixDetailsRoute(
     }
     var showMarathonDialog by rememberSaveable(canonicalId) { mutableStateOf(false) }
     var showManualAssociation by rememberSaveable(canonicalId) { mutableStateOf(false) }
+    var showTraceMoeConsent by rememberSaveable(canonicalId) { mutableStateOf(false) }
     // The Details status can remain READY while the asynchronous local-library
     // projection gains a media URI, corrected availability/duration, or a newly
     // published thumbnail. Include those source facts in a stable effect key so a
@@ -278,9 +282,26 @@ fun ReiAnixDetailsRoute(
         onSaveUserTags = viewModel::saveAnimeUserTagsNative,
         onSetEpisodeIdentification = viewModel::setEpisodeManualIdentificationNative,
         traceMoeState = traceMoeState,
-        onIdentifyWithTraceMoe = viewModel::identifyAnimeWithTraceMoe,
+        onIdentifyWithTraceMoe = { requestedId ->
+            if (requestedId == canonicalId && isForegroundDetails()) {
+                if (ReiAnixTraceMoeConsent.allowed(repairContext)) {
+                    viewModel.identifyAnimeWithTraceMoe(canonicalId)
+                } else {
+                    showTraceMoeConsent = true
+                }
+            }
+        },
         onCancelTraceMoe = viewModel::cancelTraceMoeIdentification,
     )
+    if (showTraceMoeConsent && isForegroundDetails()) {
+        TraceMoeConsentDialog(
+            onAuthorized = {
+                showTraceMoeConsent = false
+                if (isForegroundDetails()) viewModel.identifyAnimeWithTraceMoe(canonicalId)
+            },
+            onDismiss = { showTraceMoeConsent = false },
+        )
+    }
     if (showManualAssociation) {
         AniListAssociationDialog(
             state = aniListState,
