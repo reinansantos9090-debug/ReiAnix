@@ -153,6 +153,11 @@ dependencies {
     implementation("androidx.media3:media3-session:1.11.1")
     // Android sender uses the official Cast framework for TV discovery and playback.
     implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
+    // Cast 23.0 pulls MediaRouter 1.9 beta (compileSdk 37 + AGP 9.1).
+    // Preserve ReiAnix compileSdk 36 / AGP 8.9.1 with the last compatible 1.8.x.
+    implementation("androidx.mediarouter:mediarouter") {
+        version { strictly("1.8.1") }
+    }
     // NativePlayerActivity uses FragmentActivity for lifecycle and full-screen playback.
     implementation("androidx.fragment:fragment:1.8.9")
     implementation("androidx.appcompat:appcompat:1.7.1")

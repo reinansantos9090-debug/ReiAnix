@@ -206,16 +206,61 @@ class ReiAnixTvMediaServer(
     """.trimIndent()
 
     private fun serviceDescription(path: String): String {
-        val actions = if (path.contains("content")) {
-            listOf("Browse", "GetSearchCapabilities", "GetSortCapabilities", "GetSystemUpdateID")
-        } else listOf("GetProtocolInfo", "GetCurrentConnectionIDs")
+        fun variable(name: String, type: String, event: Boolean = false) =
+            "<stateVariable sendEvents=\"" + (if (event) "yes" else "no") + "\">" +
+                "<name>" + name + "</name><dataType>" + type + "</dataType></stateVariable>"
+        fun arg(name: String, direction: String, variable: String) =
+            "<argument><name>" + name + "</name><direction>" + direction +
+                "</direction><relatedStateVariable>" + variable +
+                "</relatedStateVariable></argument>"
+        fun action(name: String, vararg arguments: String) =
+            "<action><name>" + name + "</name><argumentList>" +
+                arguments.joinToString("") + "</argumentList></action>"
+        val actions: String
+        val state: String
+        if (path.contains("content")) {
+            actions = action("GetSearchCapabilities", arg("SearchCaps", "out", "SearchCapabilities")) +
+                action("GetSortCapabilities", arg("SortCaps", "out", "SortCapabilities")) +
+                action("GetSystemUpdateID", arg("Id", "out", "SystemUpdateID")) +
+                action("Browse",
+                    arg("ObjectID", "in", "A_ARG_TYPE_ObjectID"),
+                    arg("BrowseFlag", "in", "A_ARG_TYPE_BrowseFlag"),
+                    arg("Filter", "in", "A_ARG_TYPE_Filter"),
+                    arg("StartingIndex", "in", "A_ARG_TYPE_Index"),
+                    arg("RequestedCount", "in", "A_ARG_TYPE_Count"),
+                    arg("SortCriteria", "in", "A_ARG_TYPE_SortCriteria"),
+                    arg("Result", "out", "A_ARG_TYPE_Result"),
+                    arg("NumberReturned", "out", "A_ARG_TYPE_Count"),
+                    arg("TotalMatches", "out", "A_ARG_TYPE_Count"),
+                    arg("UpdateID", "out", "A_ARG_TYPE_UpdateID"))
+            state = listOf(variable("SearchCapabilities", "string"),
+                variable("SortCapabilities", "string"),
+                variable("SystemUpdateID", "ui4", true),
+                variable("A_ARG_TYPE_ObjectID", "string"),
+                variable("A_ARG_TYPE_BrowseFlag", "string"),
+                variable("A_ARG_TYPE_Filter", "string"),
+                variable("A_ARG_TYPE_Index", "ui4"),
+                variable("A_ARG_TYPE_Count", "ui4"),
+                variable("A_ARG_TYPE_SortCriteria", "string"),
+                variable("A_ARG_TYPE_Result", "string"),
+                variable("A_ARG_TYPE_UpdateID", "ui4")).joinToString("")
+        } else {
+            actions = action("GetProtocolInfo",
+                    arg("Source", "out", "SourceProtocolInfo"),
+                    arg("Sink", "out", "SinkProtocolInfo")) +
+                action("GetCurrentConnectionIDs",
+                    arg("ConnectionIDs", "out", "CurrentConnectionIDs"))
+            state = listOf(variable("SourceProtocolInfo", "string", true),
+                variable("SinkProtocolInfo", "string", true),
+                variable("CurrentConnectionIDs", "string", true)).joinToString("")
+        }
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
             "<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">" +
             "<specVersion><major>1</major><minor>0</minor></specVersion>" +
-            "<actionList>" + actions.joinToString("") { name ->
-                "<action><name>" + name + "</name></action>"
-            } + "</actionList><serviceStateTable></serviceStateTable></scpd>"
+            "<actionList>" + actions + "</actionList>" +
+            "<serviceStateTable>" + state + "</serviceStateTable></scpd>"
     }
+
     private fun soapResponse(path: String, soapAction: String, request: String): String {
         val action = soapAction.substringAfter('#', "").trim()
         val directory = path == "/upnp/content"
