@@ -7,7 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
 import android.util.Base64
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

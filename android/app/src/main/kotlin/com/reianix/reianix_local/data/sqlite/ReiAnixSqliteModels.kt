@@ -125,6 +125,7 @@ data class ReiAnixTimelineSourceRecord(
     val coverCache: String?,
     val coverUrl: String?,
     val addedAt: Double?,
+    val genresJson: String? = null,
 )
 
 /** Canonical episode duration row; durations remain stored in seconds. */

@@ -1,6 +1,6 @@
 package com.reianix.reianix_local.data.tracemoe
 
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

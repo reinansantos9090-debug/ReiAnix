@@ -2,7 +2,7 @@ package com.reianix.reianix_local.ui.artwork
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints

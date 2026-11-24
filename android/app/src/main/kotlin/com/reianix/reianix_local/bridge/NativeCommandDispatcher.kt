@@ -11,7 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.FileObserver
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import org.json.JSONObject
 import java.io.File
 import java.nio.charset.StandardCharsets

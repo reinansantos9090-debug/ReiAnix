@@ -3,7 +3,7 @@ package com.reianix.reianix_local.scanner
 import android.content.Context
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import android.net.Uri
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.storage.NativeIndex
 import com.reianix.reianix_local.data.sqlite.NativeDiscoveredMedia

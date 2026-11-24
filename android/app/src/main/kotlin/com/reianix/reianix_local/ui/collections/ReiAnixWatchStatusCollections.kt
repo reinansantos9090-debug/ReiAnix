@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -83,7 +85,8 @@ fun ReiAnixWatchStatusCollections(
                                 val duration = row.duration ?: 0.0
                                 row.watched == true || (duration.isFinite() && duration > 0 && (row.progress ?: 0.0) >= duration * .9)
                             }
-                            add(TrackingAnime(anime.id, anime.title, anime.coverCache, anime.coverUrl, status, rows.size, done))
+                            val blocked = ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson)
+                            add(TrackingAnime(anime.id, anime.title, anime.coverCache.takeUnless { blocked }, anime.coverUrl.takeUnless { blocked }, status, rows.size, done))
                         }
                         offset += page.size
                         if (page.size < 200) break
@@ -99,7 +102,8 @@ fun ReiAnixWatchStatusCollections(
     val visibleArtwork = remember(tracked, animes) {
         val artworkById = animes.associateBy { it.id }
         tracked.map { item ->
-            item.copy(coverCache = artworkById[item.id]?.artwork?.localPath ?: item.coverCache)
+            val model = artworkById[item.id]
+            item.copy(coverCache = if (model != null) model.artwork?.localPath else item.coverCache)
         }
     }
     ReiAnixResponsiveRoot {

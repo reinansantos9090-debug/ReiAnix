@@ -92,7 +92,7 @@ class ReiAnixSqliteLibraryRepository(
             connection.rawQuery(
                 """
                 SELECT a.id, a.title, a.year, a.season, a.status, a.media_kind,
-                       a.cover_cache, a.cover_url, a.added_at
+                       a.cover_cache, a.cover_url, a.added_at, a.genres
                 FROM anime a
                 WHERE EXISTS (SELECT 1 FROM episodes e WHERE e.anime_id=a.id)
                 ORDER BY CASE WHEN a.year IS NULL THEN 1 ELSE 0 END,
@@ -113,6 +113,7 @@ class ReiAnixSqliteLibraryRepository(
                                 coverCache = cursor.optionalString("cover_cache"),
                                 coverUrl = cursor.optionalString("cover_url"),
                                 addedAt = cursor.optionalDouble("added_at"),
+                                genresJson = cursor.optionalString("genres"),
                             ),
                         )
                     }

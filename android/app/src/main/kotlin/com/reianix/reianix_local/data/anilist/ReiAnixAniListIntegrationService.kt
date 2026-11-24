@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.take
 import android.content.Context
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.ReiAnixAppDependencies
 import kotlinx.coroutines.CancellationException

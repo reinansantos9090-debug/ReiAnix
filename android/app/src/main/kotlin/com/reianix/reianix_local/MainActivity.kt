@@ -41,7 +41,7 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import androidx.core.app.ActivityOptionsCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback

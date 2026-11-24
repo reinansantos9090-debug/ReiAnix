@@ -1,7 +1,7 @@
 package com.reianix.reianix_local.data.sqlite
 
 import android.content.Context
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import kotlinx.coroutines.CancellationException
 
 /**

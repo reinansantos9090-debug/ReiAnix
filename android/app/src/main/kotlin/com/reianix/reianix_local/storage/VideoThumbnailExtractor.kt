@@ -540,7 +540,7 @@ object VideoThumbnailExtractor {
                     durationMs = result.durationMs,
                 ) == true
         }.getOrElse { error ->
-            android.util.Log.w("VideoThumbnailExtractor", "Canonical thumbnail registration failed", error)
+            com.reianix.reianix_local.security.ReiAnixPrivateLog.w("VideoThumbnailExtractor", "Canonical thumbnail registration failed", error)
 
             false
         }

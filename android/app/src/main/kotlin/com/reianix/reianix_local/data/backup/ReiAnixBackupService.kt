@@ -576,7 +576,7 @@ class ReiAnixBackupService(context: Context) {
                             "Não foi possível retirar do caminho canônico a base que falhou."
                         }
                     } catch (preservationError: Exception) {
-                        android.util.Log.e("ReiAnixBackup", "Could not preserve failed recovery database", preservationError)
+                        com.reianix.reianix_local.security.ReiAnixPrivateLog.e("ReiAnixBackup", "Could not preserve failed recovery database", preservationError)
                         throw BackupRestoreException(
                             "A recuperação falhou e o arquivo substituto não pôde ser isolado. Os arquivos de recuperação foram mantidos em: " +
                                 recoverySnapshot.absolutePath,
@@ -604,7 +604,7 @@ class ReiAnixBackupService(context: Context) {
                         original.renameTo(failedSidecar)
                     }
                     if (!preserved.renameTo(original)) {
-                        android.util.Log.e("ReiAnixBackup", "Could not restore SQLite sidecar " + original.name, error)
+                        com.reianix.reianix_local.security.ReiAnixPrivateLog.e("ReiAnixBackup", "Could not restore SQLite sidecar " + original.name, error)
                     }
                 }
             }
@@ -644,7 +644,7 @@ class ReiAnixBackupService(context: Context) {
                 }
             }
         } catch (error: Exception) {
-            android.util.Log.w("ReiAnixBackup", "Could not read the current account profile before recovery", error)
+            com.reianix.reianix_local.security.ReiAnixPrivateLog.w("ReiAnixBackup", "Could not read the current account profile before recovery", error)
             RecoveryAccountSnapshot(emptyList(), readable = false)
         }
     }

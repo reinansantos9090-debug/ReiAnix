@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.data.library
 
+import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+
 import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reianix.reianix_local.ui.mapper.LibraryUiMappers
@@ -96,7 +98,11 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val regularEpisodes = orderedEpisodes.filter {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
-        val animeArtwork = row.animeArtwork
+        val legacyGenres = parseStringArray(anime.genresJson)
+        val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name } else legacyGenres
+        val adultArtwork = ReiAnixAdultArtworkPolicy.blocked(genreNames) ||
+            ReiAnixAdultArtworkPolicy.blocked(legacyGenres) || ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson)
+        val animeArtwork = if (adultArtwork) emptyList() else row.animeArtwork
         val backdrop = animeArtwork.firstOrNull {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
@@ -112,14 +118,12 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 it.localPath?.let(::hasReadableArtworkFile) == true
         }
         val primaryLocalArtwork = manualPoster?.localPath
-            ?: anime.coverCache?.takeIf(::hasReadableArtworkFile)
+            ?: anime.coverCache?.takeUnless { adultArtwork }?.takeIf(::hasReadableArtworkFile)
             ?: posterCandidates.mapNotNull { it.localPath }.firstOrNull(::hasReadableArtworkFile)
         val selectedPoster = posterCandidates.firstOrNull { it.localPath == primaryLocalArtwork && primaryLocalArtwork != null }
         val primaryExternalArtwork = selectedPoster?.externalUrl
-            ?: anime.coverUrl?.takeIf(String::isNotBlank)
+            ?: anime.coverUrl?.takeUnless { adultArtwork }?.takeIf(String::isNotBlank)
             ?: posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
-        val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name }
-            else parseStringArray(anime.genresJson)
         val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
         val meta = linkedMapOf<String, Any?>(
             "title" to anime.title,
@@ -127,10 +131,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "english" to anime.english,
             "native" to anime.nativeTitle,
             "aliases" to parseStringArray(anime.aliasesJson),
-            "description" to anime.description,
-            "cover_url" to anime.coverUrl,
-            "cover_cache" to anime.coverCache,
-            "banner_url" to anime.bannerUrl,
+            "description" to anime.description.takeUnless { adultArtwork },
+            "cover_url" to anime.coverUrl.takeUnless { adultArtwork },
+            "cover_cache" to anime.coverCache.takeUnless { adultArtwork },
+            "banner_url" to anime.bannerUrl.takeUnless { adultArtwork },
             "genres" to genreNames,
             "year" to anime.year,
             "season" to anime.season,
@@ -151,7 +155,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             mapOf(
                 "season" to season,
                 "season_name" to "Temporada $season",
-                "episodes" to episodes.map { episodeMap(it, anime.id, row) },
+                "episodes" to episodes.map { episodeMap(it, anime.id, row, adultArtwork) },
             )
         }
         val lastPlayed = row.episodes.mapNotNull { it.lastPlayedAt }.maxOrNull()
@@ -176,15 +180,15 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 mapOf(
                     "season_name" to "Especiais",
                     "season" to null,
-                    "episodes" to specialEpisodes.map { episodeMap(it, anime.id, row) },
+                    "episodes" to specialEpisodes.map { episodeMap(it, anime.id, row, adultArtwork) },
                 ),
             ),
-            "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row) },
+            "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row, adultArtwork) },
             // File metadata is captured with the background catalog projection,
             // never during Compose composition. Preserve same-path regeneration keys.
             "artwork_source_revisions" to (animeArtwork.mapNotNull { it.localPath } +
-                listOfNotNull(anime.coverCache)).distinct().associateWith(::localArtworkSourceRevision),
-            "artwork_available" to (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank()),
+                listOfNotNull(anime.coverCache.takeUnless { adultArtwork })).distinct().associateWith(::localArtworkSourceRevision),
+            "artwork_available" to (!adultArtwork && (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank())),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
             "artwork_backdrop_local_path" to backdrop?.localPath,
@@ -205,6 +209,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         episode: ReiAnixEpisodeRecord,
         animeId: Long,
         row: ReiAnixLibraryCatalogRow,
+        adultArtwork: Boolean,
     ): Map<String, Any?> {
         val availability = episode.availabilityState?.trim()?.takeIf { it.isNotEmpty() }
             ?: if (episode.missing == true) "missing" else "available"
@@ -218,7 +223,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             episode.missing != true && progress > 0.0 -> "in_progress"
             else -> "unwatched"
         }
-        val artwork = row.episodeArtwork[episode.id]
+        val artwork = row.episodeArtwork[episode.id].takeUnless { adultArtwork }
         return linkedMapOf(
             "id" to episode.id,
             "anime_id" to animeId,
