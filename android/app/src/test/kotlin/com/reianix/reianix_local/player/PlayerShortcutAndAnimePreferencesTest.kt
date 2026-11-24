@@ -14,17 +14,17 @@ import org.robolectric.annotation.Config
 class PlayerShortcutAndAnimePreferencesTest {
     @Test fun defaultsToFiveInRequestedOrder() {
         val expected = listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
-            PlayerShortcut.SPEED, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS)
+            PlayerShortcut.CAST, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS)
         assertEquals(expected, PlayerShortcutPolicy.default)
         assertEquals(expected, PlayerShortcutPolicy.parse(null))
-        assertEquals("lock,episodes,speed,next,options",
+        assertEquals("lock,episodes,cast,next,options",
             ReiAnixSettingsContract.defaultFor("player.shortcuts"))
         assertEquals(5, expected.size)
     }
 
     @Test fun landscapeGroupAlignsWithMiddleFiveShortcutWithoutChangingSpacing() {
         val shortcuts = PlayerShortcutPolicy.default
-        assertEquals(PlayerShortcut.SPEED, shortcuts[2])
+        assertEquals(PlayerShortcut.CAST, shortcuts[2])
         assertEquals(PlayerShortcut.OPTIONS, shortcuts.last())
         val fraction = PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION
         for (screenWidth in listOf(360f, 720f, 1504f)) {
@@ -41,12 +41,12 @@ class PlayerShortcutAndAnimePreferencesTest {
             assertEquals(seekDistance, playX - backX, 0.001f)
             assertEquals(seekDistance, forwardX - playX, 0.001f)
         }
-        val four = shortcuts.filterNot { it == PlayerShortcut.SPEED }
+        val four = shortcuts.filterNot { it == PlayerShortcut.CAST }
         assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four, landscape = true), 0f)
     }
     @Test fun portraitPlayMatchesNativeSpinnerCenterWithoutChangingSeekSpacing() {
         val five = PlayerShortcutPolicy.default
-        val four = five.filterNot { it == PlayerShortcut.SPEED }
+        val four = five.filterNot { it == PlayerShortcut.CAST }
         for (screenWidth in listOf(360f, 720f, 828f, 1504f)) {
             val portraitShift = screenWidth *
                 PlayerShortcutPolicy.centerActionGroupShiftFraction(five, landscape = false)
@@ -66,7 +66,7 @@ class PlayerShortcutAndAnimePreferencesTest {
             PlayerShortcutPolicy.centerActionGroupShiftFraction(five, landscape = true), 0f)
     }
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
-        val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
+        val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAST, false)
         assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), four)
         assertEquals(four, PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
@@ -77,6 +77,17 @@ class PlayerShortcutAndAnimePreferencesTest {
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), five)
         assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.SUBTITLES, true))
         assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.OPTIONS, false))
+    }
+
+    @Test fun migratesHistoricalFiveButtonDefaultWithoutOverwritingCustomShortcuts() {
+        assertEquals("lock,episodes,cast,next,options",
+            PlayerShortcutPolicy.normalize("lock,episodes,speed,next,options"))
+        assertEquals("lock,episodes,cast,next,options",
+            ReiAnixSettingsContract.normalize("player.shortcuts", "lock,episodes,speed,next,options"))
+        assertEquals("speed,episodes,next,options",
+            PlayerShortcutPolicy.normalize("speed,episodes,next,options"))
+        assertEquals("episodes,cast,next,options",
+            PlayerShortcutPolicy.normalize("episodes,cast,next,options"))
     }
 
     @Test fun removesRetiredCaptureFromStoredPreferencesAndBackups() {
@@ -103,7 +114,7 @@ class PlayerShortcutAndAnimePreferencesTest {
     }
 
     @Test fun activatingAndDisablingKeepsOptionsLast() {
-        val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
+        val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAST, false)
         val activated = PlayerShortcutPolicy.toggle(four, PlayerShortcut.SUBTITLES, true)
         assertEquals(listOf(PlayerShortcut.SUBTITLES, PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), activated)
@@ -114,7 +125,7 @@ class PlayerShortcutAndAnimePreferencesTest {
     }
 
     @Test fun movingPreservesIdsAndOrdering() {
-        assertEquals(listOf(PlayerShortcut.EPISODES, PlayerShortcut.LOCK, PlayerShortcut.SPEED,
+        assertEquals(listOf(PlayerShortcut.EPISODES, PlayerShortcut.LOCK, PlayerShortcut.CAST,
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
             PlayerShortcutPolicy.move(PlayerShortcutPolicy.default, PlayerShortcut.EPISODES, -1))
     }
@@ -126,12 +137,12 @@ class PlayerShortcutAndAnimePreferencesTest {
     }
 
     @Test fun draggingNeverReordersOptionsOrDisabledShortcuts() {
-        val afterDrag = PlayerShortcutPolicy.move(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, 1)
+        val afterDrag = PlayerShortcutPolicy.move(PlayerShortcutPolicy.default, PlayerShortcut.CAST, 1)
         assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES, PlayerShortcut.NEXT,
-            PlayerShortcut.SPEED, PlayerShortcut.OPTIONS), afterDrag)
+            PlayerShortcut.CAST, PlayerShortcut.OPTIONS), afterDrag)
         assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.OPTIONS, -1))
         assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.TIMER, -1))
-        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.SPEED, 1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.CAST, 1))
     }
 
     @Test fun dragPreviewHysteresisPreventsJitterAtBoundary() {

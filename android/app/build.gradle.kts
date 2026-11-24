@@ -151,6 +151,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+    // Android sender uses the official Cast framework for TV discovery and playback.
+    implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
     // NativePlayerActivity uses FragmentActivity for lifecycle and full-screen playback.
     implementation("androidx.fragment:fragment:1.8.9")
     implementation("androidx.appcompat:appcompat:1.7.1")

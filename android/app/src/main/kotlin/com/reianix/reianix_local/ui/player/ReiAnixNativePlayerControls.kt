@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Timer
@@ -161,6 +162,7 @@ fun ReiAnixNativePlayerControls(
     onResize: () -> Unit,
     onSource: () -> Unit,
     onNext: () -> Unit,
+    onCast: () -> Unit = {},
 ) {
     if (!state.controlsVisible || state.errorVisible) return
 
@@ -183,6 +185,7 @@ fun ReiAnixNativePlayerControls(
             onResize = onResize,
             onSource = onSource,
             onNext = onNext,
+            onCast = onCast,
         )
     }
 }
@@ -475,6 +478,7 @@ fun ReiAnixNativePlayerBottomControls(
     onSource: () -> Unit,
     onNext: () -> Unit,
     onPlaybackSpeed: () -> Unit = {},
+    onCast: () -> Unit = {},
     onSubtitles: () -> Unit = {},
     onSleepTimer: () -> Unit = {},
 ) {
@@ -878,6 +882,15 @@ fun ReiAnixNativePlayerBottomControls(
                                 }
                             },
                             onClick = onSource,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.CAST -> PlayerBottomAction(
+                            icon = Icons.Filled.Cast,
+                            label = "Transmitir",
+                            showLabel = !landscape,
+                            contentDescription = "Transmitir para TV",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            onClick = onCast,
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.SPEED -> PlayerBottomAction(

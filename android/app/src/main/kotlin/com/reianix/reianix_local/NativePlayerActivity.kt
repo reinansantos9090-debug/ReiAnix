@@ -13,6 +13,7 @@ import com.reianix.reianix_local.player.PlayerSkipSegment
 import com.reianix.reianix_local.player.AniSkipSegments
 import com.reianix.reianix_local.player.PlayerShortcut
 import com.reianix.reianix_local.player.PlayerShortcutPolicy
+import com.reianix.reianix_local.player.tv.ReiAnixTvPicker
 import com.reianix.reianix_local.player.PlayerAnimePreferences
 import com.reianix.reianix_local.player.PlayerAnimeTrackChoice
 import androidx.media3.ui.CaptionStyleCompat
@@ -329,6 +330,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var controlsVisible = false
     private val seekScrubVisibility = SeekScrubVisibilityGuard()
     private var moreVisible = false
+    private var tvPicker: ReiAnixTvPicker? = null
     // Lives above the controls overlay: the options menu must remain usable after
     // the 3.5s player-controls timeout hides the playback UI.
     private var menuDismissScrim: View? = null
@@ -990,6 +992,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
 
+        if (::uri.isInitialized && uri != normalized) {
+            tvPicker?.close()
+            tvPicker = null
+        }
         uri = normalized
         loadLocalMetadataAsync(transitionGeneration, uri)
         requestId = newIntent.getStringExtra("requestId")?.trim().orEmpty()
@@ -2984,6 +2990,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onResize = { showEpisodePlaylist() },
                         onSource = { toggleMorePanel() },
                         onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
+                        onCast = { showTvPicker() },
                         onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
                         onSleepTimer = { showSleepTimerSelection() },
                         onNext = {
@@ -3168,6 +3175,31 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (composeIndicatorVisible || hiddenSeekFeedbackVisible) View.GONE else View.VISIBLE
     }
 
+    private fun showTvPicker() {
+        if (!::uri.isInitialized || !::player.isInitialized || episodeChangePending) return
+        val source = if (inFavoriteClip) {
+            favoriteClipSession?.scene?.mediaId?.let { Uri.parse(it) } ?: uri
+        } else uri
+        val sourceId = source.toString()
+        if (tvPicker?.sourceId != sourceId) {
+            tvPicker?.close()
+            tvPicker = ReiAnixTvPicker(
+                activity = this,
+                sourceId = sourceId,
+                sourceUri = source,
+                title = titleValue.ifBlank { "Episódio" },
+                positionMs = player.currentPosition.coerceAtLeast(0L),
+                onRemotePlaybackStarted = {
+                    if (::player.isInitialized && !episodeChangePending) {
+                        player.pause()
+                        saveProgress("player_paused", force = true)
+                        updatePlayPauseButton()
+                    }
+                },
+            )
+        }
+        tvPicker?.show()
+    }
     private fun setMorePanelVisible(visible: Boolean) {
         val canShow = visible && !locked && !inPictureInPicture && !errorVisible
         moreVisible = canShow
@@ -5728,6 +5760,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onDestroy() {
+        tvPicker?.close()
+        tvPicker = null
         dismissFavoriteSceneUi()
         handler.removeCallbacks(sleepTimerTick)
         sleepTimerDialog?.dismiss()
