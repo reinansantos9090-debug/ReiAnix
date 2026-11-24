@@ -42,6 +42,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import androidx.core.app.ActivityOptionsCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
@@ -4679,7 +4680,12 @@ class MainActivity : ComponentActivity() {
                         " launcher=activity_direct reuse=true",
                 )
             } else {
-                playerActivityLauncher.launch(intent)
+                val transition = ActivityOptionsCompat.makeCustomAnimation(
+                    this,
+                    R.anim.reianix_player_open_enter,
+                    R.anim.reianix_player_open_exit,
+                )
+                playerActivityLauncher.launch(intent, transition)
 
                 nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.COMPLETED)
 
