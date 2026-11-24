@@ -328,73 +328,87 @@ fun ReiAnixCollectionsScreen(
                             }
                         }
                     } else {
-                        LazyColumn(
+                        val collectionsById = remember(collections) { collections.associateBy { it.id } }
+                        val collectionIds = remember(collections) { collections.map { it.id } }
+                        val collectionShape = RoundedCornerShape(18.dp)
+                        ReiAnixReorderableCollectionList(
+                            listKey = "personal-collections",
+                            itemIds = collectionIds,
+                            busy = busy || loading || pendingMembership.isNotEmpty(),
+                            onReorder = { order -> applyEdit { repository.reorderCollections(order) } },
+                            rowShape = collectionShape,
                             modifier = Modifier.fillMaxWidth().weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            rowSpacing = 12.dp,
                             contentPadding = PaddingValues(bottom = 24.dp),
-                        ) {
-                            item(key = "collection-actions") {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Column(Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
-                                        CollectionsPrimaryActions(
-                                            enabled = !busy && !loading && error == null,
-                                            onCreate = createCollection,
-                                            onAddFolder = onAddFolder,
-                                        )
+                            leadingContent = {
+                                item(key = "collection-actions") {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Column(Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
+                                            CollectionsPrimaryActions(
+                                                enabled = !busy && !loading && error == null,
+                                                onCreate = createCollection,
+                                                onAddFolder = onAddFolder,
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            item(key = "collection-heading") {
-                                Text(
-                                    "Suas coleções",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    modifier = Modifier.padding(top = 12.dp),
-                                )
-                            }
-                            items(collections, key = { "collection-" + it.id }) { collection ->
-                                val cover = collection.effectiveCoverId?.let(animeById::get)
-                                Surface(
-                                    onClick = {
-                                        selectedId = collection.id
-                                        adding = false
-                                        search = ""
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = reiAnixContentBackground(MaterialTheme.colorScheme.surface),
-                                    contentColor = MaterialTheme.colorScheme.onSurface,
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                item(key = "collection-heading") {
+                                    Text(
+                                        "Suas coleções",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        modifier = Modifier.padding(top = 12.dp),
+                                    )
+                                }
+                            },
+                        ) { collectionId, dragging, actionsDisabled ->
+                            val collection = collectionsById[collectionId] ?: return@ReiAnixReorderableCollectionList
+                            val cardColor = collectionDragColor(
+                                reiAnixContentBackground(MaterialTheme.colorScheme.surface),
+                                dragging,
+                            )
+                            val cover = collection.effectiveCoverId?.let(animeById::get)
+                            Surface(
+                                onClick = {
+                                    selectedId = collection.id
+                                    adding = false
+                                    search = ""
+                                },
+                                enabled = !actionsDisabled,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = collectionShape,
+                                color = cardColor,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    ) {
-                                        if (cover != null) {
-                                            CollectionPoster(cover, modifier = Modifier.size(52.dp, 74.dp))
-                                        } else {
-                                            Icon(
-                                                Icons.Outlined.Folder,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(52.dp, 74.dp),
-                                            )
-                                        }
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(collection.name, style = MaterialTheme.typography.titleMedium,
-                                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                            Text(
-                                                "${collection.animeIds.size} anime(s)",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (cover != null) {
+                                        CollectionPoster(cover, modifier = Modifier.size(52.dp, 74.dp))
+                                    } else {
+                                        Icon(
+                                            Icons.Outlined.Folder,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(52.dp, 74.dp),
+                                        )
                                     }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(collection.name, style = MaterialTheme.typography.titleMedium,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            "${collection.animeIds.size} anime(s)",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }

@@ -2,7 +2,14 @@ package com.reianix.reianix_local.ui.collections
 
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -13,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +33,11 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Composable
@@ -33,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,40 +77,107 @@ internal fun ReiAnixCollectionReorderList(
     onRemove: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    ReiAnixReorderableCollectionList(
+        listKey = collection.id,
+        itemIds = collection.animeIds,
+        busy = busy,
+        onReorder = onReorder,
+        modifier = modifier,
+    ) { animeId, dragging, actionsDisabled ->
+        CollectionAnimeRow(
+            animeId = animeId,
+            anime = animeById[animeId],
+            isCover = collection.effectiveCoverId == animeId,
+            busy = actionsDisabled,
+            dragging = dragging,
+            onOpen = { onOpenAnime(animeId) },
+            onSetCover = { onSetCover(animeId) },
+            onRemove = { onRemove(animeId) },
+        )
+    }
+}
+
+@Composable
+internal fun <K : Any> ReiAnixReorderableCollectionList(
+    listKey: String,
+    itemIds: List<K>,
+    busy: Boolean,
+    onReorder: (List<K>) -> Unit,
+    modifier: Modifier = Modifier,
+    rowShape: Shape = MaterialTheme.shapes.medium,
+    rowSpacing: Dp = 8.dp,
+    contentPadding: PaddingValues = PaddingValues(),
+    leadingContent: LazyListScope.() -> Unit = {},
+    row: @Composable (K, Boolean, Boolean) -> Unit,
+) {
     val listState = rememberLazyListState()
-    var draftOrder by remember(collection.id) { mutableStateOf<List<Long>?>(null) }
-    var draggedId by remember(collection.id) { mutableStateOf<Long?>(null) }
-    var pointerY by remember(collection.id) { mutableFloatStateOf(0f) }
-    val order = draftOrder ?: collection.animeIds
+    var draftOrder by remember(listKey) { mutableStateOf<List<K>?>(null) }
+    var draggedId by remember(listKey) { mutableStateOf<K?>(null) }
+    var pointerY by remember(listKey) { mutableFloatStateOf(0f) }
+    var grabOffsetY by remember(listKey) { mutableFloatStateOf(0f) }
+    var draggedHeight by remember(listKey) { mutableFloatStateOf(0f) }
+    var settling by remember(listKey) { mutableStateOf(false) }
+    var translationFraction by remember(listKey) { mutableFloatStateOf(1f) }
+    val currentOnReorder by rememberUpdatedState(onReorder)
+    val order = draftOrder ?: itemIds
     val density = LocalDensity.current
     val edgeSize = with(density) { 72.dp.toPx() }
     val maxScrollPerFrame = with(density) { 14.dp.toPx() }
 
     fun reorderAt(y: Float) {
         val dragging = draggedId ?: return
+        val draggedCenter = y - grabOffsetY + draggedHeight / 2f
         val hovered = listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
-            y >= item.offset && y < item.offset + item.size
-        }?.key as? Long ?: return
-        if (hovered == dragging) return
+            draggedCenter >= item.offset && draggedCenter < item.offset + item.size
+        } ?: return
+        if (hovered.key == dragging) return
 
-        val current = draftOrder ?: collection.animeIds
+        val current = draftOrder ?: itemIds
         val from = current.indexOf(dragging)
-        val to = current.indexOf(hovered)
-        if (from < 0 || to < 0 || from == to) return
+        val to = current.indexOfFirst { it == hovered.key }
+        val draggedSlot = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == dragging } ?: return
+        if (from < 0 || to < 0 || to - from != hovered.index - draggedSlot.index) return
+        val hoveredCenter = hovered.offset + hovered.size / 2f
+        if ((to > from && draggedCenter < hoveredCenter) ||
+            (to < from && draggedCenter > hoveredCenter)
+        ) return
         val updated = current.toMutableList()
         updated.removeAt(from)
         updated.add(to, dragging)
         draftOrder = updated
     }
 
-    LaunchedEffect(collection.animeIds, busy) {
+    LaunchedEffect(itemIds, busy) {
         // Once the transaction completes (including failures), use canonical order.
         if (!busy && draggedId == null) draftOrder = null
     }
 
-    LaunchedEffect(draggedId) {
-        if (draggedId == null) return@LaunchedEffect
-        while (coroutineContext.isActive && draggedId != null) {
+    LaunchedEffect(settling, itemIds, busy) {
+        if (!settling) return@LaunchedEffect
+        val finalOrder = draftOrder
+        var committed = false
+        try {
+            if (!busy && finalOrder != null) {
+                Animatable(1f).animateTo(
+                    0f,
+                    animationSpec = tween(205, easing = FastOutSlowInEasing),
+                ) { translationFraction = value }
+                if (finalOrder != itemIds) {
+                    currentOnReorder(finalOrder)
+                    committed = true
+                }
+            }
+        } finally {
+            if (!committed) draftOrder = null
+            draggedId = null
+            settling = false
+            translationFraction = 1f
+        }
+    }
+
+    LaunchedEffect(draggedId, settling) {
+        if (draggedId == null || settling) return@LaunchedEffect
+        while (coroutineContext.isActive && draggedId != null && !settling) {
             val layout = listState.layoutInfo
             val start = layout.viewportStartOffset.toFloat()
             val end = layout.viewportEndOffset.toFloat()
@@ -119,56 +200,83 @@ internal fun ReiAnixCollectionReorderList(
         state = listState,
         modifier = modifier
             .fillMaxWidth()
-            .pointerInput(collection.id, collection.animeIds, busy) {
+            .pointerInput(listKey, itemIds, busy) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { position ->
-                        if (!busy) {
-                            draggedId = listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
+                        if (!busy && draggedId == null) {
+                            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
                                 position.y >= item.offset && position.y < item.offset + item.size
-                            }?.key as? Long
-                            if (draggedId != null) {
-                                draftOrder = collection.animeIds
+                            }
+                            val id = itemIds.firstOrNull { it == item?.key }
+                            if (item != null && id != null) {
+                                draggedId = id
+                                draftOrder = draftOrder ?: itemIds
                                 pointerY = position.y
+                                grabOffsetY = position.y - item.offset
+                                draggedHeight = item.size.toFloat()
                             }
                         }
                     },
                     onDrag = { change, _ ->
-                        if (draggedId != null) {
+                        if (draggedId != null && !settling) {
                             change.consume()
                             pointerY = change.position.y
                             reorderAt(pointerY)
                         }
                     },
                     onDragCancel = {
-                        draggedId = null
-                        draftOrder = null
-                    },
-                    onDragEnd = {
-                        val finalOrder = draftOrder
-                        draggedId = null
-                        if (finalOrder != null && finalOrder != collection.animeIds) {
-                            onReorder(finalOrder)
-                        } else {
+                        if (!settling) {
+                            draggedId = null
                             draftOrder = null
                         }
                     },
+                    onDragEnd = {
+                        if (draggedId != null) settling = true
+                    },
                 )
             },
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(rowSpacing),
+        contentPadding = contentPadding,
     ) {
+        leadingContent()
         itemsIndexed(items = order, key = { _, id -> id }) { _, animeId ->
-            val anime = animeById[animeId]
             val dragging = draggedId == animeId
-            CollectionAnimeRow(
-                animeId = animeId,
-                anime = anime,
-                isCover = collection.effectiveCoverId == animeId,
-                busy = busy || draggedId != null,
-                dragging = dragging,
-                onOpen = { onOpenAnime(animeId) },
-                onSetCover = { onSetCover(animeId) },
-                onRemove = { onRemove(animeId) },
+            val scale by animateFloatAsState(
+                targetValue = if (dragging) 1.025f else 1f,
+                animationSpec = tween(150),
+                label = "Collection drag scale",
             )
+            val elevation by animateDpAsState(
+                targetValue = if (dragging) 10.dp else 0.dp,
+                animationSpec = tween(150),
+                label = "Collection drag elevation",
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (dragging) Modifier else Modifier.animateItem(
+                            fadeInSpec = null,
+                            placementSpec = tween(180, easing = FastOutSlowInEasing),
+                            fadeOutSpec = null,
+                        )
+                    )
+                    .zIndex(if (dragging) 2f else 0f)
+                    .graphicsLayer {
+                        if (dragging) {
+                            val slot = listState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.key == animeId }
+                            translationY = if (slot == null) 0f else
+                                (pointerY - grabOffsetY - slot.offset) * translationFraction
+                        }
+                        scaleX = scale
+                        scaleY = scale
+                        shadowElevation = elevation.toPx()
+                        shape = rowShape
+                    },
+            ) {
+                row(animeId, dragging, busy || draggedId != null)
+            }
         }
     }
 }
@@ -186,13 +294,13 @@ internal fun CollectionAnimeRow(
     onRemove: () -> Unit,
 ) {
     val gold = Color(0xFFEAC54F)
+    val normalColor = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceVariant)
+    val highlight = collectionDragColor(normalColor, dragging)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        color = if (dragging) MaterialTheme.colorScheme.primaryContainer
-            else reiAnixContentBackground(MaterialTheme.colorScheme.surfaceVariant),
-        contentColor = if (dragging) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        tonalElevation = if (dragging) 4.dp else 0.dp,
+        color = highlight,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
     ) {
         Row(
             modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
@@ -268,4 +376,14 @@ internal fun CollectionAnimeRow(
             }
         }
     }
+}
+
+@Composable
+internal fun collectionDragColor(normalColor: Color, dragging: Boolean): Color {
+    val color by animateColorAsState(
+        targetValue = if (dragging) Color.White.copy(alpha = 0.16f).compositeOver(normalColor) else normalColor,
+        animationSpec = tween(150),
+        label = "Collection drag highlight",
+    )
+    return color
 }

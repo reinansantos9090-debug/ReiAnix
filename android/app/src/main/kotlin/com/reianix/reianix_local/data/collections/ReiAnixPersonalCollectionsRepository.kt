@@ -45,6 +45,15 @@ class ReiAnixPersonalCollectionsRepository(
         return newCollection
     }
 
+    suspend fun reorderCollections(orderedIds: List<String>): List<ReiAnixPersonalCollection> =
+        edit { existing ->
+            val byId = existing.associateBy { it.id }
+            require(orderedIds.size == byId.size && orderedIds.toSet() == byId.keys) {
+                "A lista de coleções mudou. Tente reorganizá-la novamente."
+            }
+            orderedIds.map(byId::getValue)
+        }
+
     suspend fun rename(id: String, name: String): List<ReiAnixPersonalCollection> {
         val validName = validateName(name)
         return edit { existing ->
