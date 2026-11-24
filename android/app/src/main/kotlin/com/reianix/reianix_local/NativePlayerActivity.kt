@@ -326,7 +326,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var requestedPlayWhenReadyForGeneration = true
     private var autoplayNext = true
     private var completionReported = false
-    private var controlsVisible = true
+    private var controlsVisible = false
     private val seekScrubVisibility = SeekScrubVisibilityGuard()
     private var moreVisible = false
     // Lives above the controls overlay: the options menu must remain usable after
@@ -449,7 +449,6 @@ class NativePlayerActivity : FragmentActivity() {
     private var feedbackSessionId = ""
     private var feedbackRequestId = ""
     private var feedbackPlayerGeneration = 0L
-    private var controlsRestoredFromState = false
     private var isTelevision = false
     private var cinemaMode = false
     private var contentMimeType: String? = null
@@ -724,8 +723,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         subtitleEmbeddedStyle = intent.getBooleanExtra("setting_audio_subtitle_embedded_style", true)
         locked = savedInstanceState?.getBoolean("lock_mode", false)
             ?: intent.getBooleanExtra("setting_player_lock_mode", false)
-        controlsVisible = savedInstanceState?.getBoolean("controls_visible", true) ?: true
-        controlsRestoredFromState = savedInstanceState?.containsKey("controls_visible") == true
+        val initialControlsVisible = savedInstanceState?.getBoolean("controls_visible", false) ?: false
+        controlsVisible = initialControlsVisible
         logPlayer(
             "PLAYER_ACTIVITY_ON_CREATE requestId=" + requestId.ifEmpty { "-" } +
                 " commandCreatedAtMs=" + commandCreatedAtMs +
@@ -756,9 +755,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         installGestureLayer()
         installControls()
         setLocked(locked, persist = false)
-        if (controlsRestoredFromState && !locked) {
-            setControlsVisible(controlsVisible)
-        }
+        setControlsVisible(initialControlsVisible)
         installBackHandler()
         configurePictureInPicture()
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
@@ -1767,7 +1764,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (firstReadyForGeneration) {
                         playerReadyAtMs = readyAtMs
                     }
-                    if (::preparingIndicator.isInitialized) {
+                    val waitingForInitialVideoFrame = !firstFrameRenderedForTesting &&
+                        !audioOnly && player.playWhenReady &&
+                        player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
+                    if (::preparingIndicator.isInitialized && !waitingForInitialVideoFrame) {
                         preparingIndicator.visibility = View.GONE
                     }
                     if (firstReadyForGeneration) {
