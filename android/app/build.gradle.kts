@@ -151,6 +151,10 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+    // Cast 22.3.x targets MediaRouter 1.8; Cast 23.x requires 1.9 / Android 37.
+    // Keep the supported Android 36 / AGP 8.9.1 build without unsafe downgrades.
+    implementation("com.google.android.gms:play-services-cast-framework:22.3.0")
+    implementation("androidx.mediarouter:mediarouter:1.8.1")
     // NativePlayerActivity uses FragmentActivity for lifecycle and full-screen playback.
     implementation("androidx.fragment:fragment:1.8.9")
     implementation("androidx.appcompat:appcompat:1.7.1")

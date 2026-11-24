@@ -10,6 +10,7 @@ enum class PlayerShortcut(val key: String, val displayName: String) {
     NEXT("next", "Próximo episódio"),
     OPTIONS("options", "Opções"),
     SPEED("speed", "Velocidade"),
+    CAST("cast", "Transmitir"),
     SUBTITLES("subtitles", "Legendas"),
     TIMER("timer", "Temporizador");
 }
@@ -18,7 +19,7 @@ object PlayerShortcutPolicy {
     val default = listOf(
         PlayerShortcut.LOCK,
         PlayerShortcut.EPISODES,
-        PlayerShortcut.SPEED,
+        PlayerShortcut.CAST,
         PlayerShortcut.NEXT,
         PlayerShortcut.OPTIONS,
     )
@@ -29,6 +30,9 @@ object PlayerShortcutPolicy {
     // and 3/64 as its right inset. Its middle column is 1/64 to the left
     // of the geometric screen center.
     const val FIVE_SHORTCUT_INSET_UNIT_FRACTION = 1f / 64f
+
+    private val historicalFiveDefault = listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+        PlayerShortcut.SPEED, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS)
 
     /**
      * The native preparation spinner is centered in the full PlayerView.
@@ -58,7 +62,11 @@ object PlayerShortcutPolicy {
         }
         // Keep valid four-button selections as four: the user may have
         // deliberately disabled an item after upgrading to the five-button default.
-        return pinnedOptionsLast(options).joinToString(",") { it.key }
+        val pinned = pinnedOptionsLast(options)
+        // Upgrade the exact previous five-button default, never overwrite a
+        // different customized order (Speed remains an available optional key).
+        return (if (pinned == historicalFiveDefault) default else pinned)
+            .joinToString(",") { it.key }
     }
 
     /** The menu is always the fixed rightmost button, including legacy saved orders. */
