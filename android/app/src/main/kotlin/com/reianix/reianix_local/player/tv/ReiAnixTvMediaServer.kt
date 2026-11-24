@@ -2,6 +2,7 @@ package com.reianix.reianix_local.player.tv
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.provider.OpenableColumns
@@ -463,12 +464,20 @@ class ReiAnixTvMediaServer(
         }
 
         private fun privateLanAddress(context: Context): Inet4Address? {
-            val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val network = connectivity?.activeNetwork
-            val addresses = network?.let { connectivity.getLinkProperties(it)?.linkAddresses }
-                ?.mapNotNull { it.address as? Inet4Address }
-                .orEmpty()
-            return addresses.firstOrNull { it.isSiteLocalAddress }
+            val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? ConnectivityManager ?: return null
+            // Android may use cellular as the default route even while Wi-Fi
+            // is connected to a TV on an unvalidated/offline local network.
+            // Only advertise a Wi-Fi/Ethernet address reachable from the TV.
+            val local = connectivity.allNetworks.filter { network ->
+                val caps = connectivity.getNetworkCapabilities(network)
+                caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                    caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+            }
+            return local.asSequence().flatMap { network ->
+                connectivity.getLinkProperties(network)?.linkAddresses.orEmpty()
+                    .asSequence().mapNotNull { it.address as? Inet4Address }
+            }.firstOrNull { it.isSiteLocalAddress }
         }
     }
 }

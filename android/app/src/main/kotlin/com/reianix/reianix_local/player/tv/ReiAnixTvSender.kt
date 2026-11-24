@@ -2,6 +2,9 @@ package com.reianix.reianix_local.player.tv
 
 import android.app.Activity
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.mediarouter.media.MediaRouteSelector
@@ -148,8 +151,15 @@ internal class ReiAnixTvSender(
         for (route in router.routes) {
             if (!route.isEnabled || route.isDefault || !route.matchesSelector(selector)) continue
             val id = "cast:" + route.id
+            val name = route.name.trim()
+            // A hybrid TV may be found through both Cast and SSDP. Cast takes
+            // precedence, so do not present two rows for the same TV.
+            devices.values.filter {
+                it.kind != ReiAnixTvKind.CAST &&
+                    it.name.trim().equals(name, ignoreCase = true)
+            }.map { it.id }.forEach(devices::remove)
             routes[id] = route
-            devices[id] = ReiAnixTvDevice(id, route.name, ReiAnixTvKind.CAST)
+            devices[id] = ReiAnixTvDevice(id, name, ReiAnixTvKind.CAST)
         }
         publish()
     }
@@ -159,6 +169,14 @@ internal class ReiAnixTvSender(
         val seen = hashSetOf<String>()
         runCatching {
             DatagramSocket().use { socket ->
+                val connectivity = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
+                    as? ConnectivityManager
+                val localNetwork = connectivity?.allNetworks?.firstOrNull { network ->
+                    val caps = connectivity.getNetworkCapabilities(network)
+                    caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                        caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+                }
+                localNetwork?.bindSocket(socket)
                 socket.soTimeout = 750
                 for (search in listOf("ssdp:all", "urn:schemas-upnp-org:device:MediaRenderer:1", "roku:ecp")) {
                     val query = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n" +
@@ -430,6 +448,8 @@ internal class ReiAnixTvSender(
 
     override fun close() {
         if (closed) return
+        // Stop the remote receiver before the temporary HTTP source disappears.
+        disconnect()
         closed = true
         searchGeneration++
         callback?.let { runCatching { router?.removeCallback(it) } }

@@ -3,6 +3,8 @@ package com.reianix.reianix_local.player.tv
 import android.app.Activity
 import android.app.AlertDialog
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.widget.ArrayAdapter
 import com.reianix.reianix_local.R
 import java.io.Closeable
@@ -20,6 +22,8 @@ internal class ReiAnixTvPicker(
     private var adapter: ArrayAdapter<String>? = null
     private var dialog: AlertDialog? = null
     private var remotePaused = false
+    private val ui = Handler(Looper.getMainLooper())
+    private var emptySearchNotice: Runnable? = null
     private var closed = false
     private val sender = ReiAnixTvSender(
         activity, sourceUri, title, positionMs,
@@ -62,6 +66,7 @@ internal class ReiAnixTvPicker(
             entries = emptyList()
             refresh()
             sender.discover()
+            scheduleEmptySearchNotice()
         }
         picker.setOnDismissListener {
             if (dialog === picker) {
@@ -70,6 +75,22 @@ internal class ReiAnixTvPicker(
             }
         }
         sender.discover()
+        scheduleEmptySearchNotice()
+    }
+
+    private fun scheduleEmptySearchNotice() {
+        emptySearchNotice?.let(ui::removeCallbacks)
+        val notice = Runnable {
+            if (!closed && dialog?.isShowing == true && entries.isEmpty()) {
+                adapter?.apply {
+                    clear()
+                    add("Nenhuma TV encontrada. Verifique a rede Wi-Fi.")
+                    notifyDataSetChanged()
+                }
+            }
+        }
+        emptySearchNotice = notice
+        ui.postDelayed(notice, 10_000L)
     }
 
     private fun refresh() {
@@ -154,6 +175,8 @@ internal class ReiAnixTvPicker(
     override fun close() {
         if (closed) return
         closed = true
+        emptySearchNotice?.let(ui::removeCallbacks)
+        emptySearchNotice = null
         dialog?.dismiss()
         dialog = null
         adapter = null
