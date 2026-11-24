@@ -38,3 +38,6 @@ Não gire a chave por conveniência. Se a chave privada for perdida e não houve
 - Examine o artefato `reianix-release-metadata.txt`: modo `stable` e o mesmo `certificate_sha256` fixado em `REIANIX_ANDROID_EXPECTED_CERT_SHA256`.
 - A opção de release contínuo (`reianix-ci-latest`) só pode ser executada manualmente na `main` e depois de passar pela verificação do certificado.
 - Os testes Android Instrumented e os testes Kotlin/JVM **continuam manuais**; este ajuste não instala emuladores nem muda esses workflows.
+
+## Google Play
+Para criar o AAB sem mudar a identidade do APK existente, siga [Etapa 4 — Google Play](PLAY_RELEASE_PREPARATION.md). Não gere uma nova chave se a chave estável já estiver configurada. A assinatura definitiva da distribuição Play e a chave de upload são decisões separadas na Play Console.
