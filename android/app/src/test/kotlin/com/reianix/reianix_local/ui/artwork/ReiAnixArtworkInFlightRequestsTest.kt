@@ -40,7 +40,7 @@ class ReiAnixArtworkInFlightRequestsTest {
     }
 
     @Test
-    fun distinctSizesDoNotDelayFirstLoadOfAnotherCard() = runBlocking {
+    fun distinctSizesDoNotDelayFirstLoadOfAnotherCard() = runBlocking<Unit> {
         val requests = ArtworkInFlightRequests()
         val waiting = CompletableDeferred<Unit>()
         val first = async(start = CoroutineStart.UNDISPATCHED) {

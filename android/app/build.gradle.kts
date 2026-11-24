@@ -93,18 +93,24 @@ kotlin { jvmToolchain(17) }
 // fail intermittently and make unrelated tests fail before their bodies run.
 // Resolve the SDKs used by our @Config tests (API 28 and 35) through Gradle
 // first; no emulator, skipped test, or new workflow is involved.
-val robolectricFrameworkJars = configurations.create("robolectricFrameworkJars") {
+// Resolve API 28 and 35 independently; one configuration would select only
+// one version of the same Maven module and leave the other SDK unavailable.
+val robolectricFrameworkJars28 = configurations.create("robolectricFrameworkJars28") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+val robolectricFrameworkJars35 = configurations.create("robolectricFrameworkJars35") {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
 
 dependencies {
-    add("robolectricFrameworkJars", "org.robolectric:android-all-instrumented:9-robolectric-4913185-2-i7")
-    add("robolectricFrameworkJars", "org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
+    add("robolectricFrameworkJars28", "org.robolectric:android-all-instrumented:9-robolectric-4913185-2-i7")
+    add("robolectricFrameworkJars35", "org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
 }
 
 val prepareRobolectricFrameworkJars by tasks.registering(Copy::class) {
-    from(robolectricFrameworkJars)
+    from(robolectricFrameworkJars28, robolectricFrameworkJars35)
     into(layout.buildDirectory.dir("robolectric/frameworks"))
 }
 

@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      play_bundle:
+        description: 'Gerar AAB para Google Play (sem publicar release APK)'
+        type: boolean
+        default: false
 
 concurrency:
   # v2 isolates new PR runs from historical runs stuck in GitHub Actions finalization.
@@ -358,6 +363,86 @@ jobs:
           echo "certificate_sha256=$fingerprint" >> build/reianix-release-metadata.txt
           echo "APK_SIGNING_IDENTITY=verified mode=$REIANIX_SIGNING_MODE"
 
+      - name: Validate APK 16 KB packaging and native ELF alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify_android_16kb.sh build/ReiAnix.apk | tee build/reianix-16kb-apk.txt
+
+      - name: Build signed Google Play AAB
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.play_bundle
+        shell: bash
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
+        run: |
+          set -euo pipefail
+          test "$REIANIX_SIGNING_MODE" = stable
+          gradle -p android --no-daemon --console=plain --stacktrace \
+            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
+            -PreianixEnableR8=true \
+            -PreianixBuildVersion="0.2.1" \
+            :app:bundleRelease
+          cp android/app/build/outputs/bundle/release/app-release.aab build/ReiAnix.aab
+          test -s build/ReiAnix.aab
+
+      - name: Verify signed AAB and Google Play requirements
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.play_bundle
+        shell: bash
+        env:
+          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 || vars[format('{0}{1}', 'REI', 'FLIX_ANDROID_EXPECTED_CERT_SHA256')] }}
+        run: |
+          set -euo pipefail
+          # Verify every signed payload entry before running the public validation tool.
+          java scripts/VerifyPlayBundle.java build/ReiAnix.aab "$REIANIX_ANDROID_EXPECTED_CERT_SHA256" | tee build/reianix-aab-validation.txt
+          bundletool="$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+            --output "$bundletool"
+          printf '%s  %s\n' 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29' "$bundletool" | sha256sum -c -
+          java -jar "$bundletool" validate --bundle=build/ReiAnix.aab | tee -a build/reianix-aab-validation.txt
+          java -jar "$bundletool" dump manifest --bundle=build/ReiAnix.aab --module=base > "$RUNNER_TEMP/reianix-aab-manifest.xml"
+          manifest="$RUNNER_TEMP/reianix-aab-manifest.xml"
+          grep -Eq 'package="com\.reianix\.app"' "$manifest"
+          grep -Fq "android:versionCode=\"$GITHUB_RUN_NUMBER\"" "$manifest"
+          grep -Fq 'android:versionName="0.2.1"' "$manifest"
+          grep -Fq 'android:targetSdkVersion="36"' "$manifest"
+          if grep -Fq 'android.permission.MANAGE_EXTERNAL_STORAGE' "$manifest"; then
+            echo "Forbidden broad file permission in AAB" >&2; exit 1
+          fi
+          grep -Fq 'android.permission.READ_MEDIA_VIDEO' "$manifest"
+          grep -Fq 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED' "$manifest"
+          if grep -Fq 'android:debuggable="true"' "$manifest"; then
+            echo "Debuggable AAB is not suitable for release" >&2; exit 1
+          fi
+          bash scripts/verify_android_16kb.sh build/ReiAnix.apk build/ReiAnix.aab "$bundletool" | tee -a build/reianix-aab-validation.txt
+          (cd build && sha256sum ReiAnix.aab) | tee build/ReiAnix.aab.sha256
+          printf 'AAB_PACKAGE=com.reianix.app\nAAB_TARGET_SDK=36\nAAB_VERSION_CODE=%s\nAAB_VERSION_NAME=0.2.1\n' "$GITHUB_RUN_NUMBER" | tee -a build/reianix-aab-validation.txt
+          if [[ -s android/app/build/outputs/mapping/release/mapping.txt ]]; then
+            cp android/app/build/outputs/mapping/release/mapping.txt build/reianix-r8-mapping.txt
+          fi
+
+      - name: Upload signed Google Play bundle privately to Actions
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.play_bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-Google-Play-AAB-${{ github.run_number }}
+          path: |
+            build/ReiAnix.aab
+            build/ReiAnix.aab.sha256
+            build/reianix-aab-validation.txt
+            build/reianix-build-identity.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload R8 mapping for this Play build
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.play_bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiAnix-R8-mapping-${{ github.run_number }}
+          path: build/reianix-r8-mapping.txt
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Final Git integrity check
         if: always()
         shell: bash
@@ -409,7 +494,7 @@ jobs:
           test "$zip_bytes" -le "$((apk_bytes + 1048576))"
 
       - name: Publish APK and ZIP to rolling GitHub Release
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.play_bundle
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: reianix-ci-latest
@@ -446,6 +531,7 @@ jobs:
             build/LEIA-ANTES-DE-INSTALAR.txt
             build/reianix-release-metadata.txt
             build/reianix-build-identity.json
+            build/reianix-16kb-apk.txt
           retention-days: 1
           if-no-files-found: error
 
