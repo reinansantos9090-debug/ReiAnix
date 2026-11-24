@@ -2,7 +2,7 @@ package com.reianix.reianix_local.ui.settings
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 import android.content.Intent
-import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
+import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement

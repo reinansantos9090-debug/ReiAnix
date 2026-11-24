@@ -155,7 +155,9 @@ dependencies {
     // Cast 22.3.x targets MediaRouter 1.8; Cast 23.x requires 1.9 / Android 37.
     // Keep the supported Android 36 / AGP 8.9.1 build without unsafe downgrades.
     implementation("com.google.android.gms:play-services-cast-framework:22.3.0")
-    implementation("com.google.android.gms:play-services-oss-licenses:17.5.3")
+    // The 17.5.x UI pulls Compose Adaptive 1.3 (SDK 37 / AGP 9.1).
+    // Keep the compatible classic OSS viewer and generated license resources.
+    implementation("com.google.android.gms:play-services-oss-licenses:17.1.0")
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     // NativePlayerActivity uses FragmentActivity for lifecycle and full-screen playback.
     implementation("androidx.fragment:fragment:1.8.9")
