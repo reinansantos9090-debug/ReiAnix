@@ -4,6 +4,10 @@
     <intent>
       <action android:name="android.intent.action.OPEN_DOCUMENT_TREE"/>
     </intent>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <data android:scheme="content" android:mimeType="video/*"/>
+    </intent>
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />
@@ -77,6 +81,7 @@
         <action android:name="androidx.media3.session.MediaSessionService" />
       </intent-filter>
     </service>
+    <activity android:name=".player.PlaybackTargetActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.Material.NoActionBar" />
     <activity android:name=".NativePlayerActivity" android:theme="@style/ReiAnixPlayerTheme" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" android:screenOrientation="fullSensor" android:supportsPictureInPicture="true" android:exported="false" />
     <activity android:name="com.reianix.reianix_local.MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
       <intent-filter>

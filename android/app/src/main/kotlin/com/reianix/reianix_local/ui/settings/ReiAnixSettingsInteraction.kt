@@ -78,6 +78,8 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "appearance.show_thumbnails" -> Icons.Filled.Collections
     "library.continue_watching" -> Icons.Filled.VideoLibrary
     "library.continue_watching_limit" -> Icons.Filled.PlaylistPlay
+    "player.default_player" -> Icons.Filled.PlayCircle
+    "player.external_component" -> Icons.Filled.OpenInNew
     "player.aniskip_enabled" -> Icons.Filled.MovieFilter
     "player.anime_preferences_enabled" -> Icons.Filled.FolderSpecial
     "player.autoplay_next" -> Icons.Filled.SkipNext

@@ -3006,6 +3006,25 @@ class ReiAnixLibraryViewModel(
                         false
                     } else {
 
+                        val playbackMode = preferenceValue("player.default_player")
+                        if (favoriteScene == null && playbackMode in setOf("external", "ask")) {
+                            val component = android.content.ComponentName.unflattenFromString(
+                                preferenceValue("player.external_component"),
+                            )
+                            val chooser = com.reianix.reianix_local.player.ExternalVideoChooser
+                            val target = if (playbackMode == "external" && component != null &&
+                                chooser.installedPlayers(appContext, mediaUri).any { it.component == component }) {
+                                chooser.createExplicitIntent(appContext, mediaUri, component)
+                            } else {
+                                com.reianix.reianix_local.player.PlaybackTargetActivity.createIntent(
+                                    appContext, mediaUri, intent, playbackMode == "external",
+                                )
+                            }
+                            appContext.startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            reportNativePlayerHandoff(requestId, "COMPLETED")
+                            return@withContext true
+                        }
+
                         favoriteScene?.let {
                             com.reianix.reianix_local.player.ProfileClipHandoff.put(requestId, it)
                         }

@@ -895,6 +895,38 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "player_playback" -> {
+                    item(key = "setting:player.default_player") {
+                        ChoiceSettingRow(
+                            keyName = "player.default_player",
+                            title = "Reprodutor padrão",
+                            description = "Escolha como os episódios serão abertos.",
+                            selectedValue = state.settings["player.default_player"] ?: "internal",
+                            choices = listOf(
+                                SettingChoice("internal", "Reprodutor interno"),
+                                SettingChoice("external", "Reprodutor externo"),
+                                SettingChoice("ask", "Perguntar sempre"),
+                            ),
+                            onSelected = { onUpdateSetting("player.default_player", it) },
+                        )
+                    }
+                    item(key = "setting:player.external_component") {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val players = androidx.compose.runtime.remember(context) {
+                            com.reianix.reianix_local.player.ExternalVideoChooser.installedPlayers(context)
+                        }
+                        val choices = listOf(SettingChoice("", "Selecionar ao abrir")) +
+                            players.map { SettingChoice(it.component.flattenToString(), it.label) }
+                        val selected = state.settings["player.external_component"].orEmpty()
+                        ChoiceSettingRow(
+                            keyName = "player.external_component",
+                            title = "Aplicativo externo",
+                            description = if (players.isEmpty()) "Nenhum reprodutor externo instalado."
+                                else "Usado quando o reprodutor padrão é externo.",
+                            selectedValue = selected.takeIf { value -> choices.any { it.value == value } } ?: "",
+                            choices = choices,
+                            onSelected = { onUpdateSetting("player.external_component", it) },
+                        )
+                    }
                     item(key = "setting:player.aniskip_enabled") {
                         BooleanSettingRow(
                             keyName = "player.aniskip_enabled",

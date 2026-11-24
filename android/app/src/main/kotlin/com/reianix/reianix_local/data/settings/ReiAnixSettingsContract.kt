@@ -6,7 +6,7 @@ package com.reianix.reianix_local.data.settings
  * for backward compatibility; this schema supplies type validation at the
  * Kotlin boundary without changing the database format.
  */
-enum class ReiAnixSettingKind { BOOLEAN, INTEGER, DECIMAL, ENUM, LANGUAGE, SHORTCUTS }
+enum class ReiAnixSettingKind { BOOLEAN, INTEGER, DECIMAL, ENUM, LANGUAGE, SHORTCUTS, COMPONENT }
 
 data class ReiAnixSettingDefinition(
     val key: String,
@@ -48,6 +48,13 @@ data class ReiAnixSettingDefinition(
                 require(value in choices) { "Unsupported option for $key" }
                 value
             }
+            ReiAnixSettingKind.COMPONENT -> {
+                require(value.isEmpty() || (value.length <= 512 &&
+                    Regex("[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+").matches(value))) {
+                    "Invalid player component for $key"
+                }
+                value
+            }
             ReiAnixSettingKind.SHORTCUTS ->
                 com.reianix.reianix_local.player.PlayerShortcutPolicy.normalize(value)
             ReiAnixSettingKind.LANGUAGE -> {
@@ -87,6 +94,8 @@ object ReiAnixSettingsContract {
         int("library.page_size", 0, 0, 24, 36, 48, 72),
         bool("library.continue_watching", true),
         int("library.continue_watching_limit", 10, 5, 10, 15, 20),
+        enum("player.default_player", "internal", "internal", "external", "ask"),
+        ReiAnixSettingDefinition("player.external_component", ReiAnixSettingKind.COMPONENT, ""),
         bool("player.autoplay_next", true),
         bool("player.aniskip_enabled", true),
         bool("player.anime_preferences_enabled", true),
