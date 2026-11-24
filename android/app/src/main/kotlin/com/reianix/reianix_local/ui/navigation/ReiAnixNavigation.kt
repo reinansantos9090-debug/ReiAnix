@@ -47,6 +47,8 @@ import com.reianix.reianix_local.ui.motion.reiAnixScreenPopExitTransition
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.fadeOut
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
 import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
@@ -493,7 +495,17 @@ fun ReiAnixNavigationHost(
                     ReiAnixRouteAnimation.STANDARD -> reiAnixScreenEnterTransition()
                 }
             },
-            exitTransition = {
+            exitTransition = exit@{
+                val fromRoute = initialState.destination.route
+                val fromBottomDestination = fromRoute == ReiAnixRoutes.MY_LIST ||
+                    topLevelDestinations.any { it.route == fromRoute }
+                if (targetState.destination.route == ReiAnixRoutes.DETAILS &&
+                    showBottomNavigation && fromBottomDestination
+                ) {
+                    // The shared viewport grows when the bottom bar disappears.
+                    // Don't draw the outgoing screen at that new height behind Details.
+                    return@exit fadeOut(animationSpec = snap())
+                }
                 when (reiAnixRouteAnimation(
                     initialState.destination.route, targetState.destination.route,
                     initialState.id == targetState.id,
