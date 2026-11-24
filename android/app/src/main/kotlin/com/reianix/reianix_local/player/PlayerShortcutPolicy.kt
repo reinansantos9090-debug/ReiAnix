@@ -17,12 +17,14 @@ enum class PlayerShortcut(val key: String, val displayName: String) {
 
 object PlayerShortcutPolicy {
     val default = listOf(
-        PlayerShortcut.LOCK,
-        PlayerShortcut.EPISODES,
         PlayerShortcut.CAST,
+        PlayerShortcut.EPISODES,
+        PlayerShortcut.LOCK,
         PlayerShortcut.NEXT,
         PlayerShortcut.OPTIONS,
     )
+
+    val defaultValue = default.joinToString(",") { it.key }
 
     const val MAX_COUNT = 5
 
@@ -74,7 +76,7 @@ object PlayerShortcutPolicy {
         items.filterNot { it == PlayerShortcut.OPTIONS } + PlayerShortcut.OPTIONS
 
     fun parse(value: String?): List<PlayerShortcut> = runCatching {
-        normalize(value ?: default.joinToString(",") { it.key })
+        normalize(value ?: defaultValue)
             .split(',').map { key -> PlayerShortcut.entries.first { it.key == key } }
     }.getOrDefault(default)
 
