@@ -46,7 +46,6 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Tune
 import com.reianix.reianix_local.player.PlayerShortcut
 import com.reianix.reianix_local.player.PlayerShortcutPolicy
@@ -128,7 +127,6 @@ fun ReiAnixNativePlayerOptionsPanel(
     onFavoriteScenes: () -> Unit = {},
     onSubtitleAppearance: () -> Unit = {},
     onAudioOnlyChanged: (Boolean) -> Unit = {},
-    onCaptureFrame: () -> Unit = {},
     onShortcutsChanged: (List<PlayerShortcut>) -> Unit = {},
 ) {
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
@@ -216,13 +214,6 @@ fun ReiAnixNativePlayerOptionsPanel(
                     icon = Icons.Filled.MoreHoriz,
                     label = "Outras opções",
                     onClick = { page = PlayerOptionsPage.OTHER },
-                )
-                PlayerOptionActionRow(
-                    icon = Icons.Filled.CameraAlt,
-                    label = "Capturar imagem",
-                    enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
-                    showChevron = false,
-                    onClick = onCaptureFrame,
                 )
                 if (showPictureInPicture) {
                     PlayerOptionActionRow(
@@ -520,7 +511,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                 }
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Replay,
-                    label = "Restaurar 4 atalhos originais",
+                    label = "Restaurar 5 atalhos padrão",
                     showChevron = false,
                     onClick = { onShortcutsChanged(PlayerShortcutPolicy.default) },
                 )

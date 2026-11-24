@@ -12,41 +12,67 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = android.app.Application::class, sdk = [35])
 class PlayerShortcutAndAnimePreferencesTest {
-    @Test fun keepsFourCurrentShortcutsByDefault() {
-        assertEquals("lock,episodes,next,options", PlayerShortcutPolicy.default.joinToString(",") { it.key })
-        assertEquals(PlayerShortcutPolicy.default, PlayerShortcutPolicy.parse(null))
-        assertEquals(4, PlayerShortcutPolicy.default.size)
+    @Test fun defaultsToFiveInRequestedOrder() {
+        val expected = listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+            PlayerShortcut.SPEED, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS)
+        assertEquals(expected, PlayerShortcutPolicy.default)
+        assertEquals(expected, PlayerShortcutPolicy.parse(null))
+        assertEquals("lock,episodes,speed,next,options",
+            ReiAnixSettingsContract.defaultFor("player.shortcuts"))
+        assertEquals(5, expected.size)
     }
 
-    @Test fun supportsFiveAndKeepsMenuReachable() {
-        val five = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAPTURE, true)
-        assertEquals(5, five.size)
-        assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.TIMER, true))
+    @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
+        val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
+        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), four)
+        assertEquals(four, PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
+            four.joinToString(",") { it.key },
+        )))
+        val five = PlayerShortcutPolicy.toggle(four, PlayerShortcut.TIMER, true)
+        assertEquals(listOf(PlayerShortcut.TIMER, PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), five)
+        assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.SUBTITLES, true))
         assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.OPTIONS, false))
-        assertEquals("capture,lock,episodes,next,options", ReiAnixSettingsContract.normalize("player.shortcuts", five.joinToString(",") { it.key }))
-        assertEquals(listOf(PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
-            PlayerShortcutPolicy.parse("options,next"))
+    }
+
+    @Test fun removesRetiredCaptureFromStoredPreferencesAndBackups() {
+        assertFalse(PlayerShortcut.entries.any { it.key == "capture" })
+        assertEquals("lock,episodes,next,options",
+            ReiAnixSettingsContract.normalize("player.shortcuts", "capture,lock,episodes,next,options"))
+        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
+            PlayerShortcutPolicy.parse("capture,lock,episodes,next,options"))
+        assertEquals("episodes,lock,options",
+            PlayerShortcutPolicy.normalize("capture,episodes,lock,options"))
+        assertEquals("speed,episodes,options",
+            PlayerShortcutPolicy.normalize("speed,capture,episodes,options"))
     }
 
     @Test fun rejectsInvalidDuplicatedOrMissingOptions() {
-        for (bad in listOf("lock,next", "options,options", "x,options", "lock,episodes,next,options,speed,timer")) {
-            assertThrows(IllegalArgumentException::class.java) { ReiAnixSettingsContract.normalize("player.shortcuts", bad) }
+        for (bad in listOf("lock,next", "options,options", "x,options",
+            "lock,episodes,next,options,speed,timer", "capture,capture,options", "capture")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                ReiAnixSettingsContract.normalize("player.shortcuts", bad)
+            }
         }
         assertEquals(PlayerShortcutPolicy.default, PlayerShortcutPolicy.parse("invalid"))
     }
 
     @Test fun activatingAndDisablingKeepsOptionsLast() {
-        val activated = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAPTURE, true)
-        assertEquals(listOf(PlayerShortcut.CAPTURE, PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
+        val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
+        val activated = PlayerShortcutPolicy.toggle(four, PlayerShortcut.SUBTITLES, true)
+        assertEquals(listOf(PlayerShortcut.SUBTITLES, PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), activated)
-        val disabled = PlayerShortcutPolicy.toggle(activated, PlayerShortcut.CAPTURE, false)
-        assertEquals(PlayerShortcutPolicy.default, disabled)
+        val disabled = PlayerShortcutPolicy.toggle(activated, PlayerShortcut.SUBTITLES, false)
+        assertEquals(four, disabled)
         assertEquals(activated, PlayerShortcutPolicy.move(activated, PlayerShortcut.OPTIONS, -1))
         assertEquals("next,options", PlayerShortcutPolicy.normalize("options,next"))
     }
 
     @Test fun movingPreservesIdsAndOrdering() {
-        assertEquals(listOf(PlayerShortcut.EPISODES, PlayerShortcut.LOCK, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
+        assertEquals(listOf(PlayerShortcut.EPISODES, PlayerShortcut.LOCK, PlayerShortcut.SPEED,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS),
             PlayerShortcutPolicy.move(PlayerShortcutPolicy.default, PlayerShortcut.EPISODES, -1))
     }
 
@@ -57,13 +83,12 @@ class PlayerShortcutAndAnimePreferencesTest {
     }
 
     @Test fun draggingNeverReordersOptionsOrDisabledShortcuts() {
-        val five = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAPTURE, true)
-        val afterDrag = PlayerShortcutPolicy.move(five, PlayerShortcut.CAPTURE, 1)
-        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.CAPTURE, PlayerShortcut.EPISODES,
-            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), afterDrag)
+        val afterDrag = PlayerShortcutPolicy.move(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, 1)
+        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES, PlayerShortcut.NEXT,
+            PlayerShortcut.SPEED, PlayerShortcut.OPTIONS), afterDrag)
         assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.OPTIONS, -1))
         assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.TIMER, -1))
-        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.NEXT, 1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.SPEED, 1))
     }
 
     @Test fun dragPreviewHysteresisPreventsJitterAtBoundary() {

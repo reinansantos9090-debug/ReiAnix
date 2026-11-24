@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Timer
@@ -469,7 +468,6 @@ fun ReiAnixNativePlayerBottomControls(
     onResize: () -> Unit,
     onSource: () -> Unit,
     onNext: () -> Unit,
-    onCaptureFrame: () -> Unit = {},
     onPlaybackSpeed: () -> Unit = {},
     onSubtitles: () -> Unit = {},
     onSleepTimer: () -> Unit = {},
@@ -874,15 +872,6 @@ fun ReiAnixNativePlayerBottomControls(
                             },
                             onClick = onSource,
                             enabled = !state.episodeTransitionInProgress,
-                        )
-                        PlayerShortcut.CAPTURE -> PlayerBottomAction(
-                            icon = Icons.Filled.CameraAlt,
-                            label = "Capturar",
-                            showLabel = !landscape,
-                            contentDescription = "Capturar imagem do vídeo",
-                            onClick = onCaptureFrame,
-                            iconVisualScale = if (fiveShortcuts) 0.78f else 1f,
-                            enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.SPEED -> PlayerBottomAction(
                             icon = Icons.Filled.Speed,

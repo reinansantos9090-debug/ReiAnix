@@ -11,12 +11,10 @@ import com.reianix.reianix_local.player.FavoriteSceneDialogs
 import com.reianix.reianix_local.player.PlayerEnhancementPolicy
 import com.reianix.reianix_local.player.PlayerSkipSegment
 import com.reianix.reianix_local.player.AniSkipSegments
-import com.reianix.reianix_local.player.PlayerFrameCapture
 import com.reianix.reianix_local.player.PlayerShortcut
 import com.reianix.reianix_local.player.PlayerShortcutPolicy
 import com.reianix.reianix_local.player.PlayerAnimePreferences
 import com.reianix.reianix_local.player.PlayerAnimeTrackChoice
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.media3.ui.CaptionStyleCompat
 import com.reianix.reianix_local.player.PlayerMediaPolicy
 import com.reianix.reianix_local.player.ExternalVideoChooser
@@ -213,37 +211,11 @@ class NativePlayerActivity : FragmentActivity() {
     private var smartSkipButton: TextView? = null
     private var smartSkipEnabled = true
     private var smartSkipGeneration = 0L
-    private var frameCaptureInProgress = false
     private var playerShortcuts = PlayerShortcutPolicy.default
     private var activeAnimePreferences: PlayerAnimePreferences? = null
     private var activeAnimePreferencesKey: String? = null
     private val animePreferencesMutex = Mutex()
     @Volatile private var animePreferenceWriteVersion = 0L
-    private var pendingFrameCapture: File? = null
-    private val frameSaveLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("image/jpeg"),
-    ) { target ->
-        val source = pendingFrameCapture
-        pendingFrameCapture = null
-        if (source != null) {
-            if (target == null) {
-                source.delete()
-            } else {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val saved = runCatching {
-                        contentResolver.openOutputStream(target)?.use { output ->
-                            source.inputStream().use { it.copyTo(output) }
-                            true
-                        } == true
-                    }.getOrDefault(false)
-                    source.delete()
-                    withContext(Dispatchers.Main) {
-                        if (!saved && !isDestroyed) showFeedback("Não foi possível salvar a imagem", 1800L)
-                    }
-                }
-            }
-        }
-    }
     private var subtitleColor = "system"
     private var subtitleFont = "system"
     private var captionRevision = 0L
@@ -2803,7 +2775,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         },
                         onMarkers = { showLocalMetadataEditor() },
                         onFavoriteScenes = { showFavoriteScenes() },
-                        onCaptureFrame = { captureCurrentVideoFrame() },
                         onShortcutsChanged = { selected ->
                             val validated = runCatching {
                                 PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
@@ -3012,7 +2983,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onToggleLock = { setLocked(!locked) },
                         onResize = { showEpisodePlaylist() },
                         onSource = { toggleMorePanel() },
-                        onCaptureFrame = { captureCurrentVideoFrame() },
                         onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
                         onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
                         onSleepTimer = { showSleepTimerSelection() },
@@ -4230,58 +4200,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         persistCanonicalPlayerSetting("player.aniskip_enabled", enabled.toString())
         updateSmartSkipButton()
         syncComposePlayerUiState()
-    }
-
-    /**
-     * Capture only when requested. The worker decodes the local media URI,
-     * never the overlaid player surface. API 29+ uses scoped MediaStore;
-     * older devices use the system document picker without storage access.
-     */
-    private fun captureCurrentVideoFrame() {
-        if (!::player.isInitialized || !::uri.isInitialized ||
-            episodeChangePending || favoriteClipSession != null ||
-            sessionState != SessionState.ACTIVE || pendingFrameCapture != null ||
-            frameCaptureInProgress
-        ) {
-            showFeedback("Captura indisponível neste momento")
-            return
-        }
-        frameCaptureInProgress = true
-        val requestedUri = uri
-        setMorePanelVisible(false)
-        val positionMs = player.currentPosition.coerceAtLeast(0L)
-        val generation = playerGeneration
-        val name = "ReiAnix_${System.currentTimeMillis()}.jpg"
-        lifecycleScope.launch {
-            try {
-                val image = PlayerFrameCapture.capture(applicationContext, requestedUri, positionMs)
-                if (image == null) {
-                    showFeedback("Não foi possível capturar essa cena", 1800L)
-                    return@launch
-                }
-                if (isDestroyed || isFinishing || generation != playerGeneration ||
-                    !::uri.isInitialized || uri != requestedUri
-                ) {
-                    image.delete()
-                    return@launch
-                }
-                if (Build.VERSION.SDK_INT >= 29) {
-                    val saved = PlayerFrameCapture.saveToGallery(applicationContext, image, name)
-                    image.delete()
-                    if (!saved && !isDestroyed) showFeedback("Não foi possível salvar a imagem", 1800L)
-                } else {
-                    pendingFrameCapture = image
-                    runCatching { frameSaveLauncher.launch(name) }.onFailure { error ->
-                        pendingFrameCapture = null
-                        image.delete()
-                        logPlayer("FRAME_SAVE_PICKER_FAILED", error)
-                        showFeedback("Não foi possível abrir o seletor de arquivos", 1800L)
-                    }
-                }
-            } finally {
-                frameCaptureInProgress = false
-            }
-        }
     }
 
     private fun currentAnimePreferencesKey(): String? =
@@ -5799,8 +5717,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         handler.removeCallbacks(sleepTimerTick)
         sleepTimerDialog?.dismiss()
         sleepTimerDialog = null
-        pendingFrameCapture?.delete()
-        pendingFrameCapture = null
 
         val shouldReportExit = isFinishing && !suppressExitEvent && !exitReported && !isChangingConfigurations
         if (shouldReportExit) {
