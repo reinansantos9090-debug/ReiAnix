@@ -268,12 +268,13 @@ fun ReiAnixNativePlayerCenterControls(
     ) {
         val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val dimensions = ReiAnixTokens.PlayerDimensions
-        // The bottom row of five shortcuts has unequal side insets. Shift the
-        // entire center group by that same offset so Play sits above its middle
-        // (Speed by default) icon. Both ten-second controls move with Play,
-        // retaining identical spacing and hit targets. Four shortcuts stay put.
+        // The native blue preparation spinner is centered in the PlayerView.
+        // In portrait Play/Pause must use the very same geometric center;
+        // landscape keeps its previously approved five-shortcut alignment.
+        // Both ten-second controls still move with Play, retaining their
+        // original spacing, sizes and touch targets.
         val groupShiftPx = with(LocalDensity.current) {
-            (maxWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(state.shortcuts)).roundToPx()
+            (maxWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(state.shortcuts, landscape)).roundToPx()
         }
         BoxWithConstraints(
             modifier = Modifier

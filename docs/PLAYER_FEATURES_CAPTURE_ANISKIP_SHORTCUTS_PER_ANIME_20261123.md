@@ -94,3 +94,10 @@ O salvamento bem-sucedido de cenas favoritas também não exibe toast de confirm
 - Preservar a distância simétrica entre Play e cada controle de 10 segundos, dimensões, áreas de toque e posições verticais.
 - Com 4 atalhos, manter as posições anteriores. O deslocamento acompanha a largura disponível sem valores fixos em pixels.
 - Conferir visualmente na paisagem e retrato, inclusive com mudança de orientação, buscando alinhamento dos centros e nenhuma piscada ou alteração dos gestos.
+
+## Centralizar Play/Pause na bolinha azul nativa — retrato (24/11/2026)
+
+- O vídeo do usuário mostra o Play ligeiramente deslocado em relação ao indicador azul de carregamento. Esse indicador nativo é centralizado no PlayerView (Gravity.CENTER), enquanto o trio Compose usava -1/64 da largura também no retrato.
+- Com **5 atalhos em retrato**, usar deslocamento horizontal **0** para o grupo de três botões, coincidindo o centro do Play/Pause com o centro geométrico do indicador azul; os dois botões de ±10 segundos acompanham o grupo sem alterar espaçamento, altura, tamanho ou gestos.
+- **Paisagem**: preservar exatamente o deslocamento anterior de -1/64. Com **4 atalhos**: preservar o centramento original.
+- A PR #441 foi fechada sem merge, então o ajuste anterior de +4 dp não integra a main nem deve ser carregado para esta PR.

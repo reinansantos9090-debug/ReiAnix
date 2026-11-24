@@ -22,7 +22,7 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(5, expected.size)
     }
 
-    @Test fun centerPlayerGroupAlignsWithMiddleFiveShortcutWithoutChangingSpacing() {
+    @Test fun landscapeGroupAlignsWithMiddleFiveShortcutWithoutChangingSpacing() {
         val shortcuts = PlayerShortcutPolicy.default
         assertEquals(PlayerShortcut.SPEED, shortcuts[2])
         assertEquals(PlayerShortcut.OPTIONS, shortcuts.last())
@@ -31,7 +31,7 @@ class PlayerShortcutAndAnimePreferencesTest {
             val left = screenWidth * fraction
             val right = screenWidth * (fraction * 3f)
             val middleShortcutX = left + (screenWidth - left - right) / 2f
-            val groupShift = screenWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(shortcuts)
+            val groupShift = screenWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(shortcuts, landscape = true)
             val playX = screenWidth / 2f + groupShift
             assertEquals(middleShortcutX, playX, 0.001f)
             // Seek positions are symmetric about Play and receive the same shift.
@@ -42,7 +42,28 @@ class PlayerShortcutAndAnimePreferencesTest {
             assertEquals(seekDistance, forwardX - playX, 0.001f)
         }
         val four = shortcuts.filterNot { it == PlayerShortcut.SPEED }
-        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four), 0f)
+        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four, landscape = true), 0f)
+    }
+    @Test fun portraitPlayMatchesNativeSpinnerCenterWithoutChangingSeekSpacing() {
+        val five = PlayerShortcutPolicy.default
+        val four = five.filterNot { it == PlayerShortcut.SPEED }
+        for (screenWidth in listOf(360f, 720f, 828f, 1504f)) {
+            val portraitShift = screenWidth *
+                PlayerShortcutPolicy.centerActionGroupShiftFraction(five, landscape = false)
+            val playCenter = screenWidth / 2f + portraitShift
+            val nativeSpinnerCenter = screenWidth / 2f
+            assertEquals(nativeSpinnerCenter, playCenter, 0.001f)
+
+            val seekDistance = screenWidth * 0.25f
+            val rewindCenter = playCenter - seekDistance
+            val forwardCenter = playCenter + seekDistance
+            assertEquals(seekDistance, playCenter - rewindCenter, 0.001f)
+            assertEquals(seekDistance, forwardCenter - playCenter, 0.001f)
+        }
+        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four, landscape = false), 0f)
+        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four, landscape = true), 0f)
+        assertEquals(-PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION,
+            PlayerShortcutPolicy.centerActionGroupShiftFraction(five, landscape = true), 0f)
     }
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
         val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
