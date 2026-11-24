@@ -2,10 +2,14 @@ package com.reianix.reianix_local.player.tv
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.widget.ArrayAdapter
+import android.widget.Toast
+import com.reianix.reianix_local.player.ExternalVideoChooser
 import com.reianix.reianix_local.R
 import java.io.Closeable
 
@@ -13,7 +17,7 @@ import java.io.Closeable
 internal class ReiAnixTvPicker(
     private val activity: Activity,
     val sourceId: String,
-    sourceUri: Uri,
+    private val sourceUri: Uri,
     private val title: String,
     positionMs: Long,
     private val onRemotePlaybackStarted: () -> Unit,
@@ -50,7 +54,12 @@ internal class ReiAnixTvPicker(
             .setTitle("Transmitir para TV")
             .setAdapter(list) { _, index ->
                 val device = entries.getOrNull(index)
-                if (device != null) {
+                if (device?.kind == ReiAnixTvKind.ROKU) {
+                    // Roku discovery does not imply a push-capable DLNA renderer.
+                    // Hand the actual media to Web Video Caster instead of
+                    // exposing a manual Roku Media Player flow.
+                    openInWebVideoCaster()
+                } else if (device != null) {
                     list.clear()
                     list.add("Conectando a " + device.name + "…")
                     list.notifyDataSetChanged()
@@ -122,7 +131,6 @@ internal class ReiAnixTvPicker(
                 onRemotePlaybackStarted()
                 showControls(state.device)
             }
-            is ReiAnixTvConnection.RokuReady -> showRokuInstructions(state.name)
             is ReiAnixTvConnection.Failure -> present(
                 AlertDialog.Builder(activity)
                     .setTitle("Não foi possível transmitir")
@@ -134,26 +142,95 @@ internal class ReiAnixTvPicker(
         }
     }
 
-    private fun showRokuInstructions(name: String) {
+    /**
+     * Web Video Caster documents Android ACTION_VIEW restricted to its package.
+     * The local URI is granted only to that app; success does not imply that
+     * playback on the Roku has already started.
+     */
+    private fun openInWebVideoCaster() {
+        val intent = try {
+            ExternalVideoChooser.createWebVideoCasterIntent(activity, sourceUri, title)
+        } catch (error: IllegalArgumentException) {
+            present(
+                AlertDialog.Builder(activity)
+                    .setTitle("Vídeo indisponível")
+                    .setMessage(error.message ?: "Não foi possível compartilhar este vídeo local.")
+                    .setPositiveButton("Entendi", null)
+                    .create()
+            )
+            return
+        } catch (_: Exception) {
+            showWebVideoCasterError()
+            return
+        }
+        try {
+            activity.startActivity(intent)
+            // Handoff succeeded, not necessarily casting or playback on TV.
+            onRemotePlaybackStarted()
+            Toast.makeText(
+                activity,
+                "Vídeo aberto no Web Video Caster. Selecione a Roku nele para transmitir.",
+                Toast.LENGTH_LONG,
+            ).show()
+        } catch (_: ActivityNotFoundException) {
+            showInstallWebVideoCaster()
+        } catch (_: SecurityException) {
+            showWebVideoCasterError()
+        } catch (_: RuntimeException) {
+            showWebVideoCasterError()
+        }
+    }
+
+    private fun showInstallWebVideoCaster() {
         present(
             AlertDialog.Builder(activity)
-                .setTitle(name)
+                .setTitle("Web Video Caster indisponível")
                 .setMessage(
-                    "Na TV, abra Roku Media Player, escolha ReiAnix e selecione “" +
-                        title + "”.\n\nO celular e a TV precisam estar na mesma rede. " +
-                        "Mantenha o player aberto enquanto assiste."
+                    "O Web Video Caster não está instalado ou não aceitou abrir este vídeo. " +
+                        "Confira o aplicativo no Google Play. " +
+                        "Depois, escolha a Roku dentro dele para transmitir."
                 )
+                .setPositiveButton("Abrir Google Play") { _, _ -> openWebVideoCasterStore() }
+                .setNegativeButton("Cancelar", null)
+                .create()
+        )
+    }
+
+    private fun openWebVideoCasterStore() {
+        val storeId = "com.instantbits.cast.webvideo"
+        val storeIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("market://details?id=" + storeId),
+        )
+        try {
+            activity.startActivity(storeIntent)
+        } catch (_: ActivityNotFoundException) {
+            try {
+                activity.startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://play.google.com/store/apps/details?id=" + storeId),
+                    )
+                )
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(
+                    activity, "Google Play indisponível neste dispositivo.", Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun showWebVideoCasterError() {
+        present(
+            AlertDialog.Builder(activity)
+                .setTitle("Não foi possível abrir Web Video Caster")
+                .setMessage("Verifique se o aplicativo está atualizado e se o vídeo pode ser compartilhado.")
                 .setPositiveButton("Entendi", null)
-                .setNegativeButton("Encerrar") { _, _ -> sender.disconnect() }
                 .create()
         )
     }
 
     private fun showControls(device: ReiAnixTvDevice) {
-        if (device.kind == ReiAnixTvKind.ROKU) {
-            showRokuInstructions(device.name)
-            return
-        }
         val controls = AlertDialog.Builder(activity)
             .setTitle(device.name)
             .setMessage("Transmitindo para a TV.")

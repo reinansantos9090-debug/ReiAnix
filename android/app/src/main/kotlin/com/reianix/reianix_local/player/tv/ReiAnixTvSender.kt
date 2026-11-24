@@ -39,13 +39,13 @@ internal data class ReiAnixTvDevice(
 
 internal sealed class ReiAnixTvConnection {
     data class Connected(val name: String, val device: ReiAnixTvDevice) : ReiAnixTvConnection()
-    data class RokuReady(val name: String, val title: String) : ReiAnixTvConnection()
     data class Failure(val message: String) : ReiAnixTvConnection()
 }
 
 /**
- * One device list for Cast, UPnP AVTransport renderers and Roku Media Player.
- * Roku's official local-network support is DLNA *browsing*, not push rendering.
+ * One device list for Cast, UPnP AVTransport renderers and Roku TVs.
+ * Roku devices are discovered for the external Web Video Caster handoff;
+ * they are never treated as native DLNA push-capable renderers.
  */
 internal class ReiAnixTvSender(
     private val activity: Activity,
@@ -218,13 +218,13 @@ internal class ReiAnixTvSender(
                             }
                             val priority = when (discovered.kind) {
                                 ReiAnixTvKind.CAST -> 3
-                                ReiAnixTvKind.RENDERER -> 2
-                                ReiAnixTvKind.ROKU -> 1
+                                ReiAnixTvKind.RENDERER -> 1
+                                ReiAnixTvKind.ROKU -> 2
                             }
                             val oldPriority = when (duplicate?.kind) {
                                 ReiAnixTvKind.CAST -> 3
-                                ReiAnixTvKind.RENDERER -> 2
-                                ReiAnixTvKind.ROKU -> 1
+                                ReiAnixTvKind.RENDERER -> 1
+                                ReiAnixTvKind.ROKU -> 2
                                 null -> 0
                             }
                             if (duplicate == null || priority > oldPriority) {
@@ -293,6 +293,12 @@ internal class ReiAnixTvSender(
 
     fun connect(device: ReiAnixTvDevice) {
         if (closed || connecting != null) return
+        // Roku is discovered in the unified picker, but only WVC handles
+        // its playback. Never launch an unused DLNA server for Roku.
+        if (device.kind == ReiAnixTvKind.ROKU) {
+            onConnectionChanged(ReiAnixTvConnection.Failure("Abra o vídeo no Web Video Caster para transmitir à Roku."))
+            return
+        }
         connecting = device.id
         Thread({
             val result = runCatching {
@@ -309,10 +315,10 @@ internal class ReiAnixTvSender(
                     return@post
                 }
                 when (device.kind) {
+                    // Already rejected above: this sender controls native Cast/DLNA.
                     ReiAnixTvKind.ROKU -> {
-                        connected = device
                         connecting = null
-                        onConnectionChanged(ReiAnixTvConnection.RokuReady(device.name, mediaTitle))
+                        onConnectionChanged(ReiAnixTvConnection.Failure("Use Web Video Caster para a Roku."))
                     }
                     ReiAnixTvKind.CAST -> {
                         val route = routes[device.id]

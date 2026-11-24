@@ -65,6 +65,51 @@ class ExternalVideoChooserTest {
         }
     }
 
+    @Test fun sharesSafVideoOnlyWithWebVideoCasterOnRokuSelection() {
+        val context = RuntimeEnvironment.getApplication()
+        val videoUri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3AAnime%2Fep3.mkv")
+        val handoff = ExternalVideoChooser.createWebVideoCasterIntent(
+            context, videoUri, "Episódio 3",
+        )
+        assertEquals(Intent.ACTION_VIEW, handoff.action)
+        assertEquals("com.instantbits.cast.webvideo", handoff.`package`)
+        assertEquals(videoUri, handoff.data)
+        assertEquals("video/*", handoff.type)
+        assertEquals("Episódio 3", handoff.getStringExtra(Intent.EXTRA_TITLE))
+        assertEquals("Episódio 3", handoff.getStringExtra("title"))
+        assertTrue(handoff.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertEquals(videoUri, handoff.clipData?.getItemAt(0)?.uri)
+    }
+
+    @Test fun wrapsLegacyFileSafelyBeforeSendingToWebVideoCaster() {
+        val context = RuntimeEnvironment.getApplication()
+        val localFile = File(context.cacheDir, "wvc-roku-test.mp4")
+        localFile.writeBytes(byteArrayOf(1, 2, 3))
+        try {
+            val handoff = ExternalVideoChooser.createWebVideoCasterIntent(
+                context, Uri.fromFile(localFile), "Episódio local",
+            )
+            assertEquals("content", handoff.data?.scheme)
+            assertEquals("com.instantbits.cast.webvideo", handoff.`package`)
+            assertTrue(handoff.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+            assertEquals(handoff.data, handoff.clipData?.getItemAt(0)?.uri)
+        } finally {
+            localFile.delete()
+        }
+    }
+
+    @Test fun doesNotShareUntrustedUriSchemesWithWebVideoCaster() {
+        val context = RuntimeEnvironment.getApplication()
+        for (uri in listOf(
+            Uri.parse("https://example.com/not-a-local-file.mp4"),
+            Uri.parse("javascript:alert(1)"),
+        )) {
+            assertThrows(IllegalArgumentException::class.java) {
+                ExternalVideoChooser.createWebVideoCasterIntent(context, uri, "Episódio")
+            }
+        }
+    }
+
     @Test fun rejectsUnrelatedRemoteOrUnsupportedUri() {
         val context = RuntimeEnvironment.getApplication()
         for (uri in listOf(
