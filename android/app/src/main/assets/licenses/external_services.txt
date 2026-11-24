@@ -1,0 +1,34 @@
+Créditos de APIs e serviços externos
+
+AniList — catálogo, capas, personagens, lançamentos e sincronização de conta.
+https://anilist.co/
+Termos: https://docs.anilist.co/guide/terms-of-use
+
+Kitsu — metadados e imagens complementares.
+https://kitsu.io/
+Documentação: https://hummingbird-me.github.io/api-docs/
+
+AniMap — correspondência de identificadores de catálogos.
+https://animap.id/
+
+AniSkip — intervalos de abertura, encerramento e recapitulação.
+https://aniskip.com/
+Código e documentação: https://github.com/aniskip/aniskip-api
+
+Trace.moe — identificação de anime por miniatura de episódio.
+https://trace.moe/
+Documentação: https://soruly.github.io/trace.moe/
+
+MyMemory (Translated) — tradução de sinopses.
+https://mymemory.translated.net/
+Limites: https://mymemory.translated.net/doc/usagelimits.php
+Termos: https://mymemory.translated.net/doc/en/tos.php
+
+Google Cast / Google Play services — transmissão para dispositivos compatíveis.
+https://developers.google.com/cast
+Termos: https://developers.google.com/cast/docs/terms
+
+ReiAnix é um aplicativo independente. Nenhum crédito constitui alegação de
+parceria, autorização, licença de redistribuição ou endosso. Imagens e dados
+permanecem sujeitos aos direitos dos respectivos titulares e às condições dos
+serviços. A licença Apache 2.0 do código do ReiAnix não se estende a esses dados.

@@ -77,6 +77,28 @@ class ReiAnixAniListDescriptionLocalizerTest {
         assertNotNull(normalized)
     }
 
+    @Test
+    fun anonymousQuotaPersistsAcrossInstancesAndRespectsRollingWindow() {
+        val directory = File(System.getProperty("java.io.tmpdir"), "reianix-quota-" + System.nanoTime())
+        try {
+            val file = File(directory, "quota.json")
+            var now = 100_000_000L
+            val first = ReiAnixMyMemoryQuota(file) { now }
+            assertTrue(first.reserve(4_900))
+            val reopened = ReiAnixMyMemoryQuota(file) { now }
+            assertTrue(reopened.reserve(100))
+            assertTrue(!reopened.reserve(1))
+            now += ReiAnixMyMemoryQuota.WINDOW_MS
+            assertTrue(reopened.reserve(480))
+            reopened.pause(60)
+            assertTrue(!ReiAnixMyMemoryQuota(file) { now }.reserve(1))
+            now += 60_000L
+            assertTrue(reopened.reserve(1))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     private class FakeTranslationTransport(
         private val response: AniListTranslationHttpResponse,
     ) : AniListTranslationTransport {

@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.ui.settings
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
+import android.content.Intent
+import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
@@ -65,7 +67,13 @@ internal val ReiAnixLicenseCredits = listOf(
     ReiAnixLicenseCredit("webkit", "AndroidX WebKit", "Android Open Source Project", "Apache License 2.0"),
     ReiAnixLicenseCredit("workmanager", "AndroidX WorkManager", "Android Open Source Project", "Apache License 2.0"),
     ReiAnixLicenseCredit("media3", "AndroidX Media3 (ExoPlayer)", "Android Open Source Project", "Apache License 2.0"),
+    ReiAnixLicenseCredit("metrics", "AndroidX Metrics", "Android Open Source Project", "Apache License 2.0"),
+    ReiAnixLicenseCredit("mediarouter", "AndroidX MediaRouter", "Android Open Source Project", "Apache License 2.0"),
+    ReiAnixLicenseCredit("fragment", "AndroidX Fragment", "Android Open Source Project", "Apache License 2.0"),
+    ReiAnixLicenseCredit("appcompat", "AndroidX AppCompat", "Android Open Source Project", "Apache License 2.0"),
     ReiAnixLicenseCredit("coil", "Coil e Coil Compose", "Coil Contributors", "Apache License 2.0"),
+    ReiAnixLicenseCredit("external-services", "APIs e serviços externos", "Fornecedores de dados, traduções e transmissão", "Créditos e termos de uso",
+        licenseAsset = "licenses/external_services.txt"),
     ReiAnixLicenseCredit("google-sans", "Google Sans — fonte das configurações",
         "Copyright 2025 The Google Sans Project Authors", "SIL Open Font License 1.1",
         licenseAsset = "licenses/google_sans_OFL.txt"),
@@ -116,7 +124,7 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                 if (selected == null) {
                     item(key = "licenses:intro") {
                         Text(
-                            "Licenças e créditos das bibliotecas diretamente utilizadas pelo ReiAnix.",
+                            "Licenças, avisos de terceiros e créditos dos serviços utilizados pelo ReiAnix.",
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -150,9 +158,28 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                             )
                         }
                     }
+                    item(key = "licenses:generated") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                                .settingsClickable(role = Role.Button) {
+                                    OssLicensesMenuActivity.setActivityTitle("Licenças de terceiros")
+                                    context.startActivity(Intent(context, OssLicensesMenuActivity::class.java))
+                                }
+                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Licenças de terceiros", style = MaterialTheme.typography.bodyMedium)
+                                Text("Avisos das bibliotecas incluídas na compilação", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
+                        }
+                    }
                     item(key = "licenses:footnote") {
                         Text(
-                            "As dependências transitivas podem exigir avisos adicionais. " +
+                            "A lista gerada complementa os créditos locais; avisos não fornecidos pelos artefatos devem ser verificados separadamente. " +
                                 "Os arquivos de licença originais também permanecem disponíveis no repositório.",
                             modifier = Modifier.padding(20.dp),
                             style = MaterialTheme.typography.bodySmall,

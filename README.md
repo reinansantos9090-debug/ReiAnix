@@ -51,3 +51,7 @@ O catálogo, as preferências, o progresso e o cache local são mantidos no arma
 O ReiAnix é distribuído sob a Apache License 2.0. Consulte [LICENSE](LICENSE) para os termos completos.
 
 Copyright © 2026 Reinan Santos.
+
+## Serviços externos e avisos
+
+Os créditos e as condições aplicáveis aos serviços estão em [Créditos de APIs](android/app/src/main/assets/licenses/external_services.txt). A tela Sobre → Licenças mantém os textos locais e oferece os avisos gerados a partir das dependências do APK. O MyMemory usa uma cota local conservadora de 5.000 bytes em 24 horas por instalação; limites do servidor e IP compartilhado podem reduzir a disponibilidade. Sinopses previamente traduzidas continuam no cache; quando não houver cota, o aplicativo conserva o texto original.

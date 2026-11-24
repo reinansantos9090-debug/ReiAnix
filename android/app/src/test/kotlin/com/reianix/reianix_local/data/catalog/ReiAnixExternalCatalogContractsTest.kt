@@ -12,15 +12,13 @@ class ReiAnixExternalCatalogContractsTest {
     fun sourceRolesKeepAniMapAsIdentifierResolverOnly() {
         assertTrue(ReiAnixCatalogSource.ANILIST.providesMetadata)
         assertTrue(ReiAnixCatalogSource.KITSU.providesArtwork)
-        assertTrue(ReiAnixCatalogSource.TENRAI.providesMetadata)
-        assertFalse(ReiAnixCatalogSource.JIKAN.providesMetadata)
-        assertTrue(ReiAnixCatalogSource.ANIPUB.providesArtwork)
         assertTrue(ReiAnixCatalogSource.ANIMAP.resolvesIdentifiers)
         assertFalse(ReiAnixCatalogSource.ANIMAP.providesMetadata)
         assertFalse(ReiAnixCatalogSource.ANIMAP.providesArtwork)
         assertEquals(ReiAnixCatalogSource.KITSU, ReiAnixCatalogSource.fromKey("Kitsu"))
-        assertEquals(ReiAnixCatalogSource.JIKAN, ReiAnixCatalogSource.fromKey("jikan"))
-        assertEquals(ReiAnixCatalogSource.TENRAI, ReiAnixCatalogSource.fromKey("tenrai"))
+        assertNull(ReiAnixCatalogSource.fromKey("jikan"))
+        assertNull(ReiAnixCatalogSource.fromKey("tenrai"))
+        assertNull(ReiAnixCatalogSource.fromKey("anipub"))
         assertNull(ReiAnixCatalogSource.fromKey("unknown"))
     }
 
@@ -29,31 +27,13 @@ class ReiAnixExternalCatalogContractsTest {
         val first = ReiAnixExternalCatalogIds(myAnimeListId = 42L, kitsuId = "kitsu-uuid")
         val merged = first.mergeVerified(ReiAnixExternalCatalogIds(aniDbId = 72L))
         assertEquals(42L, merged.myAnimeListId)
-        assertEquals("42", merged.idFor(ReiAnixCatalogSource.TENRAI))
-        assertEquals("42", merged.idFor(ReiAnixCatalogSource.JIKAN))
+        assertEquals("kitsu-uuid", merged.idFor(ReiAnixCatalogSource.KITSU))
         assertEquals(72L, merged.aniDbId)
         try {
             first.mergeVerified(ReiAnixExternalCatalogIds(kitsuId = "different-id"))
             throw AssertionError("A conflicting ID must not replace a verified mapping.")
         } catch (expected: IllegalArgumentException) {
             assertTrue(expected.message.orEmpty().contains("Conflicting verified Kitsu"))
-        }
-    }
-
-    @Test
-    fun retiredJikanCannotBeRegisteredAsAnActiveMetadataProvider() {
-        val provider = object : ReiAnixAnimeCatalogProvider {
-            override val source = ReiAnixCatalogSource.JIKAN
-            override suspend fun searchAnime(query: String, limit: Int) =
-                ReiAnixCatalogResult.Success(emptyList<ReiAnixCatalogAnime>())
-            override suspend fun getAnime(externalId: String) =
-                ReiAnixCatalogResult.Success<ReiAnixCatalogAnime?>(null)
-        }
-        try {
-            ReiAnixCatalogProviderRegistry(listOf(provider))
-            throw AssertionError("Retired Jikan must not be registered as an active provider.")
-        } catch (expected: IllegalArgumentException) {
-            assertTrue(expected.message.orEmpty().contains("Only metadata/artwork sources"))
         }
     }
 
@@ -331,10 +311,10 @@ class ReiAnixExternalCatalogContractsTest {
             ids = ReiAnixExternalCatalogIds(kitsuId = "no-artwork"),
             coverUrl = null,
         )
-        val anipubRejected = rejected.copy(
-            source = ReiAnixCatalogSource.ANIPUB,
-            ids = ReiAnixExternalCatalogIds(additionalIds = mapOf("anipub" to "anipub-rejected")),
-            coverUrl = "https://cdn.example/anipub-rejected-poster.jpg",
+        val aniListRejected = rejected.copy(
+            source = ReiAnixCatalogSource.ANILIST,
+            ids = ReiAnixExternalCatalogIds(aniListId = 61L),
+            coverUrl = "https://cdn.example/anilist-rejected-poster.jpg",
         )
 
         assertEquals(
@@ -351,10 +331,10 @@ class ReiAnixExternalCatalogContractsTest {
         )
 
         val usable = usableCatalogArtworkCandidates(
-            listOf(rejected, noArtwork, probableFirst, probableSecond, anipubRejected),
+            listOf(rejected, noArtwork, probableFirst, probableSecond, aniListRejected),
         )
         assertEquals(
-            listOf("rejected", "probable-first", "probable-second", "anipub-rejected"),
+            listOf("rejected", "probable-first", "probable-second", "61"),
             usable.map { it.ids.idFor(it.source) },
         )
         assertEquals(4, usable.size)
@@ -377,8 +357,8 @@ class ReiAnixExternalCatalogContractsTest {
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
         )
         val remote = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.TENRAI,
-            ids = ReiAnixExternalCatalogIds(myAnimeListId = 16498L),
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(myAnimeListId = 16498L, kitsuId = "16498"),
             title = "進撃の巨人",
             alternativeTitles = setOf("Attack on Titan", "Ataque dos Titãs", "AOT"),
             releaseYear = 2013,
@@ -463,10 +443,10 @@ class ReiAnixExternalCatalogContractsTest {
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
         )
         val remote = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.ANIPUB,
+            source = ReiAnixCatalogSource.KITSU,
             ids = ReiAnixExternalCatalogIds(
                 myAnimeListId = 800L,
-                additionalIds = mapOf("anipub" to "61"),
+                kitsuId = "61",
             ),
             title = "Sample Anime",
             releaseYear = 2020,
@@ -482,7 +462,7 @@ class ReiAnixExternalCatalogContractsTest {
         )
         assertEquals(700L, verified?.externalIds?.aniListId)
         assertEquals(800L, verified?.externalIds?.myAnimeListId)
-        assertEquals("61", verified?.externalIds?.idFor(ReiAnixCatalogSource.ANIPUB))
+        assertEquals("61", verified?.externalIds?.idFor(ReiAnixCatalogSource.KITSU))
         assertNull(ReiAnixCatalogIdentityMatcher.verify(
             12L,
             local,
@@ -522,8 +502,8 @@ class ReiAnixExternalCatalogContractsTest {
     @Test
     fun missingArtworkTypeDoesNotProduceAFictitiousCandidate() {
         val anime = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.TENRAI,
-            ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L),
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L, kitsuId = "1"),
             title = "Poster Only",
             coverUrl = "https://cdn.example/poster.jpg",
         )
@@ -533,8 +513,8 @@ class ReiAnixExternalCatalogContractsTest {
     @Test
     fun artworkCandidatesRequireAValidHttpUrl() {
         val anime = ReiAnixCatalogAnime(
-            source = ReiAnixCatalogSource.TENRAI,
-            ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L),
+            source = ReiAnixCatalogSource.KITSU,
+            ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L, kitsuId = "1"),
             title = "Anime", releaseYear = 2020, format = "TV",
             mediaKind = ReiAnixCatalogMediaKind.SERIES,
         )

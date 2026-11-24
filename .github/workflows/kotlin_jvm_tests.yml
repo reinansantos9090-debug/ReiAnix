@@ -116,7 +116,6 @@ jobs:
               --tests com.reianix.reianix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
               --tests com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
               --tests com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolverTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
               --tests com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
               --tests com.reianix.reianix_local.data.media.MediaFilenameParserTest \
               --tests com.reianix.reianix_local.data.sqlite.NativeLibraryIndexingPolicyTest \

@@ -14,16 +14,10 @@ import kotlin.math.roundToLong
 internal class AniSkipSegments(context: Context) {
     private val directory = File(context.cacheDir, "player-skip-v1")
 
+    @Suppress("UNUSED_PARAMETER") // Keep the existing player call contract; AniSkip uses episode numbering.
     fun fetch(anilistId: Long, episode: Int, season: Int, durationMs: Long): List<PlayerSkipSegment> {
         if (anilistId <= 0 || episode <= 0 || durationMs <= 0) return emptyList()
-        val primary = fetchAniSkip(anilistId, episode, durationMs)
-        val kinds = primary.mapTo(mutableSetOf()) { it.kind }
-        if (season <= 0 || ("op" in kinds && "ed" in kinds)) return primary
-
-        // IntroDB only fills missing types. The mapping supplies the service's
-        // season/episode numbers, which can differ from AniList numbering.
-        return primary + fetchIntroDb(anilistId, episode, season, durationMs)
-            .filter { it.kind !in kinds }
+        return fetchAniSkip(anilistId, episode, durationMs)
     }
 
     private fun fetchAniSkip(anilistId: Long, episode: Int, durationMs: Long): List<PlayerSkipSegment> {
@@ -61,57 +55,6 @@ internal class AniSkipSegments(context: Context) {
             }
         }.distinct()
     }
-
-    private fun fetchIntroDb(
-        anilistId: Long,
-        episode: Int,
-        season: Int,
-        durationMs: Long,
-    ): List<PlayerSkipSegment> {
-        val file = File(directory, "introdb-$anilistId-$season-$episode-$durationMs.json")
-        readCached(file)?.let { return parseIntroDb(it, durationMs) }
-
-        return runCatching {
-            val response = request(
-                "https://api.ani.zip/mappings?anilist_id=$anilistId",
-                maxChars = 2 * 1024 * 1024,
-            )
-            val mappings = response.optJSONObject("mappings") ?: return emptyList()
-            val imdbId = mappings.optString("imdb_id")
-            if (mappings.optLong("anilist_id") != anilistId || !IMDB_ID.matches(imdbId)) return emptyList()
-
-            val mapped = response.optJSONObject("episodes")?.optJSONObject(episode.toString())
-                ?: return emptyList()
-            val mappedSeason = mapped.optInt("seasonNumber")
-            val mappedEpisode = mapped.optInt("episodeNumber")
-            val runtimeMinutes = mapped.optInt("runtime")
-            if (mappedSeason <= 0 || mappedEpisode <= 0 || runtimeMinutes <= 0 ||
-                (season != 1 && season != mappedSeason) ||
-                abs(runtimeMinutes * 60_000L - durationMs) > 60_000L
-            ) return emptyList()
-
-            val json = request(
-                "https://api.introdb.app/segments?imdb_id=$imdbId&season=$mappedSeason&episode=$mappedEpisode",
-            )
-            if (json.optString("imdb_id") != imdbId || json.optInt("season") != mappedSeason ||
-                json.optInt("episode") != mappedEpisode || json.optBoolean("is_movie")
-            ) return emptyList()
-
-            parseIntroDb(json, durationMs).also { writeCached(file, json) }
-        }.getOrDefault(emptyList())
-    }
-
-    internal fun parseIntroDb(json: JSONObject, durationMs: Long): List<PlayerSkipSegment> =
-        INTRO_DB_SEGMENTS.mapNotNull { (field, kind) ->
-            val segment = json.optJSONObject(field) ?: return@mapNotNull null
-            val start = segment.optLong("start_ms", -1L)
-            val end = segment.optLong("end_ms", -1L)
-            if (PlayerEnhancementPolicy.validSegment(kind, start, end, durationMs)) {
-                PlayerSkipSegment(kind, start, end)
-            } else {
-                null
-            }
-        }
 
     private fun readCached(file: File): JSONObject? = synchronized(CACHE_LOCK) {
         runCatching {
@@ -172,7 +115,5 @@ internal class AniSkipSegments(context: Context) {
     private companion object {
         const val CACHE_LIFETIME_MS = 604_800_000L
         val CACHE_LOCK = Any()
-        val IMDB_ID = Regex("tt[0-9]{7,10}")
-        val INTRO_DB_SEGMENTS = listOf("intro" to "op", "outro" to "ed", "recap" to "recap")
     }
 }
