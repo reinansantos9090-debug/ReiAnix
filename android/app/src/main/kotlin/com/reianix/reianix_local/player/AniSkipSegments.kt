@@ -12,10 +12,9 @@ import kotlin.math.roundToLong
 
 /** Read-only, IO-only requests using the established AniList association, not filename search. */
 internal class AniSkipSegments(context: Context) {
-    private val directory = File(context.cacheDir, "player-skip-v1")
+    private val directory = File(context.cacheDir, "player-skip-v2")
 
-    @Suppress("UNUSED_PARAMETER") // Keep the existing player call contract; AniSkip uses episode numbering.
-    fun fetch(anilistId: Long, episode: Int, season: Int, durationMs: Long): List<PlayerSkipSegment> {
+    fun fetch(anilistId: Long, episode: Int, durationMs: Long): List<PlayerSkipSegment> {
         if (anilistId <= 0 || episode <= 0 || durationMs <= 0) return emptyList()
         return fetchAniSkip(anilistId, episode, durationMs)
     }
@@ -24,12 +23,14 @@ internal class AniSkipSegments(context: Context) {
         val file = File(directory, "$anilistId-$episode-$durationMs.json")
         readCached(file)?.let { return parse(it, durationMs) }
         return try {
-            val body = JSONObject().put("query", "query { Media(id: $anilistId, type: ANIME) { idMal } }")
-            val mal = request("https://graphql.anilist.co", body.toString())
-                .optJSONObject("data")?.optJSONObject("Media")?.optLong("idMal") ?: 0L
-            if (mal <= 0L) return emptyList()
+            val body = JSONObject().put("query", "query { Media(id: $anilistId, type: ANIME) { idMal episodes } }")
+            val media = request("https://graphql.anilist.co", body.toString())
+                .optJSONObject("data")?.optJSONObject("Media") ?: return emptyList()
+            val mal = media.optLong("idMal")
+            val total = media.optInt("episodes", 0)
+            if (mal <= 0L || (total > 0 && episode > total)) return emptyList()
             val seconds = String.format(Locale.US, "%.3f", durationMs / 1000.0)
-            val json = request("https://api.aniskip.com/v2/skip-times/$mal/$episode?types=op&types=ed&types=recap&episodeLength=$seconds")
+            val json = request("https://api.aniskip.com/v2/skip-times/$mal/$episode?types=op&types=ed&episodeLength=$seconds")
             val segments = parse(json, durationMs)
             if (segments.isNotEmpty()) writeCached(file, json)
             segments
@@ -39,7 +40,7 @@ internal class AniSkipSegments(context: Context) {
     fun parse(json: JSONObject, duration: Long): List<PlayerSkipSegment> {
         if (!json.optBoolean("found")) return emptyList()
         val results = json.optJSONArray("results") ?: return emptyList()
-        return buildList {
+        val candidates = buildList {
             for (i in 0 until results.length()) {
                 val item = results.optJSONObject(i) ?: continue
                 val interval = item.optJSONObject("interval") ?: continue
@@ -53,7 +54,8 @@ internal class AniSkipSegments(context: Context) {
                 val b = (end * 1000).roundToLong()
                 if (PlayerEnhancementPolicy.validSegment(kind, a, b, duration)) add(PlayerSkipSegment(kind, a, b))
             }
-        }.distinct()
+        }
+        return PlayerEnhancementPolicy.trustedRemoteSegments(candidates, duration)
     }
 
     private fun readCached(file: File): JSONObject? = synchronized(CACHE_LOCK) {

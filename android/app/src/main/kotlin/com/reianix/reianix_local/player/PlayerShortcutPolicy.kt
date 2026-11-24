@@ -33,6 +33,13 @@ object PlayerShortcutPolicy {
     // of the geometric screen center.
     const val FIVE_SHORTCUT_INSET_UNIT_FRACTION = 1f / 64f
 
+    /** Center of the final Options slot relative to the padded bottom row. */
+    fun optionsCenterFraction(shortcuts: List<PlayerShortcut>): Float {
+        val count = pinnedOptionsLast(shortcuts).size.coerceAtLeast(1)
+        val inset = if (shortcuts.size == MAX_COUNT) FIVE_SHORTCUT_INSET_UNIT_FRACTION else 0f
+        return inset + (1f - 4f * inset) * (1f - 0.5f / count)
+    }
+
     private val historicalFiveDefault = listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,
         PlayerShortcut.SPEED, PlayerShortcut.NEXT, PlayerShortcut.OPTIONS)
 

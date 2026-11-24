@@ -5923,9 +5923,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val overlay = if (landscape) ReiAnixTokens.PlayerDimensions.bottomOverlayLandscapeHeight
             else ReiAnixTokens.PlayerDimensions.bottomOverlayPortraitHeight
         val bottom = (if (controlsVisible) dp(overlay) else gestureSafeBottom + dp(16)) + dp(8)
-        val right = gestureSafeRight + dp(12)
+        // Match the final Compose shortcut slot, including custom shortcut counts,
+        // five-slot insets and the gesture-safe horizontal padding of controls.
+        val safeLeft = max(dp(4), gestureSafeLeft)
+        val safeRight = max(dp(4), gestureSafeRight)
+        val rootWidth = root.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val horizontalPadding = dp(ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding)
+        val rowWidth = (rootWidth - safeLeft - safeRight - 2 * horizontalPadding).coerceAtLeast(1)
+        val optionsCenter = safeLeft + horizontalPadding +
+            (rowWidth * PlayerShortcutPolicy.optionsCenterFraction(playerShortcuts)).roundToInt()
+        val maxWidth = (rootWidth - safeLeft - safeRight).coerceAtLeast(1)
+        val buttonWidth = (kotlin.math.ceil(button.paint.measureText(active.label).toDouble()).toInt() +
+            button.paddingLeft + button.paddingRight).coerceIn(1, maxWidth)
+        val left = (optionsCenter - buttonWidth / 2).coerceIn(safeLeft, max(safeLeft, rootWidth - safeRight - buttonWidth))
+        val right = (rootWidth - left - buttonWidth).coerceAtLeast(0)
         val params = button.layoutParams as FrameLayout.LayoutParams
-        if (params.bottomMargin != bottom || params.rightMargin != right) {
+        if (params.bottomMargin != bottom || params.rightMargin != right || params.width != buttonWidth) {
+            params.gravity = Gravity.BOTTOM or Gravity.RIGHT
+            params.width = buttonWidth
             params.bottomMargin = bottom
             params.rightMargin = right
             button.layoutParams = params
@@ -5953,6 +5968,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         skipLookupGeneration = generation
         skipLookupDuration = durationMs
         skipLookupJob?.cancel()
+        remoteSkipSegments = emptyList()
+        val lookupSettingGeneration = smartSkipGeneration
         skipLookupJob = lifecycleScope.launch {
             val segments = withContext(Dispatchers.IO) {
                 try {
@@ -5961,15 +5978,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val anime = repository.getAnime(episode.animeId) ?: return@withContext emptyList<PlayerSkipSegment>()
                     val anilistId = anime.anilistId ?: return@withContext emptyList<PlayerSkipSegment>()
                     if (anime.anilistMatchManual != true && anime.anilistMatchStatus != "matched") return@withContext emptyList<PlayerSkipSegment>()
-                    val number = PlayerEnhancementPolicy.episodeNumber(episode.number)
-                        ?: return@withContext emptyList<PlayerSkipSegment>()
-                    AniSkipSegments(applicationContext).fetch(anilistId, number, episode.season, durationMs)
+                    val number = PlayerEnhancementPolicy.aniSkipEpisodeNumber(
+                        episode.season, episode.number, episode.absoluteNumber, episode.episodeType,
+                    ) ?: return@withContext emptyList<PlayerSkipSegment>()
+                    AniSkipSegments(applicationContext).fetch(anilistId, number, durationMs)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) { emptyList<PlayerSkipSegment>() }
             }
             if (generation == playerGeneration && source == uri && ::player.isInitialized &&
-                player.duration == durationMs && sessionState == SessionState.ACTIVE) {
+                player.duration == durationMs && sessionState == SessionState.ACTIVE &&
+                smartSkipEnabled && lookupSettingGeneration == smartSkipGeneration &&
+                favoriteClipSession == null) {
                 remoteSkipSegments = segments
                 syncComposePlayerUiState()
             }
