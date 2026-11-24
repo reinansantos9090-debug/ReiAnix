@@ -94,3 +94,16 @@ O salvamento bem-sucedido de cenas favoritas também não exibe toast de confirm
 - Preservar a distância simétrica entre Play e cada controle de 10 segundos, dimensões, áreas de toque e posições verticais.
 - Com 4 atalhos, manter as posições anteriores. O deslocamento acompanha a largura disponível sem valores fixos em pixels.
 - Conferir visualmente na paisagem e retrato, inclusive com mudança de orientação, buscando alinhamento dos centros e nenhuma piscada ou alteração dos gestos.
+
+## Centralizar Play/Pause na bolinha azul nativa — retrato (24/11/2026)
+
+- O vídeo do usuário mostra o Play ligeiramente deslocado em relação ao indicador azul de carregamento. Esse indicador nativo é centralizado no PlayerView (Gravity.CENTER), enquanto o trio Compose usava -1/64 da largura também no retrato.
+- Com **5 atalhos em retrato**, usar deslocamento horizontal **0** para o grupo de três botões, coincidindo o centro do Play/Pause com o centro geométrico do indicador azul; os dois botões de ±10 segundos acompanham o grupo sem alterar espaçamento, altura, tamanho ou gestos.
+- **Paisagem**: preservar exatamente o deslocamento anterior de -1/64. Com **4 atalhos**: preservar o centramento original.
+- A PR #441 foi fechada sem merge, então o ajuste anterior de +4 dp não integra a main nem deve ser carregado para esta PR.
+
+## Correção de CI para Robolectric na PR #443 (24/11/2026)
+
+- A build original desta PR falhou **antes de executar testes**, por HTTP 429 do Maven Central durante resolução de org.robolectric:nativeruntime-dist-compat:1.0.16.
+- A configuração anterior do espelho Google Cloud abrangia apenas android-all-instrumented. O espelho agora abrange todo o grupo org.robolectric, preservando Google e Maven Central como repositórios existentes para os demais artefatos.
+- HEAD do artefato nativeruntime-dist-compat:1.0.16 no espelho respondeu HTTP 200. Nenhum teste foi removido, alterado ou ignorado, sem alterar o código de execução do player.

@@ -30,9 +30,14 @@ object PlayerShortcutPolicy {
     // of the geometric screen center.
     const val FIVE_SHORTCUT_INSET_UNIT_FRACTION = 1f / 64f
 
-    /** Translate the entire Play/Pause + backward/forward group together. */
-    fun centerActionGroupShiftFraction(shortcuts: List<PlayerShortcut>): Float =
-        if (shortcuts.size == MAX_COUNT) -FIVE_SHORTCUT_INSET_UNIT_FRACTION else 0f
+    /**
+     * The native preparation spinner is centered in the full PlayerView.
+     * Center Play/Pause on that same anchor in portrait; keep the already
+     * approved five-shortcut offset in landscape. Seek controls share the
+     * parent offset so their spacing remains unchanged.
+     */
+    fun centerActionGroupShiftFraction(shortcuts: List<PlayerShortcut>, landscape: Boolean): Float =
+        if (landscape && shortcuts.size == MAX_COUNT) -FIVE_SHORTCUT_INSET_UNIT_FRACTION else 0f
 
     fun normalize(raw: String): String {
         val keys = raw.split(',').map { it.trim() }
