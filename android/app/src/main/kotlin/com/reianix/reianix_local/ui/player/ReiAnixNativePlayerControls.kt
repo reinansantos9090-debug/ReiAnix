@@ -231,21 +231,21 @@ fun ReiAnixNativePlayerTopControls(
         ) {
             Text(
                 text = state.episodeLabel.ifBlank { "Episódio" },
-                style = ReiAnixTokens.TypographyTokens.playerTopLabel,
+                style = ReiAnixTokens.TypographyTokens.playerTopLabel.copy(fontSize = 15.sp, lineHeight = 18.sp),
                 color = ReiAnixTokens.Colors.playerControl,
                 maxLines = 1,
             )
             if (state.technicalLine.isNotBlank()) {
                 Text(
                     text = state.technicalLine,
-                    style = ReiAnixTokens.TypographyTokens.playerTechnical,
+                    style = ReiAnixTokens.TypographyTokens.playerTechnical.copy(fontSize = 13.sp, lineHeight = 16.sp),
                     color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.78f),
                     maxLines = 1,
                 )
             }
             Text(
                 text = state.title.ifBlank { "Episódio" },
-                style = ReiAnixTokens.TypographyTokens.metadata,
+                style = ReiAnixTokens.TypographyTokens.metadata.copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.98f),
                 maxLines = 2,
             )
