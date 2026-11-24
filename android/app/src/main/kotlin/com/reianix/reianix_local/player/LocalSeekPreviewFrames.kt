@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import android.util.LruCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

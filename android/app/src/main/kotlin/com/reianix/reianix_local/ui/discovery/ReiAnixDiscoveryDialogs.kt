@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.discovery
 
+import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.contentColorFor
 import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
@@ -144,7 +146,7 @@ internal fun ReiAnixTimelineList(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         ReiAnixPoster(
-                            localPath = artwork?.localPath ?: anime.coverCache,
+                            localPath = (artwork?.localPath ?: anime.coverCache).takeUnless { ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson) },
                             contentDescription = "Capa de ${anime.title.ifBlank { "Anime local" }}",
                             identity = "anime:${anime.id}",
                             modifier = Modifier.size(width = 44.dp, height = 62.dp),

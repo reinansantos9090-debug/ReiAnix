@@ -1,7 +1,7 @@
 package com.reianix.reianix_local.bridge
 import android.content.Context
 import android.os.SystemClock
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import com.reianix.reianix_local.data.contract.booleanOrDefault
 import com.reianix.reianix_local.data.contract.longOrDefault
 import com.reianix.reianix_local.data.contract.objectOrNull

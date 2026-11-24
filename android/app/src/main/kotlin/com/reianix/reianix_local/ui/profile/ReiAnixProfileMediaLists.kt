@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -205,11 +207,12 @@ internal fun ProfileFavorites(
                         (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
                     }.getOrDefault(emptyList())
                 }
+                val adultArtwork = ReiAnixAdultArtworkPolicy.blocked(genres) || ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson)
                 Card(Modifier.fillMaxWidth().clickable { onOpen(anime.id) }, colors = profileMediaCardColors()) {
                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ReiAnixPoster(model?.artwork?.localPath ?: anime.coverCache, "Capa de " + anime.title,
+                        ReiAnixPoster((model?.artwork?.localPath ?: anime.coverCache).takeUnless { adultArtwork }, "Capa de " + anime.title,
                             Modifier.size(64.dp, 96.dp), identity = "anime:" + anime.id,
-                            fallbackLocalPath = anime.coverCache)
+                            fallbackLocalPath = anime.coverCache.takeUnless { adultArtwork })
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(model?.title ?: anime.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             if (genres.isNotEmpty()) Text(genres.take(3).joinToString(" · "), style = MaterialTheme.typography.bodySmall,

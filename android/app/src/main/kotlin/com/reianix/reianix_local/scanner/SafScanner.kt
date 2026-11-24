@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray

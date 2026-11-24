@@ -13,7 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.storage.StorageManager
 import android.provider.MediaStore
-import android.util.Log
+import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject

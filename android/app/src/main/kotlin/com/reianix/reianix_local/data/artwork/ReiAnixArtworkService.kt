@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.data.artwork
 
+import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+
 import android.content.ContentValues
 import android.content.ContentUris
 import android.content.Context
@@ -473,6 +475,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             val task = scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val anime = loadAnime(animeId) ?: return@launch
+                    if (isExplicitAdultArtwork(animeId)) return@launch
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
                     if (candidateCandidates == null) {
                         val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
@@ -1795,6 +1798,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             requestId = requestId,
         )
 
+    }
+
+    private fun isExplicitAdultArtwork(id: Long): Boolean = database.read { db ->
+        db.rawQuery("SELECT genres FROM anime WHERE id=?", arrayOf(id.toString())).use { c ->
+            if (c.moveToFirst() && ReiAnixAdultArtworkPolicy.blockedJson(c.getString(0))) return@read true
+        }
+        db.rawQuery("SELECT g.canonical_name FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id WHERE ag.anime_id=?", arrayOf(id.toString())).use { c ->
+            while (c.moveToNext()) if (ReiAnixAdultArtworkPolicy.blocked(listOf(c.getString(0)))) return@read true
+        }
+        false
     }
 
     private fun loadAnime(id: Long): Anime? = database.read { db ->

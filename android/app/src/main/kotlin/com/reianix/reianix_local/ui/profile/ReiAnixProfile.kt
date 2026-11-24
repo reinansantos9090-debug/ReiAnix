@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
@@ -515,7 +517,7 @@ private fun AnimeProfileRow(anime: ReiAnixAnimeRecord, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(48.dp, 70.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF171717)), contentAlignment = Alignment.Center) {
             Icon(Icons.Outlined.Movie, null)
-            anime.coverCache?.takeIf { it.isNotBlank() }?.let {
+            anime.coverCache?.takeIf { it.isNotBlank() && !ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson) }?.let {
                 AsyncImage(model = File(it), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             }
         }
