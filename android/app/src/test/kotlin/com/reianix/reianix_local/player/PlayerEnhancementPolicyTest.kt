@@ -88,6 +88,64 @@ class PlayerEnhancementPolicyTest {
         assertEquals(0.5f, PlayerShortcutPolicy.optionsCenterFraction(listOf(PlayerShortcut.OPTIONS)), 0.0001f)
     }
 
+    @Test fun complementaryProvidersRequireMatchingIdentityAndExactDuration() {
+        val key = SkipImdbEpisode("tt1234567", 1, 3)
+        val intro = JSONObject("""{"imdb_id":"tt1234567","media_type":"tv","is_movie":false,"season":1,"episode":3,
+            "intro":{"start_ms":20000,"end_ms":110000,"confidence":0.9,"submission_count":3},"no_outro":true}""")
+        val skip = JSONObject("""{"imdb_id":"tt1234567","season":1,"episode":3,"segments":{
+            "intro":{"start_ms":21000,"end_ms":109000,"match":"exact","adjusted":false,"offset_ms":0,"confidence":0.95},
+            "outro":{"start_ms":1100000,"end_ms":1190000,"match":"shifted","adjusted":true,"offset_ms":10000,"confidence":0.99}}}""")
+        val a = ComplementarySkipSources.parseIntro(intro, key, 1200000L)
+        val b = ComplementarySkipSources.parseSkip(skip, key, 1200000L)
+        assertEquals(setOf("ed"), a.absentKinds)
+        assertEquals(1, b.evidence.size)
+        assertTrue(SkipConsensus.choose(listOf(a), 1200000L).isEmpty())
+        assertEquals(listOf(PlayerSkipSegment("op",21000,109000)), SkipConsensus.choose(listOf(a,b),1200000L))
+        assertTrue(ComplementarySkipSources.parseIntro(intro,key.copy(episode=4),1200000L).evidence.isEmpty())
+    }
+
+    @Test fun crosswalkRejectsFranchiseAmbiguityAndAcceptsGroupedScalarIds() {
+        val forward = JSONObject("""{"anilist_id":290,"mal_id":[290],"imdb_id":["tt0286390"],"tmdb_id":[{"id":26209,"type":"tv"}]}""")
+        val reverse = JSONObject("""{"anilist_id":[290],"mal_id":[290],"imdb_id":"tt0286390","tmdb_id":[{"id":26209,"type":"tv"}]}""")
+        assertEquals("tt0286390", ComplementarySkipSources.exactImdb(forward,290))
+        assertEquals("tt0286390", ComplementarySkipSources.exactImdb(reverse,290))
+        reverse.put("anilist_id",org.json.JSONArray("[290,291]"))
+        assertNull(ComplementarySkipSources.exactImdb(reverse,290))
+    }
+
+    @Test fun audioOrProviderConflictNeverExtendsSkip() {
+        val opening = PlayerSkipSegment("op",20000,110000)
+        val ani = SkipProviderResult(listOf(SkipEvidence(SkipProvider.ANISKIP, opening,true)))
+        val conflict = SkipProviderResult(listOf(SkipEvidence(SkipProvider.SKIPDB, opening.copy(startMs=60000),true)))
+        assertTrue(SkipConsensus.choose(listOf(ani,conflict),1200000).isEmpty())
+        assertEquals(setOf("op","ed"), SkipConsensus.needsLocal(listOf(ani),listOf(opening)))
+        assertTrue(SkipConsensus.addLocal(listOf(opening),listOf(opening.copy(startMs=60000)),listOf(ani),1200000).isEmpty())
+        assertEquals(listOf(opening.copy(startMs=21000,endMs=109000)),
+            SkipConsensus.addLocal(listOf(opening),listOf(opening.copy(startMs=21000,endMs=109000)),listOf(ani),1200000))
+    }
+
+    @Test fun localAudioMatchesRepeatedPatternWithShiftButNotUnrelatedAudio() {
+        val random = kotlin.random.Random(74)
+        fun frame(): FloatArray {
+            val values = FloatArray(8) { random.nextFloat()*2f-1f }
+            val norm = kotlin.math.sqrt(values.sumOf { (it*it).toDouble() }).toFloat()
+            return FloatArray(8) { values[it]/norm }
+        }
+        val pattern = List(120) { frame() }
+        val a = MutableList<FloatArray?>(240) { frame() }
+        val b = MutableList<FloatArray?>(240) { frame() }
+        for (i in pattern.indices) {
+            a[20+i] = pattern[i]
+            b[24+i] = pattern[i]
+        }
+        val match = LocalSkipAudio.match(LocalSkipAudio.Fingerprint(0,a),LocalSkipAudio.Fingerprint(0,b),"op",1200000).single()
+        assertEquals(10000L,match.segment.startMs)
+        assertEquals(70000L,match.segment.endMs)
+        assertEquals(12000L,match.referenceStartMs)
+        assertTrue(LocalSkipAudio.match(LocalSkipAudio.Fingerprint(0,a),
+            LocalSkipAudio.Fingerprint(0,List(240) { frame() }),"op",1200000).isEmpty())
+    }
+
     @Test fun diskCacheIsReusedAndInvalidatedForChangedMedia() {
         val context = RuntimeEnvironment.getApplication()
         File(context.cacheDir, "seek-preview-v2").deleteRecursively()
