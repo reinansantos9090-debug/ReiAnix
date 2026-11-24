@@ -64,7 +64,7 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "player.reset" -> Icons.Filled.RestartAlt
     "metadata.anilist_enabled" -> Icons.Filled.Public
     "metadata.auto_match" -> Icons.Filled.AutoFixHigh
-    "privacy:trace_moe" -> Icons.Filled.Fingerprint
+    "privacy:trace_moe" -> Icons.Filled.ImageSearch
     "Backup protegido" -> Icons.Filled.EnhancedEncryption
     "artwork.enabled" -> Icons.Filled.CloudDownload
     "artwork.cache_limit_mb" -> Icons.Filled.DataUsage
