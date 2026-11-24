@@ -246,7 +246,7 @@ fun ReiAnixSettingsRoute(
             onBack()
             return
         }
-        selectedDestination = if (selectedDestination == "Licenças") "Sobre" else initialDestination
+        selectedDestination = if (selectedDestination in listOf("Licenças", "Política de privacidade", "Termos de uso")) "Sobre" else initialDestination
         selectedItemIndex = 0
     }
     BackHandler(enabled = destination != null) { goBack() }
@@ -266,6 +266,12 @@ fun ReiAnixSettingsRoute(
         }
         destination == "Licenças" -> androidx.compose.runtime.key(destination) {
             ReiAnixOpenSourceLicensesScreen(onBack = ::goBack)
+        }
+        destination == "Política de privacidade" || destination == "Termos de uso" -> androidx.compose.runtime.key(destination) {
+            ReiAnixLegalDocumentScreen(
+                document = if (destination == "Política de privacidade") ReiAnixLegalDocument.PRIVACY else ReiAnixLegalDocument.TERMS,
+                onBack = ::goBack,
+            )
         }
         destination == "Contas e Avançado" -> androidx.compose.runtime.key(destination) {
             ReiAnixSettingsRoot {
@@ -827,6 +833,22 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             title = "Licenças",
                             description = "Bibliotecas de código aberto e créditos usados no ReiAnix",
                             onClick = { onOpenSubmenu("Licenças") },
+                        )
+                    }
+                    item(key = "about:privacy") {
+                        ReiAnixSettingsRow(
+                            icon = settingsIcon("about:privacy"),
+                            title = "Política de privacidade",
+                            description = "Uso, proteção e exclusão de dados",
+                            onClick = { onOpenSubmenu("Política de privacidade") },
+                        )
+                    }
+                    item(key = "about:terms") {
+                        ReiAnixSettingsRow(
+                            icon = settingsIcon("about:terms"),
+                            title = "Termos de uso",
+                            description = "Condições de utilização do ReiAnix",
+                            onClick = { onOpenSubmenu("Termos de uso") },
                         )
                     }
                 }

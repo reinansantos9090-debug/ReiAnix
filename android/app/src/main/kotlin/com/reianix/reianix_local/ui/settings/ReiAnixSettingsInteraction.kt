@@ -69,6 +69,9 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "data-cache:artwork-cache" -> Icons.Filled.DeleteSweep
     "about:app" -> Icons.Filled.Info
     "about:licenses" -> Icons.Filled.Gavel
+    "about:privacy" -> Icons.Filled.PrivacyTip
+    "about:terms" -> Icons.Filled.Description
+    "legal:online" -> Icons.Filled.OpenInNew
     "library.sort_default" -> Icons.Filled.SortByAlpha
     "library.page_size" -> Icons.Filled.FormatListNumbered
     "folders" -> Icons.Filled.FolderOpen

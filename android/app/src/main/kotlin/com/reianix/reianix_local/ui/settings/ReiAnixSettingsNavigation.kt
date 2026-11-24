@@ -51,7 +51,7 @@ internal fun settingsPageForDestination(destination: String?): String? = when (d
     "Aparência", "Biblioteca", "appearance_theme", "appearance_library", "general_behavior", "general_privacy", "library_organization" -> "Geral"
     "library_storage", "library_scan" -> "Pastas"
     "Dados e Backup", "data_cache", "data_settings", "data_backup", "about_diagnostics", "about_reports", "Diagnóstico e Backup" -> "Dados e Backup"
-    "Sobre e Diagnóstico", "about_app", "about:app", "about:licenses" -> "Sobre"
+    "Sobre e Diagnóstico", "about_app", "about:app", "about:licenses", "about:privacy", "about:terms" -> "Sobre"
     "player_advanced", "player_playback", "player_video", "player_controls", "player_audio", "player_display" -> "Player"
     "metadata_identification", "metadata_artwork" -> "Metadados e Capas"
     "Conta", "Contas" -> "Contas e Avançado"
@@ -79,6 +79,8 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("Sobre", "Sobre", "", listOf(
         SettingsEntry("about:app", "Versão e informações do aplicativo", "ReiAnix versão"),
         SettingsEntry("about:licenses", "Licenças", "Bibliotecas código aberto Apache licença créditos terceiros"),
+        SettingsEntry("about:privacy", "Política de privacidade", "LGPD dados pessoais proteção exclusão"),
+        SettingsEntry("about:terms", "Termos de uso", "Condições direitos autorais utilização"),
     )),
     SettingsDestination("Biblioteca", "Biblioteca", "", listOf(
         SettingsEntry("setting:library.sort_default", "Ordenação padrão"),

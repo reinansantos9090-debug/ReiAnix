@@ -1,0 +1,28 @@
+Última atualização: 24 de novembro de 2026
+
+# 1. Aplicativo e aceitação
+O ReiAnix é um aplicativo independente de organização e reprodução de vídeos locais, desenvolvido por Reinan Santos. Ao utilizar suas funções, você concorda com estes termos, observados os direitos obrigatórios previstos na legislação aplicável.
+
+# 2. Uso permitido
+Utilize o aplicativo apenas para acessar, organizar, reproduzir, compartilhar e transmitir arquivos que você tenha direito de utilizar. O ReiAnix não fornece episódios, não vende acesso a serviços de streaming, não concede direitos sobre obras de terceiros e não autoriza violação de direitos autorais, contorno de DRM ou acesso não autorizado. O usuário é responsável pela licitude dos arquivos e pelo uso que fizer deles.
+
+# 3. Metadados e serviços externos
+AniList, Kitsu, AniMap, AniSkip, Trace.moe, MyMemory e Google Cast são serviços independentes. O uso de integrações depende da disponibilidade, regras, limites e permissões dos respectivos serviços. Capas, personagens, marcas, sinopses e demais conteúdos de terceiros continuam sujeitos aos direitos dos titulares. O ReiAnix não declara parceria, endosso ou autorização de redistribuição apenas por apresentar créditos. Não tente burlar limites de requisições, autenticação ou restrições dos serviços.
+
+# 4. Contas e sincronização
+O perfil do ReiAnix é local. A conexão com AniList é opcional, sujeita aos termos do AniList. A sincronização pode modificar o progresso e estado de animes em sua conta externa. Verifique a associação e a numeração antes de sincronizar. Você pode desconectar a conta nas configurações.
+
+# 5. Arquivos, backup e transmissão
+Conceda acesso somente a pastas e arquivos que deseja utilizar. Faça backups de seus dados importantes antes de limpar dados, desinstalar, atualizar ou restaurar um backup. A restauração pode substituir dados locais. A transmissão e a abertura em aplicativos externos dependem dos dispositivos, redes e softwares escolhidos; compartilhe apenas arquivos autorizados e com destinatários confiáveis.
+
+# 6. Propriedade intelectual e licença
+O código-fonte do ReiAnix é disponibilizado sob a Apache License 2.0, conforme o arquivo LICENSE do repositório. Estes termos não reduzem os direitos concedidos por essa licença sobre o código. Componentes de terceiros possuem suas próprias licenças, exibidas na seção Licenças quando disponíveis. A licença do código não concede direitos sobre marcas, imagens de animes, vídeos ou dados de terceiros. https://github.com/reinansantos9090-debug/ReiAnix/blob/main/LICENSE
+
+# 7. Disponibilidade e responsabilidade
+O ReiAnix depende da compatibilidade dos arquivos, Android, dispositivos e serviços externos. Metadados, traduções e intervalos de reprodução podem conter erros; confirme resultados importantes. O código é fornecido nas condições previstas em sua licença. Nenhuma disposição exclui responsabilidade ou garantia que a legislação brasileira, inclusive o Código de Defesa do Consumidor quando aplicável, torne obrigatória.
+
+# 8. Privacidade e direitos
+O tratamento de dados é descrito na Política de privacidade, disponível em Configurações > Sobre e na página pública do projeto. Estes termos não limitam direitos previstos na LGPD ou em outras normas aplicáveis. Menores devem utilizar o aplicativo sob orientação de seus responsáveis, observando a classificação indicativa dos conteúdos.
+
+# 9. Contato, reclamações e atualização
+Para suporte, reclamações, direitos autorais ou dúvidas, utilize https://github.com/reinansantos9090-debug/ReiAnix/issues/new. Não publique dados privados em chamados públicos; solicite orientação para contato reservado. Estes termos podem ser atualizados conforme mudanças do aplicativo ou da legislação, com indicação da data. Aplica-se a legislação brasileira, preservados os direitos obrigatórios e o foro legalmente competente do consumidor.

@@ -34,6 +34,16 @@ class ReiAnixSettingsNavigationTest {
         assertEquals(true, "data_backup" in settingsPageSections("Dados e Backup"))
     }
 
+    @Test fun legalDocumentsAreSearchableFromAbout() {
+        assertEquals("Sobre", settingsPageForDestination("about:privacy"))
+        assertEquals("Sobre", settingsPageForDestination("about:terms"))
+        assertEquals("Sobre", searchSettings("política de privacidade").single { it.entry.key == "about:privacy" }.destination.id)
+        assertEquals("Sobre", searchSettings("termos de uso").single { it.entry.key == "about:terms" }.destination.id)
+        assertNotEquals(settingsIcon("about:privacy"), settingsIcon("about:terms"))
+        assertEquals("legal/privacy.txt", ReiAnixLegalDocument.PRIVACY.asset)
+        assertEquals("legal/terms.txt", ReiAnixLegalDocument.TERMS.asset)
+    }
+
     @Test fun licensesHaveUniqueEntriesAndIncludeTheProjectAndFont() {
         assertEquals(ReiAnixLicenseCredits.size, ReiAnixLicenseCredits.map { it.id }.distinct().size)
         assertEquals("Apache License 2.0", ReiAnixLicenseCredits.first { it.id == "reianix" }.licenseName)
