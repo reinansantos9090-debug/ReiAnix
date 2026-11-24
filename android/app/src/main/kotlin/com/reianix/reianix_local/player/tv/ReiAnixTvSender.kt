@@ -118,7 +118,11 @@ internal class ReiAnixTvSender(
                     }
                     override fun onSessionEnding(session: CastSession) {}
                     override fun onSessionEnded(session: CastSession, error: Int) {
-                        if (connected?.kind == ReiAnixTvKind.CAST) connected = null
+                        if (connected?.kind == ReiAnixTvKind.CAST) {
+                            connected = null
+                            mediaServer?.close()
+                            mediaServer = null
+                        }
                     }
                     override fun onSessionResuming(session: CastSession, sessionId: String) {}
                     override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
@@ -306,7 +310,10 @@ internal class ReiAnixTvSender(
                     sourceUri, mediaTitle).also { mediaServer = it }
             }
             ui.post {
-                if (closed || connecting != device.id) return@post
+                if (closed || connecting != device.id) {
+                    result.getOrNull()?.close()
+                    return@post
+                }
                 val server = result.getOrElse {
                     connecting = null
                     onConnectionChanged(ReiAnixTvConnection.Failure(
@@ -413,12 +420,13 @@ internal class ReiAnixTvSender(
     }
 
     fun disconnect() {
-        val device = connected ?: return
+        val device = connected
+        val wasConnecting = connecting != null
         connecting = null
         connected = null
-        if (device.kind == ReiAnixTvKind.CAST) {
+        if (device?.kind == ReiAnixTvKind.CAST || (wasConnecting && device == null)) {
             cast?.sessionManager?.endCurrentSession(true)
-        } else if (device.kind == ReiAnixTvKind.RENDERER) {
+        } else if (device?.kind == ReiAnixTvKind.RENDERER) {
             Thread({ runCatching { sendDlna(device, "", "Stop") } },
                 "reianix-tv-stop").apply { isDaemon = true; start() }
         }
@@ -455,6 +463,7 @@ internal class ReiAnixTvSender(
             conn.connectTimeout = 5000
             conn.readTimeout = 6000
             conn.requestMethod = "POST"
+            conn.instanceFollowRedirects = false
             conn.setRequestProperty("Content-Type", "text/xml; charset=\"utf-8\"")
             conn.setRequestProperty("SOAPACTION", "\"" + device.serviceType + "#" + operation + "\"")
             conn.doOutput = true

@@ -470,6 +470,7 @@ class HttpUrlConnectionAniListTranslationTransport(
         try {
             val active = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
+                instanceFollowRedirects = false
                 connectTimeout = connectTimeoutMs
                 readTimeout = readTimeoutMs
                 setRequestProperty("Accept", "application/json")

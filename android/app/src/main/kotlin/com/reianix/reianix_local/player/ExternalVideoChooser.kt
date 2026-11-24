@@ -21,7 +21,10 @@ import java.util.Locale
 internal object ExternalVideoChooser {
     private fun createVideoViewIntent(context: Context, localUri: Uri): Intent {
         val sharedUri = when (localUri.scheme?.lowercase(Locale.ROOT)) {
-            "content" -> localUri
+            "content" -> {
+                require(localUri.authority != "${context.packageName}.videoexports") { "URI interna não pode ser compartilhada novamente." }
+                localUri
+            }
             "file" -> {
                 val path = requireNotNull(localUri.path?.takeIf { it.isNotBlank() }) {
                     "Caminho do arquivo não disponível"
@@ -29,7 +32,7 @@ internal object ExternalVideoChooser {
                 FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.videoexports",
-                    File(path).canonicalFile,
+                    requireShareableVideoFile(context, File(path)),
                 )
             }
             else -> throw IllegalArgumentException("Somente vídeos locais podem ser abertos externamente")

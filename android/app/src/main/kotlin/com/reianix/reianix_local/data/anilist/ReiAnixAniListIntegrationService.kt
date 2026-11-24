@@ -246,6 +246,7 @@ class ReiAnixAniListIntegrationService(
     private val candidateMetadataPublisher: ((Long, AniListAnime) -> Unit)? = null,
     private val explicitArtworkPublisher: ((Long) -> Unit)? = null,
     private val prepareRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
+    private val traceMoeConsent: () -> Boolean = { false },
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -267,6 +268,7 @@ class ReiAnixAniListIntegrationService(
         client = ReiAnixAniListClient(),
         library = ReiAnixSqliteLibraryRepository(context),
         settings = ReiAnixSqliteSettingsRepository(context),
+        traceMoeConsent = { com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent.allowed(context) },
         descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
             File(context.applicationContext.filesDir, "data/covers/anilist_description_ptbr.json"),
         ),
@@ -528,7 +530,7 @@ class ReiAnixAniListIntegrationService(
         userInitiated: Boolean,
         onProgress: (TraceMoeIdentificationProgress) -> Unit,
     ): Boolean {
-        if (animeId <= 0L || !isAniListEnabled() ||
+        if (animeId <= 0L || !isAniListEnabled() || !traceMoeConsent() ||
             !shouldAllowTraceMoeWithAutoMatchSetting(
                 autoMatchEnabled = settingEnabled("metadata.auto_match", defaultValue = true),
                 userInitiated = userInitiated,
@@ -651,7 +653,7 @@ class ReiAnixAniListIntegrationService(
             }
 
             val matches = try {
-                traceMoeClient.search(imageFile = sample.imageFile) { requestStage ->
+                traceMoeClient.search(imageFile = sample.imageFile, reserveRequest = { traceMoeConsent() }) { requestStage ->
                     when (requestStage) {
                         TraceMoeRequestProgressStage.CHECKING_QUOTA -> report(
                             TraceMoeIdentificationProgressPhase.CHECKING_QUOTA,

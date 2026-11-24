@@ -184,7 +184,7 @@ object SafScanner {
 
     fun persistPermission(context:Context,uri:Uri,flags:Int) {
         val identity = treeIdentity(uri)
-        Log.i(TAG,"LIBRARY_SOURCE_LOADED identity=" + identity.identity)
+        Log.i(TAG,"LIBRARY_SOURCE_LOADED")
         val granted=flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         require(granted and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0) { "A pasta não concedeu permissão persistente de leitura." }
         require(flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0) { "O provedor não ofereceu permissão SAF persistente." }
@@ -292,7 +292,7 @@ object SafScanner {
     fun scan(context:Context,treeUri:Uri,onProgress:((JSONObject)->Unit)?=null,shouldCancel:()->Boolean={false},scanId:String?=null,onBatch:((JSONObject)->Unit)?=null):JSONObject {
         val identity=treeIdentity(treeUri)
         if(!hasPersistedReadPermission(context,treeUri)){
-            Log.w(TAG,"LIBRARY_SOURCE_PERMISSION_LOST identity=" + identity.identity)
+            Log.w(TAG,"LIBRARY_SOURCE_PERMISSION_LOST")
             throw IllegalStateException("A permissão desta pasta foi removida.")
         }
         val root=DocumentFile.fromTreeUri(context,treeUri) ?: throw IllegalArgumentException("Árvore SAF indisponível")
@@ -313,7 +313,7 @@ object SafScanner {
             .put("mimeFallbacks",0).put("successfulQueries",0).put("failedQueries",0).put("emptyDirectories",0).put("rejectedOutsideSource",0).put("errors",errors)
         val pending=ArrayDeque<Pair<String,String>>(); val visited=HashSet<String>(); pending.addLast(identity.documentId to "")
         var cancelled=false; var revokedDuringScan=false; var lastFiles=0; var lastDirs=0
-        Log.i(TAG,"SCAN_SOURCE_STARTED identity=" + identity.identity)
+        Log.i(TAG,"SCAN_SOURCE_STARTED")
         onProgress?.invoke(identityPayload(treeUri).put("phase","started").put("source","saf"))
         while(pending.isNotEmpty()){
             if(shouldCancel()){cancelled=true;break}
@@ -387,7 +387,7 @@ object SafScanner {
                         val relative=if(currentPath.isEmpty())childName else currentPath+"/"+childName
                         if (!isDocumentWithinTree(context, treeUri, childId)) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
-                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE documentId="+childId)
+                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE")
                             errors.put("Pasta fora da árvore SAF autorizada: "+relative)
                             continue
                         }
@@ -403,7 +403,7 @@ object SafScanner {
                         }.getOrDefault(false)
                         if (!isChild) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
-                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE parentId="+parentId+" documentId="+childId)
+                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE")
                             errors.put("Pasta não confirmada pelo provedor como filha autorizada: "+relative)
                             continue
                         }
@@ -414,7 +414,7 @@ object SafScanner {
                         val relative=if(currentPath.isEmpty())child.name else currentPath+"/"+child.name
                         if (!isDocumentWithinTree(context, treeUri, child.id)) {
                             stats.put("rejectedOutsideSource",stats.getInt("rejectedOutsideSource")+1)
-                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE documentId="+child.id)
+                            Log.w(TAG,"SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE")
                             errors.put("Arquivo fora da árvore SAF autorizada: "+relative)
                             continue
                         }
@@ -462,7 +462,7 @@ object SafScanner {
         val partial=status in setOf(STATUS_PARTIAL,STATUS_UNAVAILABLE,STATUS_REVOKED,STATUS_CANCELLED)
         stats.put("status",status).put("emptyComplete",status==STATUS_EMPTY_COMPLETE)
         onProgress?.invoke(identityPayload(treeUri).put("phase","finished").put("source","saf").put("status",status).put("directories",stats.getInt("directories")).put("files",fileCount).put("videos",stats.getInt("videos")).put("cancelled",cancelled))
-        Log.i(TAG,"SCAN_SOURCE_COMPLETED identity=" + identity.identity + " status=" + status +
+        Log.i(TAG,"SCAN_SOURCE_COMPLETED status=" + status +
             " files=" + stats.getInt("files") + " accepted=" + stats.getInt("videos") + " ignored=" +
             (stats.getInt("files") - stats.getInt("videos")))
         return identityPayload(treeUri).put("name",root.name?:treeUri.toString()).put("scope",identity.identity)

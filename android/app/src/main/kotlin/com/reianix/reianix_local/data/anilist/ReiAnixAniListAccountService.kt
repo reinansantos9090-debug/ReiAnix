@@ -84,20 +84,23 @@ class ReiAnixAniListAccountService(context: Context, private val library: ReiAni
     suspend fun authorizationUri(): Uri = withContext(Dispatchers.IO) { mutex.withLock {
         check(BuildConfig.ANILIST_CLIENT_ID.isNotBlank()) { "Conexão indisponível nesta versão." }
         val nonce = UUID.randomUUID().toString()
-        prefs.edit().putString("oauth_state", nonce).putLong("oauth_started", System.currentTimeMillis()).commit()
+        check(prefs.edit().putString("oauth_state", nonce).putLong("oauth_started", System.currentTimeMillis()).commit())
         Uri.parse(AniListOAuthRequest.authorizationUrl(BuildConfig.ANILIST_CLIENT_ID, nonce))
     } }
 
     suspend fun acceptCallback(uri: Uri): Boolean = withContext(Dispatchers.IO) { mutex.withLock {
         if (uri.scheme != "reianix-anilist" || uri.host != "oauth" || !uri.path.isNullOrEmpty()) return@withLock false
         val values = Uri.parse("https://callback.invalid/?" + uri.encodedFragment.orEmpty())
-        val receivedState = values.getQueryParameter("state") ?: uri.getQueryParameter("state") ?: ""
+        val fragmentStates = values.getQueryParameters("state")
+        val queryStates = uri.getQueryParameters("state")
+        if (fragmentStates.size + queryStates.size != 1 || values.getQueryParameters("access_token").size != 1 || uri.getQueryParameter("access_token") != null) return@withLock false
+        val receivedState = (fragmentStates + queryStates).single()
         val expected = prefs.getString("oauth_state", "").orEmpty()
         val age = System.currentTimeMillis() - prefs.getLong("oauth_started", 0L)
         if (expected.isEmpty() || age !in 0..900_000L ||
             !MessageDigest.isEqual(expected.toByteArray(), receivedState.toByteArray())) return@withLock false
-        prefs.edit().remove("oauth_state").remove("oauth_started").commit()
-        val token = values.getQueryParameter("access_token")?.takeIf { it.length in 16..8192 }
+        if (!prefs.edit().remove("oauth_state").remove("oauth_started").commit()) return@withLock false
+        val token = values.getQueryParameter("access_token")?.takeIf { it.length in 16..8192 && it.none { c -> c.isWhitespace() || c.isISOControl() } }
             ?: run { refresh("Conexão cancelada ou não autorizada."); return@withLock false }
         val viewer = request("query { Viewer { id name avatar { large } } }", JSONObject(), token).getJSONObject("Viewer")
         val id = viewer.getLong("id")

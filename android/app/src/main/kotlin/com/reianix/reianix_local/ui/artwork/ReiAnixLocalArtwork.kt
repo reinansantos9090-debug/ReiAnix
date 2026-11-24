@@ -448,7 +448,7 @@ internal fun artworkCandidates(
     val local = localArtworkCandidates(localPath, fallbackLocalPath)
     val remote = listOf(externalUrl, fallbackExternalUrl)
         .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-        .filter { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+        .filter { it.startsWith("https://", ignoreCase = true) }
     return (local + remote).distinct()
 }
 

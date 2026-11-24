@@ -359,6 +359,7 @@ class ReiAnixTraceMoeClient(
             val connection = URL(ACCOUNT_ENDPOINT).openConnection() as? HttpURLConnection ?: return@withContext null
             try {
                 connection.requestMethod = "GET"
+                connection.instanceFollowRedirects = false
                 connection.connectTimeout = minOf(connectTimeoutMillis, ACCOUNT_TIMEOUT_MILLIS)
                 connection.readTimeout = minOf(readTimeoutMillis, ACCOUNT_TIMEOUT_MILLIS)
                 connection.setRequestProperty("Accept", "application/json")

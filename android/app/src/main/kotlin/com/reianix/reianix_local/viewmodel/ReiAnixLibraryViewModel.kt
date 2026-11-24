@@ -1544,7 +1544,15 @@ class ReiAnixLibraryViewModel(
      * are appended to this anime's session before its input is closed.
      */
     fun identifyAnimeWithTraceMoe(animeId: Long) {
-        if (animeId <= 0L || !traceMoeRequestsInFlight.add(animeId)) return
+        if (animeId <= 0L) return
+        if (!com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent.allowed(appContext)) {
+            publishTraceMoeIdentificationState(animeId, ReiAnixTraceMoeIdentificationUiState(
+                status = ReiAnixTraceMoeIdentificationStatus.FAILED,
+                message = "Autorize o envio de miniaturas em Configurações > Metadados e Capas > Identificação por imagem.",
+            ))
+            return
+        }
+        if (!traceMoeRequestsInFlight.add(animeId)) return
         val integration = appDependencies?.aniListIntegrationService
         if (integration == null) {
             traceMoeRequestsInFlight.remove(animeId)

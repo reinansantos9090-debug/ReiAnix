@@ -48,6 +48,8 @@ class ReiAnixTvMediaServer(
     }
     private val mime = mimeType(context, mediaUri)
     private val server = ServerSocket(0, 12, host)
+    private val activeClients = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
+    private val slots = java.util.concurrent.Semaphore(8)
     private val path = "/media/" + token
     private val baseUrl = "http://" + host.hostAddress + ":" + server.localPort
     val mediaUrl: String get() = baseUrl + path
@@ -62,12 +64,14 @@ class ReiAnixTvMediaServer(
             while (!closed) {
                 try {
                     val socket = server.accept()
+                    if (closed || !slots.tryAcquire()) { socket.close(); continue }
+                    activeClients.add(socket)
                     thread(name = "reianix-tv-client", isDaemon = true) {
-                        socket.use { client ->
-                            if (client.inetAddress.isSiteLocalAddress || client.inetAddress.isLoopbackAddress) {
-                                runCatching { serve(client) }
+                        try {
+                            socket.use { client ->
+                                if (!closed && client.inetAddress.isSiteLocalAddress) runCatching { serve(client) }
                             }
-                        }
+                        } finally { activeClients.remove(socket); slots.release() }
                     }
                 } catch (_: java.net.SocketTimeoutException) {
                     // Check whether this session has ended.
@@ -78,7 +82,7 @@ class ReiAnixTvMediaServer(
                 }
             }
         }
-        startSsdp()
+        // Native Cast/DLNA push only: never advertise a browsable media server.
     }
 
     private fun serve(client: Socket) {
@@ -88,12 +92,14 @@ class ReiAnixTvMediaServer(
         val parts = request.split(' ')
         if (parts.size < 2) return
         val verb = parts[0]
-        if (verb !in setOf("GET", "HEAD", "POST")) return
+        if (verb !in setOf("GET", "HEAD")) return
         val target = parts[1].substringBefore('?')
         var range: String? = null
         var length = 0
         var soapAction = ""
+        var headerCount = 0
         while (true) {
+            if (++headerCount > 64) return
             val line = readAsciiLine(input) ?: return
             if (line.isEmpty()) break
             val sep = line.indexOf(':')
@@ -110,26 +116,6 @@ class ReiAnixTvMediaServer(
         when {
             target == path && (verb == "GET" || verb == "HEAD") ->
                 writeVideo(output, verb == "HEAD", range)
-            target == "/device.xml" && (verb == "GET" || verb == "HEAD") ->
-                writeText(output, deviceDescription(), "text/xml; charset=utf-8", verb == "HEAD")
-            target in setOf("/upnp/content-desc.xml", "/upnp/connection-desc.xml") &&
-                (verb == "GET" || verb == "HEAD") ->
-                writeText(output, serviceDescription(target), "text/xml; charset=utf-8", verb == "HEAD")
-            target in setOf("/upnp/content", "/upnp/connection") && verb == "POST" -> {
-                val bodyBytes = ByteArray(length)
-                var position = 0
-                while (position < bodyBytes.size) {
-                    val n = input.read(bodyBytes, position, bodyBytes.size - position)
-                    if (n < 0) return
-                    position += n
-                }
-                writeText(
-                    output,
-                    soapResponse(target, soapAction, String(bodyBytes, StandardCharsets.UTF_8)),
-                    "text/xml; charset=utf-8",
-                    false
-                )
-            }
             else -> writeStatus(output, 404, "Not Found")
         }
         output.flush()
@@ -392,6 +378,8 @@ class ReiAnixTvMediaServer(
         if (closed) return
         closed = true
         runCatching { server.close() }
+        activeClients.forEach { runCatching { it.close() } }
+        activeClients.clear()
         runCatching { ssdpSocket?.close() }
         runCatching { multicastLock?.release() }
         multicastLock = null

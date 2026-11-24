@@ -48,7 +48,7 @@ class ReiAnixAniListClient(
         val gql = """
             query SearchAnime(${'$'}search: String, ${'$'}page: Int, ${'$'}perPage: Int) {
               Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                media(search: ${'$'}search, type: ANIME, sort: SEARCH_MATCH) {
+                media(search: ${'$'}search, type: ANIME, isAdult: false, sort: SEARCH_MATCH) {
                   $MEDIA_FIELDS
                 }
               }
@@ -70,6 +70,7 @@ class ReiAnixAniListClient(
                     ?: return@execute AniListResult.Failure(
                         AniListError.InvalidResponse("Invalid anime item in AniList search response"),
                     )
+                if (item.optBoolean("isAdult", false)) continue
                 val anime = parseAnime(item)
                     ?: return@execute AniListResult.Failure(
                         AniListError.InvalidResponse("Anime item is missing a valid AniList ID"),
@@ -91,7 +92,7 @@ class ReiAnixAniListClient(
         val fields = searches.mapIndexed { i, term ->
             variables.put("term$i", term)
             "alias$i: Page(page: 1, perPage: $limit) { media(search: " +
-                "$" + "term" + i + ", type: ANIME, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS } }"
+                "$" + "term" + i + ", type: ANIME, isAdult: false, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS } }"
         }.joinToString("\n")
         return execute("query RepairAnime($declarations) { $fields }", variables) { data ->
             val results = linkedMapOf<Int, AniListAnime>()
@@ -99,7 +100,9 @@ class ReiAnixAniListClient(
                 val media = data.objectOrNull("alias$i")?.arrayOrNull("media")
                     ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing alias search response"))
                 for (j in 0 until media.length()) {
-                    val anime = media.optJSONObject(j)?.let(::parseAnime)
+                    val item = media.optJSONObject(j)
+                    if (item?.optBoolean("isAdult", false) == true) continue
+                    val anime = item?.let(::parseAnime)
                         ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid alias search item"))
                     results.putIfAbsent(anime.id, anime)
                 }
@@ -112,7 +115,7 @@ class ReiAnixAniListClient(
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
         val gql = """
             query AnimeById(${'$'}id: Int) {
-              Media(id: ${'$'}id, type: ANIME) { $MEDIA_FIELDS }
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) { $MEDIA_FIELDS }
             }
         """.trimIndent()
         return execute(gql, JSONObject().put("id", id)) { data ->
@@ -126,6 +129,7 @@ class ReiAnixAniListClient(
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
                 )
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(null)
             val anime = parseAnime(media)
                 ?: return@execute AniListResult.Failure(
                     AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
@@ -142,7 +146,8 @@ class ReiAnixAniListClient(
         }
         val gql = """
             query AnimeCharacters(${'$'}id: Int, ${'$'}limit: Int) {
-              Media(id: ${'$'}id, type: ANIME) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) {
+                isAdult
                 characters(perPage: ${'$'}limit, sort: [ROLE, FAVOURITES_DESC]) {
                   edges { role node { id name { full } image { medium } } }
                 }
@@ -152,6 +157,7 @@ class ReiAnixAniListClient(
         return execute(gql, JSONObject().put("id", id).put("limit", limit)) { data ->
             val media = data.optJSONObject("Media")
                 ?: return@execute AniListResult.Success(emptyList())
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(emptyList())
             val edges = media.optJSONObject("characters")?.optJSONArray("edges")
                 ?: return@execute AniListResult.Success(emptyList())
             val result = buildList {
@@ -195,6 +201,7 @@ class ReiAnixAniListClient(
                 ) {
                   id mediaId episode airingAt
                   media {
+                    isAdult
                     siteUrl
                     externalLinks { site url type }
                     streamingEpisodes { site url }
@@ -220,6 +227,7 @@ class ReiAnixAniListClient(
                     val airedAt = entry.optInt("airingAt")
                     if (mediaId !in ids || episode <= 0 || airedAt !in fromEpoch..toEpoch) continue
                     val media = entry.optJSONObject("media")
+                    if (media?.optBoolean("isAdult", false) == true) continue
                     val links = buildList {
                         listOf("streamingEpisodes", "externalLinks").forEach { key ->
                             val raw = media?.optJSONArray(key)
@@ -391,7 +399,7 @@ class ReiAnixAniListClient(
         const val ENDPOINT = "https://graphql.anilist.co"
         const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
         private const val MEDIA_FIELDS = """
-            id title { romaji english native } synonyms
+            id isAdult title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
             genres coverImage { large extraLarge } bannerImage
             studios(isMain: true) { nodes { name } }
@@ -485,6 +493,7 @@ class HttpUrlConnectionAniListTransport(
             try {
                 val activeConnection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
+                    instanceFollowRedirects = false
                     connectTimeout = connectTimeoutMs
                     readTimeout = readTimeoutMs
                     doOutput = true
