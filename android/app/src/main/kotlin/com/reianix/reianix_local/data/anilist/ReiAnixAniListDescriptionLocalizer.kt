@@ -36,6 +36,7 @@ class ReiAnixAniListDescriptionLocalizer(
     private val transport: AniListTranslationTransport = HttpUrlConnectionAniListTranslationTransport(),
 ) {
     private val cacheMutex = Mutex()
+    private val translationQuota = ReiAnixMyMemoryQuota(File(cacheFile.parentFile, "mymemory-quota-v1.json"))
     private val translationPermits = Semaphore(MAX_CONCURRENT_TRANSLATIONS)
     private val keyLocks = ConcurrentHashMap<String, Mutex>()
 
@@ -246,6 +247,8 @@ class ReiAnixAniListDescriptionLocalizer(
         var attempt = 0
         while (attempt < MAX_TRANSLATION_ATTEMPTS) {
             attempt++
+            // Reserve before every attempt, including retries. Cache hits never spend quota.
+            if (!translationQuota.reserve(text.toByteArray(Charsets.UTF_8).size)) return null
             val response = try {
                 transport.get(url)
             } catch (cancelled: CancellationException) {
@@ -253,6 +256,10 @@ class ReiAnixAniListDescriptionLocalizer(
             } catch (_: IOException) {
                 return null
             } catch (_: Exception) {
+                return null
+            }
+            if (response.statusCode == 429 || response.statusCode == 403) {
+                translationQuota.pause(response.retryAfterSeconds)
                 return null
             }
             if (response.statusCode !in 200..299) {
@@ -272,6 +279,9 @@ class ReiAnixAniListDescriptionLocalizer(
                 val payload = JSONObject(response.body)
                 val status = payload.opt("responseStatus")?.toString()?.toIntOrNull() ?: 200
                 if (status != 200) {
+                    if (status == 429 || status == 403 || payload.optString("responseDetails").contains("quota", ignoreCase = true)) {
+                        translationQuota.pause(response.retryAfterSeconds)
+                    }
                     // The translation endpoint returned an application-level failure
                     // without an HTTP Retry-After header. Do not add speculative delays.
                     return null
@@ -463,7 +473,7 @@ class HttpUrlConnectionAniListTranslationTransport(
                 connectTimeout = connectTimeoutMs
                 readTimeout = readTimeoutMs
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "ReiAnix/1.0 (personal-use)")
+                setRequestProperty("User-Agent", "ReiAnix/1.0")
             }
             connection = active
             coroutineContext.job.invokeOnCompletion { cause ->

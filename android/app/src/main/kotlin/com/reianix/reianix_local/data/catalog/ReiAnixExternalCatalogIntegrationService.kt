@@ -27,7 +27,7 @@ import java.util.Locale
 import java.io.File
 
 /**
- * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu/Tenrai/AniPub are
+ * Bounded, process-owned supplemental enrichment. AniList remains primary; Kitsu is
  * consulted only for metadata gaps or missing usable artwork, and every association is reverified.
  */
 class ReiAnixExternalCatalogIntegrationService(
@@ -541,7 +541,6 @@ class ReiAnixExternalCatalogIntegrationService(
     companion object {
         private val SUPPLEMENTAL_SOURCES = listOf(
             ReiAnixCatalogSource.KITSU,
-            ReiAnixCatalogSource.ANIPUB,
         )
         const val DEFAULT_BATCH_SIZE = 12
         const val MAX_BATCH_SIZE = 50

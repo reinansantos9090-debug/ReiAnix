@@ -45,9 +45,6 @@ class ReiAnixExternalRequestCoordinator(
     private val permits = Semaphore(maxConcurrentRequests)
     private val mutex = Mutex()
     private val inFlight = mutableMapOf<RequestKey, Deferred<Any?>>()
-    private val tenraiRateMutex = Mutex()
-    private val tenraiRequestTimes = ArrayDeque<Long>()
-    private var lastTenraiRequestAtMillis = Long.MIN_VALUE
     private val sourcePauseMutex = Mutex()
     private val sourceBlockedUntilMillis = mutableMapOf<ReiAnixCatalogSource, Long>()
 
@@ -71,7 +68,6 @@ class ReiAnixExternalRequestCoordinator(
                         withTimeout(requestTimeoutMillis) {
                             permits.withPermit {
                                 awaitSourcePause(source)
-                                if (source == ReiAnixCatalogSource.TENRAI) awaitTenraiRateLimit()
                                 val result = operation()
                                 val rateLimit = (result as? ReiAnixCatalogResult.Failure)
                                     ?.error as? ReiAnixCatalogError.RateLimited
@@ -122,40 +118,6 @@ class ReiAnixExternalRequestCoordinator(
         }
     }
 
-    /**
-     * Tenrai documents a public ceiling of 4 requests/second and 120/minute.
-     * Keep this client below that ceiling (3/second and 60/minute) to leave
-     * headroom for concurrent application activity and avoid exhausting a shared IP quota.
-     */
-    private suspend fun awaitTenraiRateLimit() {
-        while (true) {
-            val waitMillis = tenraiRateMutex.withLock {
-                val now = System.currentTimeMillis()
-                while (tenraiRequestTimes.isNotEmpty() && now - tenraiRequestTimes.first() >= TENRAI_WINDOW_MILLIS) {
-                    tenraiRequestTimes.removeFirst()
-                }
-                val spacingWait = if (lastTenraiRequestAtMillis == Long.MIN_VALUE) {
-                    0L
-                } else {
-                    (TENRAI_MINIMUM_INTERVAL_MILLIS - (now - lastTenraiRequestAtMillis)).coerceAtLeast(0L)
-                }
-                val minuteWait = if (tenraiRequestTimes.size >= TENRAI_MAX_REQUESTS_PER_MINUTE) {
-                    (tenraiRequestTimes.first() + TENRAI_WINDOW_MILLIS - now).coerceAtLeast(1L)
-                } else {
-                    0L
-                }
-                val wait = maxOf(spacingWait, minuteWait)
-                if (wait == 0L) {
-                    tenraiRequestTimes.addLast(now)
-                    lastTenraiRequestAtMillis = now
-                }
-                wait
-            }
-            if (waitMillis == 0L) return
-            delay(waitMillis)
-        }
-    }
-
     suspend fun activeRequestCount(): Int = mutex.withLock { inFlight.size }
 
     /** Cancels pending work and permanently closes this coordinator. */
@@ -170,10 +132,6 @@ class ReiAnixExternalRequestCoordinator(
         const val MIN_TIMEOUT_MILLIS = 100L
         const val MAX_TIMEOUT_MILLIS = 120_000L
         const val MAX_OPERATION_KEY_LENGTH = 256
-        const val TENRAI_MAX_REQUESTS_PER_SECOND = 3
-        const val TENRAI_MAX_REQUESTS_PER_MINUTE = 60
-        const val TENRAI_MINIMUM_INTERVAL_MILLIS = 334L
-        const val TENRAI_WINDOW_MILLIS = 60_000L
         const val DEFAULT_RETRY_AFTER_MILLIS = 2_000L
         const val MAX_RETRY_AFTER_MILLIS = 6L * 60L * 60L * 1_000L
     }

@@ -17,10 +17,6 @@ enum class ReiAnixCatalogSource(
 ) {
     ANILIST("anilist", true, true),
     KITSU("kitsu", true, true),
-    @Deprecated("The public Jikan API was discontinued; retained for legacy stored references only.")
-    JIKAN("jikan", false, false),
-    TENRAI("tenrai", true, true),
-    ANIPUB("anipub", true, true),
     ANIMAP("animap", false, false, resolvesIdentifiers = true);
 
     companion object {
@@ -53,9 +49,7 @@ data class ReiAnixExternalCatalogIds(
 
     fun idFor(source: ReiAnixCatalogSource): String? = when (source) {
         ReiAnixCatalogSource.ANILIST -> aniListId?.toString()
-        ReiAnixCatalogSource.JIKAN, ReiAnixCatalogSource.TENRAI -> myAnimeListId?.toString()
         ReiAnixCatalogSource.KITSU -> kitsuId
-        ReiAnixCatalogSource.ANIPUB -> additionalIds[source.key]
         ReiAnixCatalogSource.ANIMAP -> null
     }
 

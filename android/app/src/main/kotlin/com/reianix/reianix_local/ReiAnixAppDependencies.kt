@@ -7,7 +7,6 @@ import com.reianix.reianix_local.data.anilist.ReiAnixAniListIntegrationService
 import com.reianix.reianix_local.data.anilist.ReiAnixAniListDescriptionLocalizer
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolver
-import com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProvider
 import com.reianix.reianix_local.data.catalog.ReiAnixCatalogProviderRegistry
 import com.reianix.reianix_local.data.catalog.ReiAnixCandidateMetadataService
 import com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogIntegrationService
@@ -143,16 +142,6 @@ class ReiAnixAppDependencies(context: Context) {
         LazyThreadSafetyMode.SYNCHRONIZED,
     ) {
         ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 2)
-    }
-
-    /**
-     * AniPub's read-only adapter is available, but automatic requests stay disabled:
-     * the original integration required prior written permission for automated access.
-     */
-    val aniPubCatalogProvider: ReiAnixAniPubCatalogProvider by lazy(
-        LazyThreadSafetyMode.SYNCHRONIZED,
-    ) {
-        ReiAnixAniPubCatalogProvider()
     }
 
     val externalCatalogProviderRegistry: ReiAnixCatalogProviderRegistry by lazy(

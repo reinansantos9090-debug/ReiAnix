@@ -53,7 +53,7 @@ class ReiAnixExternalRequestCoordinatorTest {
         val calls = AtomicInteger()
 
         val first = async {
-            coordinator.execute(ReiAnixCatalogSource.TENRAI, "anime:88") {
+            coordinator.execute(ReiAnixCatalogSource.KITSU, "anime:88") {
                 calls.incrementAndGet()
                 entered.complete(Unit)
                 release.await()
@@ -62,7 +62,7 @@ class ReiAnixExternalRequestCoordinatorTest {
         }
         entered.await()
         val second = async {
-            coordinator.execute(ReiAnixCatalogSource.TENRAI, "anime:88") {
+            coordinator.execute(ReiAnixCatalogSource.KITSU, "anime:88") {
                 calls.incrementAndGet()
                 "duplicate"
             }
@@ -117,7 +117,7 @@ class ReiAnixExternalRequestCoordinatorTest {
 
         val requests = (0 until 5).map { index ->
             async {
-                coordinator.execute(ReiAnixCatalogSource.TENRAI, "anime:$index") {
+                coordinator.execute(ReiAnixCatalogSource.KITSU, "anime:$index") {
                     val nowActive = active.incrementAndGet()
                     maximum.updateAndGet { previous -> maxOf(previous, nowActive) }
                     if (started.incrementAndGet() == 2) twoStarted.complete(Unit)
@@ -140,7 +140,7 @@ class ReiAnixExternalRequestCoordinatorTest {
     fun successfulSearchResultsAreCachedByTheSharedProviderRegistry() = runBlocking {
         val calls = AtomicInteger()
         val provider = object : ReiAnixAnimeCatalogProvider {
-            override val source = ReiAnixCatalogSource.TENRAI
+            override val source = ReiAnixCatalogSource.KITSU
             override suspend fun searchAnime(query: String, limit: Int): ReiAnixCatalogResult<List<ReiAnixCatalogAnime>> {
                 calls.incrementAndGet()
                 return ReiAnixCatalogResult.Success(emptyList())
@@ -152,26 +152,11 @@ class ReiAnixExternalRequestCoordinatorTest {
             listOf(provider),
             ReiAnixExternalRequestCoordinator(),
         )
-        val registered = registry.provider(ReiAnixCatalogSource.TENRAI)!!
+        val registered = registry.provider(ReiAnixCatalogSource.KITSU)!!
         registered.searchAnime("  Cached Title ", 10)
         registered.searchAnime("cached   title", 10)
         assertEquals(1, calls.get())
         registry.cancelPendingRequests()
-    }
-
-    @Test
-    fun tenraiRequestsRespectConservativePublicRateLimit() = runBlocking {
-        val coordinator = ReiAnixExternalRequestCoordinator(maxConcurrentRequests = 1)
-        val starts = mutableListOf<Long>()
-        coordinator.execute(ReiAnixCatalogSource.TENRAI, "first") {
-            starts += System.currentTimeMillis()
-        }
-        coordinator.execute(ReiAnixCatalogSource.TENRAI, "second") {
-            starts += System.currentTimeMillis()
-        }
-        assertEquals(2, starts.size)
-        assertTrue("Tenrai requests must be spaced to stay below 3 requests/second.", starts[1] - starts[0] >= 300L)
-        coordinator.cancelAll()
     }
 
     @Test
@@ -195,7 +180,7 @@ class ReiAnixExternalRequestCoordinatorTest {
         val coordinator = ReiAnixExternalRequestCoordinator()
         val entered = CompletableDeferred<Unit>()
         val caller = async {
-            coordinator.execute(ReiAnixCatalogSource.ANIPUB, "shutdown") {
+            coordinator.execute(ReiAnixCatalogSource.ANIMAP, "shutdown") {
                 entered.complete(Unit)
                 awaitCancellation()
             }

@@ -80,7 +80,7 @@ data class ReiAnixArtworkCandidate(
     val source: String = "anilist",
 ) {
     init {
-        require(source in setOf("anilist", "kitsu", "anipub"))
+        require(source in setOf("anilist", "kitsu"))
     }
 }
 
@@ -755,7 +755,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             ) return@withPermit true
             if (reuseLocal(id, entity, type, url, aniId, requestId, requireCurrentUrl)) return@withPermit true
             // Keep local/persisted artwork available when downloads are disabled.
-            // This is the shared network boundary for AniList, Kitsu, AniPub and
+            // This is the shared network boundary for AniList, Kitsu and
             // every other candidate provider; no new remote query is required.
             if (!remoteArtworkEnabled()) return@withPermit false
             val key = remoteKey(aniId, url, type)
