@@ -58,6 +58,7 @@ data class NativePlayerRequest(
     val audioSubtitleScale: Float,
     val audioSubtitleBottomPadding: Int,
     val audioSubtitleEmbeddedStyle: Boolean,
+    val episodeNumber: String? = null,
 ) {
     fun toIntent(context: Context, normalizedUri: Uri): Intent =
         Intent(context, NativePlayerActivity::class.java)
@@ -66,6 +67,7 @@ data class NativePlayerRequest(
             .putExtra("uri", normalizedUri.toString())
             .putExtra("mediaId", normalizedUri.toString())
             .putExtra("episodeId", episodeId)
+            .putExtra("episodeNumber", episodeNumber)
             .putExtra("animeId", animeId)
             .putExtra("playerSessionId", playerSessionId)
             .putExtra("originRequestId", originRequestId)
@@ -134,6 +136,8 @@ data class NativePlayerRequest(
                     ?.takeIf { it == "NEXT" || it == "PREVIOUS" }
                     ?: "NONE",
                 title = get("title") ?: "Episódio",
+                episodeNumber = get("episode_number")?.trim()
+                    ?.takeIf { it.toDoubleOrNull()?.isFinite() == true },
                 positionMs = parsedPositionMs?.coerceAtLeast(0L) ?: 0L,
                 positionWasExplicit = rawPositionMs != null && parsedPositionMs != null,
                 positionParameterInvalid = rawPositionMs != null && parsedPositionMs == null,

@@ -2941,6 +2941,9 @@ class ReiAnixLibraryViewModel(
                     .appendQueryParameter("player_session_id", playerSessionId)
                     .appendQueryParameter("title", title)
                     .apply {
+                        episode.number?.takeIf { it.isFinite() }?.let { number ->
+                            appendQueryParameter("episode_number", number.toString().removeSuffix(".0"))
+                        }
                         playbackStart.positionMsOverride?.let { positionMs ->
                             appendQueryParameter("position_ms", positionMs.toString())
                         }

@@ -3077,24 +3077,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val resolution = videoSize
             ?.takeIf { it.width > 0 && it.height > 0 }
             ?.let { it.width.toString() + "×" + it.height }
-        val episodeLabel = Regex("(?i)epis(?:ó|o)dio\\s+([0-9]+(?:[.,][0-9]+)?)")
-            .find(titleValue)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.replace(',', '.')
-            ?.let { raw ->
-                val normalized = raw.toDoubleOrNull()
-                if (normalized != null && normalized % 1.0 == 0.0) {
-                    "Episódio " + normalized.toInt().toString().padStart(2, '0')
-                } else {
-                    "Episódio " + raw
+        val episodeNumber = intent.getStringExtra("episodeNumber")?.takeIf { it.isNotBlank() }
+            ?: Regex("(?i)epis(?:ó|o)dio\\s+([0-9]+(?:[.,][0-9]+)?)")
+                .find(titleValue)
+                ?.groupValues?.getOrNull(1)
+                ?.replace(',', '.')
+                ?.let { raw ->
+                    val normalized = raw.toDoubleOrNull()
+                    if (normalized != null && normalized % 1.0 == 0.0) {
+                        normalized.toLong().toString()
+                    } else {
+                        raw
+                    }
                 }
-            }
-            ?: "Episódio"
+        val episodeLabel = episodeNumber?.let { "Episódio $it" } ?: "Episódio"
 
         composePlayerUiState.value = ReiAnixNativePlayerUiState(
             title = titleValue,
-            episodeLabel = listOfNotNull(if (inFavoriteClip) "Cena favorita" else episodeLabel, resolution).joinToString(" • "),
+            episodeLabel = listOfNotNull(if (inFavoriteClip) "Cena favorita" else episodeLabel, resolution).joinToString(" · "),
             technicalLine = buildPlayerTechnicalLine(),
             positionMs = currentPosition.coerceAtLeast(0L),
             durationMs = currentDuration.coerceAtLeast(0L),
