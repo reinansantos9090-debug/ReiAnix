@@ -42,11 +42,24 @@ internal object SkipConsensus {
     fun agree(a: PlayerSkipSegment, b: PlayerSkipSegment): Boolean =
         a.kind == b.kind && abs(a.startMs - b.startMs) <= 3_000L && abs(a.endMs - b.endMs) <= 3_000L
 
+    fun needsLocal(results: List<SkipProviderResult>, remote: List<PlayerSkipSegment>): Set<String> =
+        setOf("op", "ed").filterTo(mutableSetOf()) { kind ->
+            results.none { kind in it.absentKinds } &&
+                (remote.none { it.kind == kind } ||
+                    results.flatMap { it.evidence }.filter { it.segment.kind == kind }
+                        .map { it.provider }.distinct().size < 2)
+        }
+
     fun addLocal(remote: List<PlayerSkipSegment>, local: List<PlayerSkipSegment>,
                  results: List<SkipProviderResult>, duration: Long): List<PlayerSkipSegment> {
         val blocked = results.flatMap { it.absentKinds }.toSet()
-        val confirmedRemote = remote.filter { candidate ->
-            local.filter { it.kind == candidate.kind }.all { agree(it, candidate) }
+        val confirmedRemote = remote.mapNotNull { candidate ->
+            val acoustic = local.filter { it.kind == candidate.kind }
+            if (acoustic.any { !agree(it, candidate) }) null
+            else candidate.copy(
+                startMs = maxOf(candidate.startMs, acoustic.maxOfOrNull { it.startMs } ?: candidate.startMs),
+                endMs = minOf(candidate.endMs, acoustic.minOfOrNull { it.endMs } ?: candidate.endMs),
+            )
         }
         return PlayerEnhancementPolicy.trustedRemoteSegments(confirmedRemote + local.filter { candidate ->
             candidate.kind !in blocked && remote.none { it.kind == candidate.kind } &&
@@ -70,7 +83,6 @@ internal class ComplementarySkipSources {
         if (exactImdb(reverse, anilistId) != id || ids(mapping, "mal_id") != ids(reverse, "mal_id")) return emptyList()
         // The legacy grouped endpoint is documented for IMDb crosswalks; v1
         // currently does not expose an IMDb lookup. Reject sequel/offset guesses.
-        if (ids(mapping, "tmdb_id").isEmpty()) return emptyList()
         val key = SkipImdbEpisode(id, 1, episode)
         val query = "imdb_id=$id&season=1&episode=$episode"
         val seconds = String.format(Locale.US, "%.3f", duration / 1000.0)
@@ -89,7 +101,8 @@ internal class ComplementarySkipSources {
             if ((backoff[host] ?: 0L) > now) return null
             cache[url]?.takeIf { now - it.first < 600_000L }?.let { return JSONObject(it.second) }
         }
-        val conn = URL(url).openConnection() as HttpURLConnection
+        val conn = try { URL(url).openConnection() as HttpURLConnection }
+        catch (_: Exception) { return null }
         try {
             conn.connectTimeout = 3500
             conn.readTimeout = 3500

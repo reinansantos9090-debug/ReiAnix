@@ -30,13 +30,19 @@ internal class LocalSkipAudio(private val context: Context) {
             for (kind in listOf("op", "ed")) {
                 coroutineContext.ensureActive()
                 if (kind !in kinds || SystemClock.elapsedRealtime() >= deadline) continue
-                val current = decode(source, kind, duration, deadline) ?: continue
                 val manualRefs = references.filter {
                     if (kind == "op") it.manual.opening != null else it.manual.ending != null
                 }
+                if (manualRefs.isEmpty() && references.size < 2) continue
+                val current = decode(source, kind, duration, deadline) ?: continue
+                val decoded = mutableMapOf<Uri, Fingerprint?>()
+                suspend fun read(reference: Reference): Fingerprint? {
+                    if (!decoded.containsKey(reference.uri)) decoded[reference.uri] = decode(reference.uri, kind, null, deadline)
+                    return decoded[reference.uri]
+                }
                 var anchored: PlayerSkipSegment? = null
                 for (reference in manualRefs.take(1)) {
-                    val previous = decode(reference.uri, kind, null, deadline) ?: continue
+                    val previous = read(reference) ?: continue
                     val marker = if (kind == "op") reference.manual.opening else reference.manual.ending
                     if (marker == null) continue
                     val matches = match(current, previous, kind, duration).filter { match ->
@@ -52,8 +58,8 @@ internal class LocalSkipAudio(private val context: Context) {
                 // Without a user marker require the same uninterrupted audio in
                 // two distinct neighbouring episodes, with matching boundaries.
                 if (references.size < 2) continue
-                val first = decode(references[0].uri, kind, null, deadline) ?: continue
-                val second = decode(references[1].uri, kind, null, deadline) ?: continue
+                val first = read(references[0]) ?: continue
+                val second = read(references[1]) ?: continue
                 val a = match(current, first, kind, duration).map { it.segment }
                 val b = match(current, second, kind, duration).map { it.segment }
                 val agreed = a.flatMap { x -> b.filter { SkipConsensus.agree(x, it) }.map { y ->

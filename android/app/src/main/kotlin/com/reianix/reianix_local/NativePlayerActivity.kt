@@ -6009,10 +6009,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         listOf(ani.await()) + other.await()
                     }
                     val remote = SkipConsensus.choose(results, durationMs)
-                    // Only decode locally if another source is needed. Limit to the
-                    // same season, distinct episodes and existing accessible media.
-                    val missingKinds = setOf("op", "ed") - remote.map { it.kind }.toSet() -
-                        results.flatMap { it.absentKinds }.toSet()
+                    // Confirm single-source suggestions acoustically when possible,
+                    // and fill genuine gaps. Never decode when two sources agree.
+                    val missingKinds = SkipConsensus.needsLocal(results, remote)
                     if (missingKinds.isEmpty()) return@withContext remote
                     val currentNumber = PlayerEnhancementPolicy.episodeNumber(episode.number)
                         ?: return@withContext remote
@@ -6031,7 +6030,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             if (candidate == source) null else LocalSkipAudio.Reference(
                                 candidate, localMetadataStore.get(candidate.toString()))
                         }.distinctBy { it.uri }.take(2).toList()
-                    val local = LocalSkipAudio(applicationContext).detect(source, references, durationMs, missingKinds)
+                    val local = try {
+                        LocalSkipAudio(applicationContext).detect(source, references, durationMs, missingKinds)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) { emptyList() }
                     SkipConsensus.addLocal(remote, local, results, durationMs)
                 } catch (e: CancellationException) {
                     throw e
