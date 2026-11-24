@@ -98,7 +98,17 @@ internal class ReiAnixTvPicker(
         list.clear()
         list.addAll(
             if (entries.isEmpty()) listOf("Procurando TVs na mesma rede…")
-            else entries.map { it.name }
+            else {
+                val counts = entries.groupingBy { it.name }.eachCount()
+                val numbers = mutableMapOf<String, Int>()
+                entries.map { device ->
+                    if ((counts[device.name] ?: 0) <= 1) device.name else {
+                        val number = (numbers[device.name] ?: 0) + 1
+                        numbers[device.name] = number
+                        device.name + " (" + number + ")"
+                    }
+                }
+            }
         )
         list.notifyDataSetChanged()
     }

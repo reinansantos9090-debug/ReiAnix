@@ -209,10 +209,25 @@ internal class ReiAnixTvSender(
                             if (generation != searchGeneration || closed) return@post
                             // Deduplicate by friendly name; Cast takes precedence where both exist.
                             val normalized = discovered.name.trim().lowercase(Locale.ROOT)
+                            // Deduplicate only a TV visible through multiple
+                            // protocols. Separate devices can legitimately have
+                            // the same friendly name, particularly two Rokus.
                             val duplicate = devices.values.firstOrNull {
-                                it.name.trim().lowercase(Locale.ROOT) == normalized
+                                it.kind != discovered.kind &&
+                                    it.name.trim().lowercase(Locale.ROOT) == normalized
                             }
-                            if (duplicate == null || duplicate.kind != ReiAnixTvKind.CAST) {
+                            val priority = when (discovered.kind) {
+                                ReiAnixTvKind.CAST -> 3
+                                ReiAnixTvKind.RENDERER -> 2
+                                ReiAnixTvKind.ROKU -> 1
+                            }
+                            val oldPriority = when (duplicate?.kind) {
+                                ReiAnixTvKind.CAST -> 3
+                                ReiAnixTvKind.RENDERER -> 2
+                                ReiAnixTvKind.ROKU -> 1
+                                null -> 0
+                            }
+                            if (duplicate == null || priority > oldPriority) {
                                 if (duplicate != null) devices.remove(duplicate.id)
                                 devices[discovered.id] = discovered
                                 publish()

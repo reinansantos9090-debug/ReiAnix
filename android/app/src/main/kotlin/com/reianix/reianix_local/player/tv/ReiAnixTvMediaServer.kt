@@ -16,6 +16,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
+import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
@@ -322,6 +323,9 @@ class ReiAnixTvMediaServer(
                     reuseAddress = true
                     bind(InetSocketAddress(1900))
                     soTimeout = 2500
+                    // Advertise on the interface that actually serves the
+                    // video; otherwise Android may multicast over cellular.
+                    NetworkInterface.getByInetAddress(host)?.let { networkInterface = it }
                     joinGroup(ssdpGroup)
                 }
                 ssdpSocket = socket
