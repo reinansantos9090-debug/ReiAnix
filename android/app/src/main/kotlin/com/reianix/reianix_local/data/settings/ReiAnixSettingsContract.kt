@@ -63,6 +63,11 @@ data class ReiAnixSettingDefinition(
 
 object ReiAnixSettingsContract {
     const val APP_IMMERSIVE_KEY = "app.immersive"
+    const val DEFAULT_PLAYER_KEY = "player.default_player"
+
+    /** The former ask mode and invalid or missing values return to the internal player. */
+    fun defaultPlayerMode(value: String?): String =
+        if (value?.trim() == "external") "external" else "internal"
 
     fun appImmersiveEnabled(value: String?): Boolean =
         value?.let { runCatching { normalize(APP_IMMERSIVE_KEY, it) }.getOrNull() } != "false"
@@ -87,6 +92,7 @@ object ReiAnixSettingsContract {
         int("library.page_size", 0, 0, 24, 36, 48, 72),
         bool("library.continue_watching", true),
         int("library.continue_watching_limit", 10, 5, 10, 15, 20),
+        enum(DEFAULT_PLAYER_KEY, "internal", "internal", "external"),
         bool("player.autoplay_next", true),
         bool("player.aniskip_enabled", true),
         bool("player.anime_preferences_enabled", true),
@@ -141,6 +147,7 @@ object ReiAnixSettingsContract {
     fun normalize(key: String, value: String): String {
         val normalizedKey = key.trim()
         require(normalizedKey.isNotEmpty()) { "Preference key must not be blank." }
+        if (normalizedKey == DEFAULT_PLAYER_KEY && value.trim() == "ask") return "internal"
         return definitions[normalizedKey]?.normalize(value) ?: value
     }
 
@@ -155,6 +162,7 @@ object ReiAnixSettingsContract {
         buildMap(values.size + definitions.size) {
             definitions.forEach { (key, definition) -> put(key, definition.defaultValue) }
             putAll(values)
+            put(DEFAULT_PLAYER_KEY, defaultPlayerMode(values[DEFAULT_PLAYER_KEY]))
         }
 
     /**

@@ -895,6 +895,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "player_playback" -> {
+                    item(key = "setting:player.default_player") {
+                        ChoiceSettingRow(
+                            keyName = "player.default_player",
+                            title = "Reprodutor padrão",
+                            description = "Escolha como os episódios serão abertos.",
+                            selectedValue = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
+                                .defaultPlayerMode(state.settings["player.default_player"]),
+                            choices = listOf(
+                                SettingChoice("internal", "Reprodutor interno"),
+                                SettingChoice("external", "Reprodutor externo"),
+                            ),
+                            onSelected = { onUpdateSetting("player.default_player", it) },
+                        )
+                    }
                     item(key = "setting:player.aniskip_enabled") {
                         BooleanSettingRow(
                             keyName = "player.aniskip_enabled",

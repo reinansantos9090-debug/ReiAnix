@@ -96,6 +96,7 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:library.continue_watching_limit", "Limite de continuar assistindo"),
     )),
     SettingsDestination("player_playback", "Reprodução", "Player", listOf(
+        SettingsEntry("setting:player.default_player", "Reprodutor padrão", "player interno externo abrir com"),
         SettingsEntry("setting:player.aniskip_enabled", "Detectar abertura e encerramento", "AniSkip pular intro abertura ending encerramento"),
         SettingsEntry("setting:player.anime_preferences_enabled", "Configurações individuais por anime", "Salvar automaticamente áudio legendas velocidade cada anime"),
         SettingsEntry("setting:player.autoplay_next", "Reprodução automática do próximo episódio"),

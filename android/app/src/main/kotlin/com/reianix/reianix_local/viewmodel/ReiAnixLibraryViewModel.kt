@@ -2782,8 +2782,9 @@ class ReiAnixLibraryViewModel(
         requestId: String,
         status: String,
         error: String? = null,
+        externalChooser: Boolean = false,
     ) {
-        repository.reportNativePlayerHandoff(requestId, status, error)
+        repository.reportNativePlayerHandoff(requestId, status, error, externalChooser)
         val normalizedStatus = status.trim().uppercase(Locale.ROOT)
         val eventName = when (normalizedStatus) {
             "COMPLETED", "ACCEPTED", "SUCCESS" -> "PLAYER_HANDOFF_ACCEPTED"
@@ -3005,6 +3006,17 @@ class ReiAnixLibraryViewModel(
                     if (!isCurrentHandoff()) {
                         false
                     } else {
+
+                        if (favoriteScene == null &&
+                            ReiAnixSettingsContract.defaultPlayerMode(preferenceValue("player.default_player")) == "external"
+                        ) {
+                            val chooser = com.reianix.reianix_local.player.ExternalVideoChooser
+                                .createIntent(appContext, mediaUri)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            appContext.startActivity(chooser)
+                            reportNativePlayerHandoff(requestId, "COMPLETED", externalChooser = true)
+                            return@withContext true
+                        }
 
                         favoriteScene?.let {
                             com.reianix.reianix_local.player.ProfileClipHandoff.put(requestId, it)

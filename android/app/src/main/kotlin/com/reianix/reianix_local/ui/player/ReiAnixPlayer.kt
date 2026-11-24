@@ -60,11 +60,29 @@ fun ReiAnixPlayerRoute(
         mutableStateOf(false)
     }
 
+    var returnedAfterLaunch by rememberSaveable(args.episodeId, args.animeId) {
+        mutableStateOf(false)
+    }
+    fun leaveAfterLaunch() {
+        if (!returnedAfterLaunch) {
+            returnedAfterLaunch = true
+            navController.popBackStack()
+        }
+    }
+
     val commandStatus = launchRequestId
         ?.takeIf { it == libraryState.lastCommandId }
         ?.let { libraryState.lastCommandStatus?.trim()?.uppercase() }
     val launchFailed = commandStatus == "FAILED"
-    val canLeave = episodeId == null || canonicalAnimeId == null || launchFailed
+    val externalChooserOpened = commandStatus == "COMPLETED" &&
+        libraryState.lastCommandAction == "external_player_handoff"
+    val canLeave = episodeId == null || canonicalAnimeId == null || launchFailed || externalChooserOpened
+
+    // The system resolver can be translucent and never stop the host Activity.
+    // Leave the temporary handoff route once the chooser has been launched.
+    LaunchedEffect(externalChooserOpened) {
+        if (externalChooserOpened) leaveAfterLaunch()
+    }
 
     LaunchedEffect(args.episodeId, args.animeId) {
         val canonicalEpisodeId = episodeId ?: return@LaunchedEffect
@@ -91,7 +109,7 @@ fun ReiAnixPlayerRoute(
                 Lifecycle.Event.ON_RESUME -> {
                     if (hostStoppedAfterLaunch && currentLaunchRequestId != null) {
                         hostStoppedAfterLaunch = false
-                        navController.popBackStack()
+                        leaveAfterLaunch()
                     }
                 }
 

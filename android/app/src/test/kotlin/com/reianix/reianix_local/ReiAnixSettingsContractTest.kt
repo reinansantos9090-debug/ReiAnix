@@ -8,6 +8,24 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ReiAnixSettingsContractTest {
+    @Test fun playbackTargetHasOnlyInternalAndExternalModes() {
+        val key = ReiAnixSettingsContract.DEFAULT_PLAYER_KEY
+        assertEquals("internal", ReiAnixSettingsContract.defaultFor(key))
+        assertEquals(setOf("internal", "external"), ReiAnixSettingsContract.definitions[key]?.choices)
+        assertEquals("internal", ReiAnixSettingsContract.defaultPlayerMode(null))
+        assertEquals("internal", ReiAnixSettingsContract.defaultPlayerMode("ask"))
+        assertEquals("internal", ReiAnixSettingsContract.defaultPlayerMode("invalid"))
+        assertEquals("external", ReiAnixSettingsContract.defaultPlayerMode("external"))
+        assertEquals("internal", ReiAnixSettingsContract.normalize(key, "ask"))
+        assertEquals("internal", ReiAnixSettingsContract.withDefaults(mapOf(key to "ask"))[key])
+        assertEquals("external", ReiAnixSettingsContract.withDefaults(mapOf(key to "external"))[key])
+        assertThrows(IllegalArgumentException::class.java) {
+            ReiAnixSettingsContract.normalize(key, "invalid")
+        }
+        assertEquals(true, key in ReiAnixSettingsContract.keysForReset(playerOnly = true))
+        assertNull(ReiAnixSettingsContract.defaultFor("player.external_component"))
+    }
+
     @Test fun knownDefaultsAndTypesMatchLegacyContract() {
         assertEquals("dark", ReiAnixSettingsContract.defaultFor("appearance.theme"))
         assertEquals("8", ReiAnixSettingsContract.defaultFor("appearance.poster_size"))
