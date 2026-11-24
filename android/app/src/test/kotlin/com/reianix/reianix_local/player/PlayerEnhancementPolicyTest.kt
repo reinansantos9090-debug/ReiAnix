@@ -32,16 +32,16 @@ class PlayerEnhancementPolicyTest {
         val manual = PlayerLocalMetadataStore.Metadata(
             "episode", opening = PlayerLocalMetadataStore.Segment(1000, 2000))
         val remote = listOf(
-            PlayerSkipSegment("op", 100, 800),
-            PlayerSkipSegment("ed", 9000, 10000),
-            PlayerSkipSegment("recap", 0, 500),
-            PlayerSkipSegment("ed", 9999, 10001),
+            PlayerSkipSegment("op", 10000, 95000),
+            PlayerSkipSegment("ed", 1100000, 1190000),
+            PlayerSkipSegment("recap", 0, 50000),
+            PlayerSkipSegment("ed", 1199999, 1200001),
             PlayerSkipSegment("unknown", 0, 100),
         )
         assertEquals(
-            listOf(PlayerSkipSegment("recap", 0, 500), PlayerSkipSegment("op", 1000, 2000),
-                PlayerSkipSegment("ed", 9000, 10000)),
-            PlayerEnhancementPolicy.segments(manual, remote, 10000))
+            listOf(PlayerSkipSegment("op", 1000, 2000),
+                PlayerSkipSegment("ed", 1100000, 1190000)),
+            PlayerEnhancementPolicy.segments(manual, remote, 1200000))
     }
 
     @Test fun aniskipRejectsMismatchedCutsAndMalformedIntervals() {
@@ -52,9 +52,40 @@ class PlayerEnhancementPolicyTest {
             {"skipType":"recap","episodeLength":1200,"interval":{"startTime":-1,"endTime":5}},
             {"skipType":"recap","episodeLength":1200,"interval":{"startTime":0,"endTime":8}}
         ]}""")
-        assertEquals(listOf(PlayerSkipSegment("op", 10000, 95000), PlayerSkipSegment("recap", 0, 8000)),
+        assertEquals(listOf(PlayerSkipSegment("op", 10000, 95000)),
             AniSkipSegments(context).parse(json, 1200000))
         assertTrue(AniSkipSegments(context).parse(JSONObject("""{"found":false}"""), 1200000).isEmpty())
+    }
+
+    @Test fun rejectsMiddleEpisodeEndingAndAmbiguousRemoteMarkers() {
+        val duration = 1477000L // 24:37
+        val wrong = PlayerSkipSegment("ed", 870000, 960000)
+        val opening = PlayerSkipSegment("op", 30000, 120000)
+        val ending = PlayerSkipSegment("ed", 1320000, 1410000)
+        assertFalse(PlayerEnhancementPolicy.plausibleRemoteSegment(wrong, duration))
+        assertEquals(listOf(opening, ending),
+            PlayerEnhancementPolicy.trustedRemoteSegments(listOf(wrong, opening, ending, ending), duration))
+        assertTrue(PlayerEnhancementPolicy.trustedRemoteSegments(
+            listOf(ending, ending.copy(startMs = 1300000)), duration).isEmpty())
+        assertFalse(PlayerEnhancementPolicy.plausibleRemoteSegment(
+            PlayerSkipSegment("op", 700000, 790000), duration))
+        val manual = PlayerLocalMetadataStore.Metadata("episode",
+            ending = PlayerLocalMetadataStore.Segment(wrong.startMs, wrong.endMs))
+        assertEquals(listOf(wrong), PlayerEnhancementPolicy.segments(manual, listOf(ending), duration))
+    }
+
+    @Test fun seasonRelativeNumbersMustNotSilentlyQueryFirstSeason() {
+        assertEquals(1, PlayerEnhancementPolicy.aniSkipEpisodeNumber(1, 1.0, null, "regular"))
+        assertEquals(62, PlayerEnhancementPolicy.aniSkipEpisodeNumber(2, 1.0, 62.0, "regular"))
+        assertNull(PlayerEnhancementPolicy.aniSkipEpisodeNumber(2, 1.0, null, "regular"))
+        assertNull(PlayerEnhancementPolicy.aniSkipEpisodeNumber(1, 1.0, 62.0, "regular"))
+        assertNull(PlayerEnhancementPolicy.aniSkipEpisodeNumber(1, 1.0, null, "special"))
+    }
+
+    @Test fun skipButtonAnchorFollowsOptionsSlot() {
+        assertEquals(0.859375f, PlayerShortcutPolicy.optionsCenterFraction(PlayerShortcutPolicy.default), 0.0001f)
+        assertEquals(0.875f, PlayerShortcutPolicy.optionsCenterFraction(PlayerShortcutPolicy.default.drop(1)), 0.0001f)
+        assertEquals(0.5f, PlayerShortcutPolicy.optionsCenterFraction(listOf(PlayerShortcut.OPTIONS)), 0.0001f)
     }
 
     @Test fun diskCacheIsReusedAndInvalidatedForChangedMedia() {
