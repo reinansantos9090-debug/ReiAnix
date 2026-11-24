@@ -2,14 +2,13 @@ package com.reianix.reianix_local.player
 
 /**
  * The bottom bar is user-configurable without losing access to the menu.
- * Exact default order matches the original four buttons.
+ * The default has five buttons, with Options fixed on the right.
  */
 enum class PlayerShortcut(val key: String, val displayName: String) {
     LOCK("lock", "Bloquear"),
     EPISODES("episodes", "Episódios"),
     NEXT("next", "Próximo episódio"),
     OPTIONS("options", "Opções"),
-    CAPTURE("capture", "Capturar imagem"),
     SPEED("speed", "Velocidade"),
     SUBTITLES("subtitles", "Legendas"),
     TIMER("timer", "Temporizador");
@@ -19,23 +18,32 @@ object PlayerShortcutPolicy {
     val default = listOf(
         PlayerShortcut.LOCK,
         PlayerShortcut.EPISODES,
+        PlayerShortcut.SPEED,
         PlayerShortcut.NEXT,
         PlayerShortcut.OPTIONS,
     )
+
     const val MAX_COUNT = 5
 
     fun normalize(raw: String): String {
-        val entries = raw.split(',').map { it.trim() }
-        require(entries.size in 1..MAX_COUNT && entries.none { it.isBlank() }) {
-            "Only one to five player shortcuts are supported"
-        }
-        val options = entries.map { entry ->
-            PlayerShortcut.entries.firstOrNull { it.key == entry }
+        val keys = raw.split(',').map { it.trim() }
+        require(keys.size in 1..MAX_COUNT && keys.none { it.isBlank() } &&
+            keys.distinct().size == keys.size
+        ) { "Only one to five unique player shortcuts are supported" }
+
+        // "capture" is a retired shortcut. Drop it from pre-upgrade SQLite
+        // preferences and imported backups without discarding other choices.
+        // It must never be part of the current enum or appear in the player.
+        val kept = keys.filterNot { it == "capture" }
+        val options = kept.map { key ->
+            PlayerShortcut.entries.firstOrNull { it.key == key }
                 ?: throw IllegalArgumentException("Unsupported player shortcut")
         }
-        require(options.distinct().size == options.size && PlayerShortcut.OPTIONS in options) {
-            "Shortcut configuration must be unique and contain Options"
+        require(PlayerShortcut.OPTIONS in options) {
+            "Shortcut configuration must contain Options"
         }
+        // Keep valid four-button selections as four: the user may have
+        // deliberately disabled an item after upgrading to the five-button default.
         return pinnedOptionsLast(options).joinToString(",") { it.key }
     }
 

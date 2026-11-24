@@ -92,7 +92,7 @@ object ReiAnixSettingsContract {
         bool("player.anime_preferences_enabled", true),
         ReiAnixSettingDefinition(
             "player.shortcuts", ReiAnixSettingKind.SHORTCUTS,
-            "lock,episodes,next,options",
+            "lock,episodes,speed,next,options",
         ),
         bool("player.resume", true),
         bool("player.smart_resume", false),
