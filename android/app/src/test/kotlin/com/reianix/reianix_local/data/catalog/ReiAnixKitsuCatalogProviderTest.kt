@@ -29,6 +29,15 @@ class ReiAnixKitsuCatalogProviderTest {
     }
 
     @Test
+    fun explicitlyAdultCatalogResourcesAreExcluded() = runBlocking {
+        val transport = FakeTransport(ReiAnixCatalogHttpResponse(200,
+            """{"data":[{"id":"adult","type":"anime","attributes":{"canonicalTitle":"Blocked","ageRating":"R18","posterImage":{"original":"https://media.kitsu.io/blocked.jpg"}}}]}""", emptyMap()))
+        val result = ReiAnixKitsuCatalogProvider(transport).searchAnime("sample", 5)
+        assertTrue(result is ReiAnixCatalogResult.Success)
+        assertTrue((result as ReiAnixCatalogResult.Success).value.isEmpty())
+    }
+
+    @Test
     fun searchParsesJsonApiTitlesMetadataRatingsAndArtworkVariants() = runBlocking {
         val transport = FakeTransport(
             ReiAnixCatalogHttpResponse(200, """
