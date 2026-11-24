@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -37,18 +38,15 @@ import com.reianix.reianix_local.ui.profile.ReiAnixProfileRoute
 import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
 import com.reianix.reianix_local.ui.motion.reiAnixScreenEnterTransition
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import com.reianix.reianix_local.ui.motion.reiAnixTabEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixTabExitTransition
 import com.reianix.reianix_local.ui.motion.reiAnixScreenExitTransition
-import com.reianix.reianix_local.ui.motion.reiAnixDetailsEnterTransition
-import com.reianix.reianix_local.ui.motion.reiAnixDetailsExitTransition
-import com.reianix.reianix_local.ui.motion.reiAnixDetailsPopEnterTransition
-import com.reianix.reianix_local.ui.motion.reiAnixDetailsPopExitTransition
-import com.reianix.reianix_local.ui.motion.reiAnixScreenPopEnterTransition
-import com.reianix.reianix_local.ui.motion.reiAnixScreenPopExitTransition
 import com.reianix.reianix_local.ui.motion.ReiAnixMotionPolicy
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.fadeOut
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
 import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
@@ -177,6 +175,36 @@ private val topLevelDestinations = listOf(
         unselectedIcon = Icons.Filled.Settings,
     ),
 )
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabChange(): Boolean =
+    topLevelDestinations.any { it.route == initialState.destination.route } &&
+        topLevelDestinations.any { it.route == targetState.destination.route }
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.shouldAnimate(): Boolean =
+    reiAnixRouteAnimation(
+        initialState.destination.route,
+        targetState.destination.route,
+        initialState.id == targetState.id,
+        ReiAnixMotionPolicy.systemAnimationsEnabled(),
+    ) != ReiAnixRouteAnimation.NONE
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.screenEnter(
+    forward: Boolean,
+    slideDistance: Int,
+): EnterTransition = when {
+    !shouldAnimate() -> EnterTransition.None
+    isTabChange() -> reiAnixTabEnterTransition()
+    else -> reiAnixScreenEnterTransition(if (forward) slideDistance else -slideDistance)
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.screenExit(
+    forward: Boolean,
+    slideDistance: Int,
+): ExitTransition = when {
+    !shouldAnimate() -> ExitTransition.None
+    isTabChange() -> reiAnixTabExitTransition()
+    else -> reiAnixScreenExitTransition(if (forward) slideDistance else -slideDistance)
+}
 
 internal fun shouldNavigateToTopLevel(currentRoute: String?, requestedRoute: String): Boolean =
     currentRoute != requestedRoute
@@ -463,6 +491,7 @@ fun ReiAnixNavigationHost(
         topLevelDestinations.any { it.route == currentRoute } -> currentRoute
         else -> null
     }
+    val slideDistance = with(LocalDensity.current) { 30.dp.roundToPx() }
     val shouldShowBottomNavigation = shouldShowReiAnixBottomNavigation(
         route = currentRoute,
         selectedBottomRoute = selectedBottomRoute,
@@ -484,60 +513,10 @@ fun ReiAnixNavigationHost(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding),
-            enterTransition = {
-                when (reiAnixRouteAnimation(
-                    initialState.destination.route, targetState.destination.route,
-                    initialState.id == targetState.id,
-                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
-                )) {
-                    ReiAnixRouteAnimation.NONE -> EnterTransition.None
-                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsEnterTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenEnterTransition()
-                }
-            },
-            exitTransition = exit@{
-                val fromRoute = initialState.destination.route
-                val fromBottomDestination = fromRoute == ReiAnixRoutes.MY_LIST ||
-                    topLevelDestinations.any { it.route == fromRoute }
-                if (targetState.destination.route == ReiAnixRoutes.DETAILS &&
-                    showBottomNavigation && fromBottomDestination
-                ) {
-                    // The shared viewport grows when the bottom bar disappears.
-                    // Don't draw the outgoing screen at that new height behind Details.
-                    return@exit fadeOut(animationSpec = snap())
-                }
-                when (reiAnixRouteAnimation(
-                    initialState.destination.route, targetState.destination.route,
-                    initialState.id == targetState.id,
-                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
-                )) {
-                    ReiAnixRouteAnimation.NONE -> ExitTransition.None
-                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsExitTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenExitTransition()
-                }
-            },
-            popEnterTransition = {
-                when (reiAnixRouteAnimation(
-                    initialState.destination.route, targetState.destination.route,
-                    initialState.id == targetState.id,
-                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
-                )) {
-                    ReiAnixRouteAnimation.NONE -> EnterTransition.None
-                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsPopEnterTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenPopEnterTransition()
-                }
-            },
-            popExitTransition = {
-                when (reiAnixRouteAnimation(
-                    initialState.destination.route, targetState.destination.route,
-                    initialState.id == targetState.id,
-                    ReiAnixMotionPolicy.systemAnimationsEnabled(),
-                )) {
-                    ReiAnixRouteAnimation.NONE -> ExitTransition.None
-                    ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsPopExitTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenPopExitTransition()
-                }
-            },
+            enterTransition = { screenEnter(forward = true, slideDistance = slideDistance) },
+            exitTransition = { screenExit(forward = true, slideDistance = slideDistance) },
+            popEnterTransition = { screenEnter(forward = false, slideDistance = slideDistance) },
+            popExitTransition = { screenExit(forward = false, slideDistance = slideDistance) },
         ) {
             reiAnixGuardedComposable(navController, ReiAnixRoutes.HOME) { home() }
             reiAnixGuardedComposable(navController, ReiAnixRoutes.LIBRARY) { library() }

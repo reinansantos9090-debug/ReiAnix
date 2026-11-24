@@ -3,12 +3,14 @@ package com.reianix.reianix_local.ui.motion
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,55 +20,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 
-private const val SCREEN_TRANSITION_MILLIS = 150
-private const val SCREEN_TRANSITION_SCALE = 0.9f
+// Match the Anikku's Material fade-through (tabs) and shared axis X (screen stack).
+private const val TAB_TRANSITION_MILLIS = 200
+private const val SCREEN_TRANSITION_MILLIS = 300
+private const val OUTGOING_FRACTION = 0.35f
 
-private fun screenTransitionSpec() = tween<Float>(
-    durationMillis = SCREEN_TRANSITION_MILLIS,
-    easing = LinearEasing,
-)
+private fun incomingFade(durationMillis: Int): TweenSpec<Float> {
+    val delay = (durationMillis * OUTGOING_FRACTION).toInt()
+    return tween(durationMillis - delay, delay, LinearOutSlowInEasing)
+}
 
-internal fun reiAnixScreenEnterTransition(): EnterTransition =
-    fadeIn(animationSpec = screenTransitionSpec()) +
-        scaleIn(animationSpec = screenTransitionSpec(), initialScale = SCREEN_TRANSITION_SCALE)
+private fun outgoingFade(durationMillis: Int) =
+    tween<Float>((durationMillis * OUTGOING_FRACTION).toInt(), easing = FastOutLinearInEasing)
 
-internal fun reiAnixScreenExitTransition(): ExitTransition =
-    fadeOut(animationSpec = screenTransitionSpec()) +
-        scaleOut(animationSpec = screenTransitionSpec(), targetScale = SCREEN_TRANSITION_SCALE)
+internal fun reiAnixTabEnterTransition(): EnterTransition =
+    fadeIn(animationSpec = incomingFade(TAB_TRANSITION_MILLIS))
 
-/**
- * Navigation back is a different interaction from navigation forward. Keep the
- * same fade-and-scale effect (unlike the rejected fade-only PR), while slightly
- * reducing the scale range on returning to an existing screen.
- */
-internal fun reiAnixScreenPopEnterTransition(): EnterTransition =
-    fadeIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
-        scaleIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), initialScale = 0.96f)
+internal fun reiAnixTabExitTransition(): ExitTransition =
+    fadeOut(animationSpec = outgoingFade(TAB_TRANSITION_MILLIS))
 
-internal fun reiAnixScreenPopExitTransition(): ExitTransition =
-    fadeOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
-        scaleOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), targetScale = 0.96f)
+internal fun reiAnixScreenEnterTransition(offset: Int): EnterTransition =
+    fadeIn(animationSpec = incomingFade(SCREEN_TRANSITION_MILLIS)) +
+        slideInHorizontally(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) { offset }
 
-/**
- * Detail transitions keep fade AND scale, but avoid transforming the large
- * poster/episode tree through the full 10% size range. Benchmark results must
- * determine whether this helps on the user's physical device.
- */
-internal fun reiAnixDetailsEnterTransition(): EnterTransition =
-    fadeIn(animationSpec = screenTransitionSpec()) +
-        scaleIn(animationSpec = screenTransitionSpec(), initialScale = 0.97f)
-
-internal fun reiAnixDetailsExitTransition(): ExitTransition =
-    fadeOut(animationSpec = screenTransitionSpec()) +
-        scaleOut(animationSpec = screenTransitionSpec(), targetScale = 0.97f)
-
-internal fun reiAnixDetailsPopEnterTransition(): EnterTransition =
-    fadeIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
-        scaleIn(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), initialScale = 0.985f)
-
-internal fun reiAnixDetailsPopExitTransition(): ExitTransition =
-    fadeOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) +
-        scaleOut(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing), targetScale = 0.985f)
+internal fun reiAnixScreenExitTransition(offset: Int): ExitTransition =
+    fadeOut(animationSpec = outgoingFade(SCREEN_TRANSITION_MILLIS)) +
+        slideOutHorizontally(animationSpec = tween(SCREEN_TRANSITION_MILLIS, easing = FastOutSlowInEasing)) { -offset }
 
 /** Animate the incoming content when an internal tab changes in place. */
 @Composable
@@ -78,13 +57,7 @@ internal fun Modifier.reiAnixScreenFade(destination: Any?): Modifier {
     }
     SideEffect { lastDestination.value = destination }
     LaunchedEffect(progress) {
-        if (progress.value < 1f) progress.animateTo(1f, screenTransitionSpec())
+        if (progress.value < 1f) progress.animateTo(1f, incomingFade(TAB_TRANSITION_MILLIS))
     }
-    return graphicsLayer {
-        val fraction = progress.value
-        val scale = SCREEN_TRANSITION_SCALE + (1f - SCREEN_TRANSITION_SCALE) * fraction
-        alpha = fraction
-        scaleX = scale
-        scaleY = scale
-    }
+    return graphicsLayer { alpha = progress.value }
 }
