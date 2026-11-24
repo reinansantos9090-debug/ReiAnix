@@ -44,6 +44,30 @@ class PlayerShortcutAndAnimePreferencesTest {
         val four = shortcuts.filterNot { it == PlayerShortcut.SPEED }
         assertEquals(0f, PlayerShortcutPolicy.centerActionGroupShiftFraction(four), 0f)
     }
+    @Test fun portraitOnlyMovesTheWholeCenterGroupRight() {
+        val five = PlayerShortcutPolicy.default
+        val four = five.filterNot { it == PlayerShortcut.SPEED }
+        val portraitDp = PlayerShortcutPolicy.centerActionGroupPortraitCorrectionDp(five, landscape = false)
+        val landscapeDp = PlayerShortcutPolicy.centerActionGroupPortraitCorrectionDp(five, landscape = true)
+        assertEquals(4f, portraitDp, 0f)
+        assertEquals(0f, landscapeDp, 0f)
+        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupPortraitCorrectionDp(four, landscape = false), 0f)
+        assertEquals(0f, PlayerShortcutPolicy.centerActionGroupPortraitCorrectionDp(four, landscape = true), 0f)
+
+        // No per-button shift: both seek buttons follow Play by the exact
+        // same amount and retain their original center-to-center distances.
+        for (widthDp in listOf(320f, 410f, 560f)) {
+            val unchangedShift = widthDp * PlayerShortcutPolicy.centerActionGroupShiftFraction(five)
+            val portraitShift = unchangedShift + portraitDp
+            assertEquals(4f, portraitShift - unchangedShift, 0.0001f)
+            val seekDistance = widthDp * 0.25f
+            val play = widthDp / 2f + portraitShift
+            val back = widthDp / 2f - seekDistance + portraitShift
+            val forward = widthDp / 2f + seekDistance + portraitShift
+            assertEquals(seekDistance, play - back, 0.0001f)
+            assertEquals(seekDistance, forward - play, 0.0001f)
+        }
+    }
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
         val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.SPEED, false)
         assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.EPISODES,

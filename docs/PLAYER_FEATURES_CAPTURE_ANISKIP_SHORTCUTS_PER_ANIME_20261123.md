@@ -94,3 +94,10 @@ O salvamento bem-sucedido de cenas favoritas também não exibe toast de confirm
 - Preservar a distância simétrica entre Play e cada controle de 10 segundos, dimensões, áreas de toque e posições verticais.
 - Com 4 atalhos, manter as posições anteriores. O deslocamento acompanha a largura disponível sem valores fixos em pixels.
 - Conferir visualmente na paisagem e retrato, inclusive com mudança de orientação, buscando alinhamento dos centros e nenhuma piscada ou alteração dos gestos.
+
+## Compensação visual exclusiva do modo retrato (24/11/2026)
+
+- Após a validação no aparelho, o usuário confirmou o alinhamento em paisagem e pediu mover um pouco à direita o conjunto central apenas no retrato.
+- Somar **4 dp** ao deslocamento anterior apenas quando há **5 atalhos e orientação retrato**, mantendo a correção de -1/64 da largura já existente.
+- Mover **Play/Pause e ambos os botões ±10 segundos como um grupo**: manter alturas, tamanhos, áreas de toque, animações e espaçamento interno, sem deslocar a barra inferior.
+- Com quatro atalhos e em paisagem, nenhuma compensação adicional é aplicada. Validar visualmente no aparelho após a build.

@@ -34,6 +34,14 @@ object PlayerShortcutPolicy {
     fun centerActionGroupShiftFraction(shortcuts: List<PlayerShortcut>): Float =
         if (shortcuts.size == MAX_COUNT) -FIVE_SHORTCUT_INSET_UNIT_FRACTION else 0f
 
+    // Subtle optical compensation in portrait: the center play glyph sits a
+    // little left of the third shortcut. Never alter the landscape alignment.
+    const val PORTRAIT_CENTER_GROUP_CORRECTION_DP = 4f
+
+    fun centerActionGroupPortraitCorrectionDp(
+        shortcuts: List<PlayerShortcut>, landscape: Boolean,
+    ): Float = if (!landscape && shortcuts.size == MAX_COUNT) PORTRAIT_CENTER_GROUP_CORRECTION_DP else 0f
+
     fun normalize(raw: String): String {
         val keys = raw.split(',').map { it.trim() }
         require(keys.size in 1..MAX_COUNT && keys.none { it.isBlank() } &&

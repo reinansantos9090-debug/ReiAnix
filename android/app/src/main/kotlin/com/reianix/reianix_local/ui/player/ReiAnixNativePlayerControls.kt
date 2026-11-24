@@ -273,7 +273,10 @@ fun ReiAnixNativePlayerCenterControls(
         // (Speed by default) icon. Both ten-second controls move with Play,
         // retaining identical spacing and hit targets. Four shortcuts stay put.
         val groupShiftPx = with(LocalDensity.current) {
-            (maxWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(state.shortcuts)).roundToPx()
+            // Keep the landscape shift bit-for-bit unchanged; apply a small
+            // portrait-only correction to the trio, never to the bottom row.
+            (maxWidth * PlayerShortcutPolicy.centerActionGroupShiftFraction(state.shortcuts) +
+                PlayerShortcutPolicy.centerActionGroupPortraitCorrectionDp(state.shortcuts, landscape).dp).roundToPx()
         }
         BoxWithConstraints(
             modifier = Modifier
