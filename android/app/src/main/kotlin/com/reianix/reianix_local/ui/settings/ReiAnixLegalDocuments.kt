@@ -27,8 +27,8 @@ import com.reianix.reianix_local.ui.theme.ReiAnixTokens
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 internal enum class ReiAnixLegalDocument(val title: String, val asset: String, val publicUrl: String) {
-    PRIVACY("Política de privacidade", "legal/privacy.txt", "https://reinansantos9090-debug.github.io/ReiAnix/privacy.html"),
-    TERMS("Termos de uso", "legal/terms.txt", "https://reinansantos9090-debug.github.io/ReiAnix/terms.html"),
+    PRIVACY("Política de privacidade", "legal/privacy.txt", "https://reinansantos9090-debug.github.io/ReiAnix-Legal/privacy.html"),
+    TERMS("Termos de uso", "legal/terms.txt", "https://reinansantos9090-debug.github.io/ReiAnix-Legal/terms.html"),
 }
 
 @Composable
