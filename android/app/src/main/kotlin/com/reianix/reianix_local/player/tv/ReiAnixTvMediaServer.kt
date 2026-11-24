@@ -28,8 +28,7 @@ import kotlin.concurrent.thread
  * Share ONLY the current SAF video on the active private LAN.
  *
  * The same Range-enabled HTTP endpoint serves Cast and DLNA renderers.
- * Roku Media Player can browse the small UPnP MediaServer exposed here;
- * Roku is not an UPnP renderer and cannot be auto-launched by third-party ECP.
+ * No UPnP browsing or media advertisement is enabled; Roku uses the external handoff.
  */
 class ReiAnixTvMediaServer(
     private val context: Context,
@@ -66,6 +65,7 @@ class ReiAnixTvMediaServer(
                     val socket = server.accept()
                     if (closed || !slots.tryAcquire()) { socket.close(); continue }
                     activeClients.add(socket)
+                    if (closed) { activeClients.remove(socket); slots.release(); socket.close(); continue }
                     thread(name = "reianix-tv-client", isDaemon = true) {
                         try {
                             socket.use { client ->
