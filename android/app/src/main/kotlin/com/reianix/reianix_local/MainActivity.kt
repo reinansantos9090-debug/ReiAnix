@@ -144,8 +144,8 @@ class MainActivity : ComponentActivity() {
     private var nativeBootstrapDecisionComplete = false
     private val pendingNativeIntentsBeforeBootstrap = ArrayList<Intent>()
     private var lastObservedMediaAccess: String? = null
-    private val _welcomeNeedsSetup = MutableStateFlow(false)
-    val welcomeNeedsSetup: StateFlow<Boolean> = _welcomeNeedsSetup.asStateFlow()
+    private val _welcomeNeedsSetup = MutableStateFlow<Boolean?>(null)
+    val welcomeNeedsSetup: StateFlow<Boolean?> = _welcomeNeedsSetup.asStateFlow()
     private val _welcomeFolderPaths = MutableStateFlow(ReiAnixWelcomeFolderPaths())
     val welcomeFolderPaths: StateFlow<ReiAnixWelcomeFolderPaths> = _welcomeFolderPaths.asStateFlow()
     private val _nativeStorageOnboardingState = MutableStateFlow(NativeStorageOnboardingState())
@@ -1291,10 +1291,19 @@ class MainActivity : ComponentActivity() {
                 if (activityResumed) dispatchPendingSafTreeChanges()
             }
         }
+        val welcomePrefs = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
+        val welcomeDismissed = welcomePrefs.getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false)
         _nativeStorageOnboardingState.value = _nativeStorageOnboardingState.value.copy(
-            dismissed = getSharedPreferences(NATIVE_STORAGE_ONBOARDING_PREFS, MODE_PRIVATE)
-                .getBoolean(NATIVE_STORAGE_ONBOARDING_DISMISSED, false),
+            dismissed = welcomeDismissed,
         )
+        // A fresh install and an upgrade can both lack a welcome preference.
+        // Let the canonical folder check distinguish them before exposing Home.
+        _welcomeNeedsSetup.value = when {
+            welcomePrefs.getBoolean(WELCOME_INITIALIZED, false) ->
+                !welcomePrefs.getBoolean(WELCOME_COMPLETED, false)
+            welcomeDismissed -> false
+            else -> null
+        }
         // Keep the application shell and Settings available even when canonical SQLite
         // validation fails. Database-dependent native operations remain gated by the
         // process bootstrap, but diagnostics and export are only opened by an explicit
@@ -1320,6 +1329,7 @@ class MainActivity : ComponentActivity() {
                         applyApplicationSystemUi()
                     }
             }
+            if (recoveryRequired) _welcomeNeedsSetup.value = false
             composeLibraryHost = ReiAnixComposeLibraryHost(this@MainActivity, libraryViewModel, settingsViewModel)
             composeLibraryHost.show(ReiAnixRoutes.HOME, resetBackStack = true)
             if (recoveryRequired) {

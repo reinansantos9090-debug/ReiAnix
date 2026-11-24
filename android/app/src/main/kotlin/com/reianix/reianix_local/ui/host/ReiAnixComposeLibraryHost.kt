@@ -6,6 +6,8 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -333,7 +335,7 @@ class ReiAnixComposeLibraryHost(
                         }
                     }
                     val onboardingAllowed =
-                        currentRoute?.destination?.route in setOf(
+                        (currentRoute?.destination?.route ?: startDestination) in setOf(
                             ReiAnixRoutes.HOME,
                             ReiAnixRoutes.LIBRARY,
                         )
@@ -489,7 +491,9 @@ class ReiAnixComposeLibraryHost(
                             navController.navigateToCollector()
                         },
                     )
-                    if (onboardingAllowed && welcomeRequired) {
+                    if (onboardingAllowed && welcomeRequired == null) {
+                        Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {}
+                    } else if (onboardingAllowed && welcomeRequired == true) {
                         ReiAnixLibraryFolderOnboarding(
                             state = nativeOnboarding.phase,
                             error = nativeOnboarding.error,
