@@ -2,9 +2,18 @@ package com.reianix.reianix_local.ui.player
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,7 +48,6 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.DragIndicator
 import com.reianix.reianix_local.player.PlayerShortcut
 import com.reianix.reianix_local.player.PlayerShortcutPolicy
 import androidx.compose.material3.ripple
@@ -52,10 +60,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
@@ -323,61 +335,124 @@ fun ReiAnixNativePlayerOptionsPanel(
                 val currentShortcuts by rememberUpdatedState(state.shortcuts)
                 val currentOnShortcutsChanged by rememberUpdatedState(onShortcutsChanged)
                 val stepPx = with(LocalDensity.current) { 48.dp.toPx() }
-                // Selected controls are listed in their actual player order; disabled
-                // controls stay below them. Options is fixed and cannot be dragged.
+                val liftShape = remember { RoundedCornerShape(12.dp) }
+                var draggedShortcut by remember(page, resetSignal) { mutableStateOf<PlayerShortcut?>(null) }
+                var draggedOffsetPx by remember(page, resetSignal) { mutableFloatStateOf(0f) }
+                // Preserve the player order. Options stays pinned, inactive rows stay last.
                 val ordered = state.shortcuts + PlayerShortcut.entries.filterNot { it in state.shortcuts }
-                ordered.forEach { shortcut ->
+                ordered.forEachIndexed { position, shortcut ->
                     key(shortcut) {
                         val isSelected = shortcut in state.shortcuts
                         val draggable = isSelected && shortcut != PlayerShortcut.OPTIONS
+                        val isDragging = draggedShortcut == shortcut
+
+                        // Animate displaced neighbours instead of jumping to new slots.
+                        val placementOffset = remember { Animatable(0f) }
+                        var previousPosition by remember { mutableIntStateOf(position) }
+                        LaunchedEffect(position) {
+                            if (previousPosition != position) {
+                                val fromPx = (previousPosition - position) * stepPx
+                                previousPosition = position
+                                if (isDragging) {
+                                    placementOffset.snapTo(0f)
+                                } else {
+                                    placementOffset.snapTo(fromPx)
+                                    placementOffset.animateTo(
+                                        0f, animationSpec = tween(210, easing = FastOutSlowInEasing),
+                                    )
+                                }
+                            }
+                        }
+                        val movingOffset by animateFloatAsState(
+                            targetValue = if (isDragging) draggedOffsetPx else 0f,
+                            animationSpec = if (isDragging) snap() else tween(190, easing = FastOutSlowInEasing),
+                            label = "Player shortcut drag offset",
+                        )
+                        val highlight by animateColorAsState(
+                            targetValue = if (isDragging) Color.White.copy(alpha = 0.16f) else Color.Transparent,
+                            animationSpec = tween(150),
+                            label = "Player shortcut drag highlight",
+                        )
+                        val lift by animateDpAsState(
+                            targetValue = if (isDragging) 10.dp else 0.dp,
+                            animationSpec = tween(150),
+                            label = "Player shortcut drag elevation",
+                        )
+                        val scale by animateFloatAsState(
+                            targetValue = if (isDragging) 1.025f else 1f,
+                            animationSpec = tween(150),
+                            label = "Player shortcut drag scale",
+                        )
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
                                 .padding(horizontal = 12.dp)
-                                .then(
-                                    if (draggable) Modifier.pointerInput(shortcut, stepPx) {
-                                        var accumulatedY = 0f
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = { accumulatedY = 0f },
-                                            onDragEnd = { accumulatedY = 0f },
-                                            onDragCancel = { accumulatedY = 0f },
-                                            onDrag = { change, delta ->
-                                                change.consume()
-                                                accumulatedY += delta.y
-                                                if (kotlin.math.abs(accumulatedY) >= stepPx) {
-                                                    val direction = if (accumulatedY > 0f) 1 else -1
-                                                    val moved = PlayerShortcutPolicy.move(currentShortcuts, shortcut, direction)
-                                                    if (moved != currentShortcuts) {
-                                                        currentOnShortcutsChanged(moved)
-                                                        accumulatedY -= direction * stepPx
-                                                    } else {
-                                                        accumulatedY = 0f
-                                                    }
-                                                }
-                                            },
-                                        )
-                                    } else Modifier,
-                                ),
+                                .zIndex(if (isDragging || kotlin.math.abs(movingOffset) > 1f) 1f else 0f)
+                                .graphicsLayer {
+                                    translationY = placementOffset.value + movingOffset
+                                    scaleX = scale
+                                    scaleY = scale
+                                    shadowElevation = lift.toPx()
+                                    shape = liftShape
+                                    clip = false
+                                }
+                                .background(highlight, liftShape)
+                                .height(48.dp)
+                                .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (draggable) {
-                                Icon(
-                                    Icons.Filled.DragIndicator,
-                                    contentDescription = "Segure e arraste ${shortcut.displayName}",
-                                    tint = Color(0xFFBBBBBB),
-                                    modifier = Modifier.size(22.dp),
+                            // The full label area is draggable; the switch stays a separate
+                            // touch target so turning a shortcut on/off cannot begin a drag.
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .then(
+                                        if (draggable) Modifier.pointerInput(shortcut, stepPx) {
+                                            var gestureShortcuts = currentShortcuts
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = {
+                                                    gestureShortcuts = currentShortcuts
+                                                    draggedShortcut = shortcut
+                                                    draggedOffsetPx = 0f
+                                                },
+                                                onDragEnd = { draggedShortcut = null },
+                                                onDragCancel = { draggedShortcut = null },
+                                                onDrag = { change, delta ->
+                                                    change.consume()
+                                                    draggedOffsetPx += delta.y
+                                                    var nextShortcuts = gestureShortcuts
+                                                    var steps = 0
+                                                    while (kotlin.math.abs(draggedOffsetPx) >= stepPx / 2f &&
+                                                        steps < PlayerShortcutPolicy.MAX_COUNT
+                                                    ) {
+                                                        val direction = if (draggedOffsetPx > 0f) 1 else -1
+                                                        val next = PlayerShortcutPolicy.move(nextShortcuts, shortcut, direction)
+                                                        if (next == nextShortcuts) {
+                                                            draggedOffsetPx = direction * stepPx * 0.49f
+                                                            break
+                                                        }
+                                                        nextShortcuts = next
+                                                        draggedOffsetPx -= direction * stepPx
+                                                        steps++
+                                                    }
+                                                    if (nextShortcuts != gestureShortcuts) {
+                                                        gestureShortcuts = nextShortcuts
+                                                        currentOnShortcutsChanged(nextShortcuts)
+                                                    }
+                                                },
+                                            )
+                                        } else Modifier,
+                                    ),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                Text(
+                                    text = shortcut.displayName,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
                                 )
-                            } else {
-                                Spacer(modifier = Modifier.size(22.dp))
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = shortcut.displayName,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                modifier = Modifier.weight(1f),
-                            )
                             Switch(
                                 checked = isSelected,
                                 enabled = shortcut != PlayerShortcut.OPTIONS &&

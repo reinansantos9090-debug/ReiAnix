@@ -56,6 +56,16 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals("false", ReiAnixSettingsContract.normalize("player.anime_preferences_enabled", "off"))
     }
 
+    @Test fun draggingNeverReordersOptionsOrDisabledShortcuts() {
+        val five = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAPTURE, true)
+        val afterDrag = PlayerShortcutPolicy.move(five, PlayerShortcut.CAPTURE, 1)
+        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.CAPTURE, PlayerShortcut.EPISODES,
+            PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), afterDrag)
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.OPTIONS, -1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.TIMER, -1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.NEXT, 1))
+    }
+
     @Test fun perAnimeSettingsRemainIsolatedAndPreserveTrackIdentity() {
         val onePiece = PlayerAnimePreferences(
             speed = 1.25f,
