@@ -50,7 +50,7 @@ class ExternalVideoChooserTest {
 
     @Test fun wrapsFileUriInsteadOfExposingFileScheme() {
         val context = RuntimeEnvironment.getApplication()
-        val localFile = File(context.cacheDir, "external-chooser-test.mp4")
+        val localFile = File(File(context.cacheDir, "video_exports").apply { mkdirs() }, "external-chooser-test.mp4")
         localFile.writeBytes(byteArrayOf(0, 1, 2, 3))
         try {
             val target = targetIntent(
@@ -105,6 +105,17 @@ class ExternalVideoChooserTest {
                 ExternalVideoChooser.createWebVideoCasterIntent(context, uri, "Episódio")
             }
         }
+    }
+
+    @Test fun refusesPrivateFilesEvenWithVideoExtension() {
+        val context = RuntimeEnvironment.getApplication()
+        val file = File(context.filesDir, "private.mp4")
+        file.writeBytes(byteArrayOf(1))
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                ExternalVideoChooser.createIntent(context, Uri.fromFile(file))
+            }
+        } finally { file.delete() }
     }
 
     @Test fun rejectsUnrelatedRemoteOrUnsupportedUri() {

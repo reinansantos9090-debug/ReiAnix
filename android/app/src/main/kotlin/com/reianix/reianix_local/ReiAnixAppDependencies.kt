@@ -190,6 +190,7 @@ class ReiAnixAppDependencies(context: Context) {
             settings = sqliteSettingsRepository,
             genreRegistry = genreRegistry,
             traceMoeClient = traceMoeClient,
+            traceMoeConsent = { com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent.allowed(appContext) },
             descriptionLocalizer = ReiAnixAniListDescriptionLocalizer(
                 cacheFile = File(appContext.filesDir, "data/covers/anilist_description_ptbr.json"),
             ),

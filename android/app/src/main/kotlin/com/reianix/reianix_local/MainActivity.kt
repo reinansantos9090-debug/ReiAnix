@@ -4205,7 +4205,7 @@ class MainActivity : ComponentActivity() {
                 "release_tree",
                 NativeRequestState.OperationState.FAILED,
             )
-            Log.e(tag, "SAF release failed stage=$stage code=$code treeUri=$normalizedReference")
+            Log.e(tag, "SAF release failed stage=$stage code=$code")
             if (nativeFolderConfigOwner) {
                 libraryViewModel.onSafRemovalTerminal(normalizedReference)
                 refreshNativeStorageOnboardingState("saf_release_failed")
@@ -4390,7 +4390,7 @@ class MainActivity : ComponentActivity() {
         }
         val inspection = SafScanner.inspectTree(this, uri, requirePersisted = true)
         val status = inspection.optString("status")
-        Log.i(tag, "SAF permission verification: status=" + status + " uri=" + reference)
+        Log.i(tag, "SAF permission verification: status=" + status)
         if (status == SafScanner.STATUS_COMPLETED) {
             nativeRequestState.markOperationState(requestId, "verify_tree", NativeRequestState.OperationState.COMPLETED)
             NativeMailbox.write(this, JSONObject().put("type", "saf_permission")
@@ -4461,7 +4461,7 @@ class MainActivity : ComponentActivity() {
 
         val localUri = runCatching { Uri.parse(episodeUri) }.getOrNull()
         if (localUri == null || localUri.scheme?.lowercase() !in setOf("content", "file")) {
-            Log.e(tag, "PLAY_HANDOFF_FAILED requestId=" + requestId + " uri=" + episodeUri + " reason=unsupported_scheme")
+            Log.e(tag, "PLAY_HANDOFF_FAILED requestId=" + requestId + " reason=unsupported_scheme")
             nativeRequestState.markOperationState(requestId, "play", NativeRequestState.OperationState.FAILED)
             NativeMailbox.writeBestEffort(this, JSONObject().put("type", "player_error")
                 .put("requestId", requestId)

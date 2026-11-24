@@ -910,6 +910,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private suspend fun download(key: String, rawUrl: String): Downloaded {
         check(ensureArtworkCacheDirectory(cacheDirectory)) { "Artwork cache directory unavailable." }
         val url = URL(rawUrl)
+        if (!safeUrl(rawUrl)) throw InvalidImage("Remote artwork requires HTTPS.")
         val conn = url.openConnection() as? HttpURLConnection ?: throw InvalidImage("Not an HTTP connection.")
         val tmp = File(cacheDirectory, "." + key + "-" + UUID.randomUUID() + ".tmp")
         try {
@@ -2242,7 +2243,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private fun safeUrl(s: String): Boolean {
         if (s.any { it.isWhitespace() || it.code == 0 }) return false
         val u = runCatching { URL(s) }.getOrNull() ?: return false
-        return (u.protocol.equals("https", true) || u.protocol.equals("http", true)) && u.host.isNotBlank() && u.userInfo == null
+        return u.protocol.equals("https", true) && u.host.isNotBlank() && u.userInfo == null
     }
     private fun imageExtension(b: ByteArray): String? {
         if (b.size >= 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() && b[2] == 0xFF.toByte()) return ".jpg"

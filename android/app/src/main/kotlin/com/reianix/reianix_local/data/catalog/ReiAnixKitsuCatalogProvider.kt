@@ -38,10 +38,12 @@ class ReiAnixKitsuCatalogProvider(
                     if (resourceId == null || !resourceId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) {
                         continue
                     }
+                    if (isExplicitAdult(item)) continue
                     parseAnime(item)?.let(::add)
                 }
             }
-            if (data.length() > 0 && validResources.isEmpty()) {
+            if (data.length() > 0 && validResources.isEmpty() &&
+                (0 until data.length()).any { data.optJSONObject(it)?.let(::isExplicitAdult) != true }) {
                 throw JSONException("Kitsu search response contains no valid anime resources.")
             }
             validResources
@@ -59,6 +61,7 @@ class ReiAnixKitsuCatalogProvider(
             if (!root.has("data") || root.isNull("data")) return@execute null
             val data = root.optJSONObject("data")
                 ?: throw JSONException("Kitsu detail response contains an invalid JSON:API data object.")
+            if (isExplicitAdult(data)) return@execute null
             parseAnime(data)
                 ?: throw JSONException("Kitsu detail resource is missing its ID or canonical title.")
         }
@@ -91,7 +94,14 @@ class ReiAnixKitsuCatalogProvider(
         ReiAnixCatalogResult.Failure(reiAnixCatalogErrorFor(error))
     }
 
+    private fun isExplicitAdult(resource: JSONObject): Boolean {
+        val attributes = resource.optJSONObject("attributes") ?: return false
+        return attributes.optBoolean("nsfw", false) || attributes.optBoolean("isAdult", false) ||
+            attributes.optString("ageRating").uppercase(Locale.ROOT) in setOf("R18", "RX", "X", "R18+")
+    }
+
     private fun parseAnime(resource: JSONObject): ReiAnixCatalogAnime? {
+        if (isExplicitAdult(resource)) return null
         if (resource.catalogText("type")?.equals("anime", ignoreCase = true) != true) return null
         val id = resource.catalogText("id")
             ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,128}")) }

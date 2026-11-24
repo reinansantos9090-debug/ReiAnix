@@ -246,7 +246,11 @@ fun ReiAnixSettingsRoute(
             onBack()
             return
         }
-        selectedDestination = if (selectedDestination in listOf("Licenças", "Política de privacidade", "Termos de uso")) "Sobre" else initialDestination
+        selectedDestination = when (selectedDestination) {
+            "Backup protegido" -> "Dados e Backup"
+            "Licenças", "Política de privacidade", "Termos de uso" -> "Sobre"
+            else -> initialDestination
+        }
         selectedItemIndex = 0
     }
     BackHandler(enabled = destination != null) { goBack() }
@@ -263,6 +267,9 @@ fun ReiAnixSettingsRoute(
                     onOpenStorage()
                 }
             }
+        }
+        destination == "Backup protegido" -> androidx.compose.runtime.key(destination) {
+            ReiAnixProtectedBackupScreen(onBack = ::goBack)
         }
         destination == "Licenças" -> androidx.compose.runtime.key(destination) {
             ReiAnixOpenSourceLicensesScreen(onBack = ::goBack)
@@ -729,6 +736,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             checked = state.settings["metadata.auto_match"] == "true",
                             onCheckedChange = { onUpdateSetting("metadata.auto_match", it.toString()) },
                         )
+                    }
+                    item(key = "privacy:trace_moe") {
+                        TraceMoeConsentSetting()
                     }
                     item(key = "setting:artwork.enabled") {
                         BooleanSettingRow(
@@ -1245,6 +1255,12 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     text = "Fazer backup",
                                     onClick = { onAction("backup_create") },
                                     enabled = !actionBusy("backup_create"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                SettingsActionRow(
+                                    text = "Backup protegido",
+                                    onClick = { onOpenSubmenu("Backup protegido") },
+                                    enabled = android.os.Build.VERSION.SDK_INT >= 26,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SettingsActionRow(
@@ -1884,4 +1900,31 @@ private fun SettingsDialogButton(
     androidx.compose.material3.TextButton(onClick = onClick, modifier = modifier, enabled = enabled) {
         Text(text, style = MaterialTheme.typography.labelLarge)
     }
+}
+
+@Composable
+private fun TraceMoeConsentSetting() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val consent = com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent
+    var allowed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(consent.allowed(context)) }
+    var confirm by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    BooleanSettingRow(
+        keyName = "privacy:trace_moe",
+        title = "Identificação por imagem",
+        description = "Autoriza o envio de miniaturas de episódios ao Trace.moe.",
+        checked = allowed,
+        onCheckedChange = { next ->
+            if (next) confirm = true else if (consent.setAllowed(context, false)) allowed = false
+        },
+    )
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text("Autorizar envio de miniaturas?") },
+        text = { Text("O ReiAnix poderá enviar imagens JPEG extraídas dos seus episódios locais ao serviço externo Trace.moe para identificar o anime, inclusive na identificação automática. As imagens revelam cenas do vídeo; o vídeo completo não é enviado. O serviço recebe também seu IP. Você pode recusar e continuar usando a biblioteca, ou desativar esta autorização a qualquer momento. Consultas já enviadas não podem ser desfeitas.") },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = {
+            if (consent.setAllowed(context, true)) allowed = true
+            confirm = false
+        }) { Text("Autorizar") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { confirm = false }) { Text("Não autorizar") } },
+    )
 }

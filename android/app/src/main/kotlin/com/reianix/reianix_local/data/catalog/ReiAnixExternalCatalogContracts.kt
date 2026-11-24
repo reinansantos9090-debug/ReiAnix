@@ -156,13 +156,13 @@ internal fun reiAnixArtworkAspectRatioWarning(
 internal fun isValidCatalogArtworkUrl(url: String?): Boolean {
     if (url.isNullOrBlank() || url.any { it.isWhitespace() || it.code < 0x20 }) return false
     val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
-    return (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) &&
+    return uri.scheme.equals("https", true) &&
         !uri.host.isNullOrBlank() && uri.rawUserInfo == null
 }
 
 private fun requireValidArtworkUrl(url: String) {
     require(isValidCatalogArtworkUrl(url)) {
-        "Artwork URL must be a valid absolute HTTP(S) URL without user info."
+        "Artwork URL must be a valid absolute HTTPS URL without user info."
     }
 }
 

@@ -23,6 +23,14 @@ class ReiAnixApplication : Application(), ImageLoaderFactory {
         // their memory caches never duplicate the same decoded poster.
         val isLowRam = getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
         return ImageLoader.Builder(this)
+            .okHttpClient {
+                okhttp3.OkHttpClient.Builder()
+                    .followSslRedirects(false)
+                    .addInterceptor { chain ->
+                        if (!chain.request().url.isHttps) throw java.io.IOException("Remote artwork requires HTTPS")
+                        chain.proceed(chain.request())
+                    }.build()
+            }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(if (isLowRam) 0.15 else 0.20)

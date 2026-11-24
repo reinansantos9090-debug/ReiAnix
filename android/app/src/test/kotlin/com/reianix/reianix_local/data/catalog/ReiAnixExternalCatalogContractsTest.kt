@@ -511,7 +511,7 @@ class ReiAnixExternalCatalogContractsTest {
     }
 
     @Test
-    fun artworkCandidatesRequireAValidHttpUrl() {
+    fun artworkCandidatesRequireAValidHttpsUrl() {
         val anime = ReiAnixCatalogAnime(
             source = ReiAnixCatalogSource.KITSU,
             ids = ReiAnixExternalCatalogIds(myAnimeListId = 1L, kitsuId = "1"),
@@ -520,11 +520,13 @@ class ReiAnixExternalCatalogContractsTest {
         )
         val withArtwork = anime.copy(coverUrl = "https://cdn.example/poster.jpg")
         assertEquals("https://cdn.example/poster.jpg", withArtwork.artworkCandidates().single().url)
-        try {
-            anime.copy(coverUrl = "file:///tmp/poster.jpg")
-            throw AssertionError("Local files are not valid provider image URLs.")
-        } catch (expected: IllegalArgumentException) {
-            assertTrue(expected.message.orEmpty().contains("HTTP(S)"))
+        for (invalid in listOf("file:///tmp/poster.jpg", "http://cdn.example/poster.jpg", "https://user:secret@cdn.example/poster.jpg")) {
+            try {
+                anime.copy(coverUrl = invalid)
+                throw AssertionError("Provider artwork must use HTTPS without credentials.")
+            } catch (expected: IllegalArgumentException) {
+                assertTrue(expected.message.orEmpty().contains("HTTPS"))
+            }
         }
     }
 }

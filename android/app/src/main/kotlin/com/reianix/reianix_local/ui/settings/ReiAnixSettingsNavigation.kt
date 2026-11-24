@@ -69,6 +69,7 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("Metadados e Capas", "Metadados e Capas", "", listOf(
         SettingsEntry("setting:metadata.anilist_enabled", "Usar AniList"),
         SettingsEntry("setting:metadata.auto_match", "Identificar automaticamente pelo AniList"),
+        SettingsEntry("privacy:trace_moe", "Identificação por imagem", "Trace.moe autorização miniaturas privacidade"),
         SettingsEntry("setting:artwork.enabled", "Baixar capas pela internet"),
         SettingsEntry("setting:releases.notifications", "Notificar novos episódios", "lançamento avisos anime biblioteca episódios"),
         SettingsEntry("setting:artwork.cache_limit_mb", "Limite do cache de capas"),

@@ -4,7 +4,5 @@
     <external-path name="shared-videos" path="." />
     <!-- Removable SD cards under /storage/ are also scanned by the local library. -->
     <root-path name="sdcard-videos" path="storage/" />
-    <external-files-path name="app-external-videos" path="." />
-    <files-path name="app-videos" path="." />
-    <cache-path name="cached-videos" path="." />
+    <cache-path name="cached-videos" path="video_exports/" />
 </paths>

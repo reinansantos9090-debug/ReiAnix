@@ -47,6 +47,14 @@ class ExternalVideoActivity : ComponentActivity() {
             return
         }
         val videoUri = externalUri!!
+        val validSource = runCatching {
+            when (videoUri.scheme?.lowercase(Locale.ROOT)) {
+                "file" -> com.reianix.reianix_local.player.requireShareableVideoFile(this, java.io.File(requireNotNull(videoUri.path)))
+                "content" -> require(videoUri.authority != "$packageName.videoexports")
+                else -> error("Unsupported URI")
+            }
+        }.isSuccess
+        if (!validSource) { finish(); return }
 
         lifecycleScope.launch {
             val (preferences, displayName) = withContext(Dispatchers.IO) {
