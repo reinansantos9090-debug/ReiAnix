@@ -87,6 +87,34 @@ android {
 
 kotlin { jvmToolchain(17) }
 
+// Robolectric otherwise downloads android-all JARs itself during JUnit execution,
+// bypassing Gradle repository selection/caching. On GitHub Actions that can
+// fail intermittently and make unrelated tests fail before their bodies run.
+// Resolve the SDKs used by our @Config tests (API 28 and 35) through Gradle
+// first; no emulator, skipped test, or new workflow is involved.
+val robolectricFrameworkJars = configurations.create("robolectricFrameworkJars") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+dependencies {
+    add("robolectricFrameworkJars", "org.robolectric:android-all-instrumented:9-robolectric-4913185-2-i7")
+    add("robolectricFrameworkJars", "org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
+}
+
+val prepareRobolectricFrameworkJars by tasks.registering(Copy::class) {
+    from(robolectricFrameworkJars)
+    into(layout.buildDirectory.dir("robolectric/frameworks"))
+}
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    dependsOn(prepareRobolectricFrameworkJars)
+    systemProperty(
+        "robolectric.dependency.dir",
+        layout.buildDirectory.dir("robolectric/frameworks").get().asFile.absolutePath,
+    )
+}
+
     // earlier validation stage 29: dependencies remain unchanged; the cleanup is structural and reuses
     // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
