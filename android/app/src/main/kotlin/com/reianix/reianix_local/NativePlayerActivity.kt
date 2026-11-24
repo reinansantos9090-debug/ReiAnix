@@ -4874,22 +4874,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 .putExtra("reason", reason)
                 .putExtra("activityInstanceId", activityInstanceId),
         )
-        val animateReturn = !isInPictureInPictureMode
-        if (animateReturn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            overrideActivityTransition(
-                OVERRIDE_TRANSITION_CLOSE,
-                R.anim.reianix_player_open_enter,
-                R.anim.reianix_player_open_exit,
-            )
-        }
         finish()
-        if (animateReturn && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            @Suppress("DEPRECATION")
-            overridePendingTransition(
-                R.anim.reianix_player_open_enter,
-                R.anim.reianix_player_open_exit,
-            )
-        }
     }
 
     private fun updateEpisodeNavigationButtons() {
