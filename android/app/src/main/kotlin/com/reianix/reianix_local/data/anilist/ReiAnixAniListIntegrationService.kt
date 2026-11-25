@@ -648,10 +648,10 @@ class ReiAnixAniListIntegrationService(
             val previous = attempts[animeId]
             previous == null || System.currentTimeMillis() / 1_000.0 - previous >= KITSU_UPGRADE_COOLDOWN_SECONDS
         }
-        // Eight independent slots; retain the earlier small-heap safeguard.
+        // Four independent slots; retain the earlier small-heap safeguard.
         // No prefetch groups or group barriers. Each worker takes another anime
         // immediately after its own repair has finished.
-        val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 8 else 2
+        val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 4 else 2
         val nextIndex = AtomicInteger(0)
         coroutineScope {
             List(minOf(parallelism, candidates.size)) {
