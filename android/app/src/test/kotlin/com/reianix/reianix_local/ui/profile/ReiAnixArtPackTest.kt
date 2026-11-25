@@ -16,17 +16,17 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class, sdk = [35])
 class ReiAnixArtPackTest {
     @Test
-    fun catalogHasThirtyNineUniqueImagesWithSeparateCategories() {
+    fun catalogHasThirtyUniqueImagesWithSeparateCategories() {
         val all = ReiAnixArtPack.banners + ReiAnixArtPack.wallpapers
-        assertEquals(22, ReiAnixArtPack.banners.size)
+        assertEquals(13, ReiAnixArtPack.banners.size)
         assertEquals(17, ReiAnixArtPack.wallpapers.size)
-        assertEquals(39, all.map { it.path }.distinct().size)
-        assertEquals(27, all.count { it.path.endsWith(".webp") })
-        assertEquals(12, all.count { it.path.endsWith(".png") })
+        assertEquals(30, all.map { it.path }.distinct().size)
+        assertEquals(20, all.count { it.path.endsWith(".webp") })
+        assertEquals(10, all.count { it.path.endsWith(".png") })
     }
 
     @Test
-    fun allThirtyNineArtsAreBundledAndReadableWithoutImport() {
+    fun allThirtyArtsAreBundledAndReadableWithoutImport() {
         val context = RuntimeEnvironment.getApplication()
         for (art in ReiAnixArtPack.banners + ReiAnixArtPack.wallpapers) {
             val bytes = ReiAnixArtPack.open(context, art).use { it.readBytes() }
@@ -43,7 +43,7 @@ class ReiAnixArtPackTest {
                 assertEquals("WEBP", String(bytes, 8, 4, Charsets.US_ASCII))
             }
         }
-        assertEquals(22, ReiAnixArtPack.available(true).size)
+        assertEquals(13, ReiAnixArtPack.available(true).size)
         assertEquals(17, ReiAnixArtPack.available(false).size)
     }
 
@@ -51,19 +51,22 @@ class ReiAnixArtPackTest {
     fun remainingReferenceImagesAreFirstInBothGalleries() {
         assertEquals(listOf(
             "samurai_rubro_cinematico",
-            "metropole_violeta",
             "fuji_sakura_torii",
-            "lua_sobre_montanhas",
-            "eclipse_castelo",
             "oceano_azul",
-        ), ReiAnixArtPack.available(true).take(6).map { it.id })
+        ), ReiAnixArtPack.available(true).take(3).map { it.id })
         assertEquals(listOf(
             "cidade_chuvosa_violeta",
         ), ReiAnixArtPack.available(false).take(1).map { it.id })
-        assertEquals("chuva_neon", ReiAnixArtPack.available(true)[6].id)
+        assertEquals("chuva_neon", ReiAnixArtPack.available(true)[3].id)
         assertEquals("cafe_chuvoso", ReiAnixArtPack.available(false)[1].id)
         assertEquals("costa_estelar_turquesa", ReiAnixArtPack.available(true).last().id)
         assertEquals("templo_do_sol_poente", ReiAnixArtPack.available(false).last().id)
+    }
+
+    @Test
+    fun removedBannersAreNotOffered() {
+        val removedIds = setOf("metropole_violeta", "lua_sobre_montanhas", "eclipse_castelo", "eclipse_rubro", "floresta_encantada", "santuario_celestial", "trem_de_outono", "vale_das_sakuras", "lua_azul_alpina")
+        assertTrue(ReiAnixArtPack.available(true).none { it.id in removedIds })
     }
 
     @Test
