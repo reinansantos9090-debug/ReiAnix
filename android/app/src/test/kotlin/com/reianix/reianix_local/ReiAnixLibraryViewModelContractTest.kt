@@ -8,12 +8,53 @@ import com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus
 import com.reianix.reianix_local.ui.model.ReiAnixDetailsLoadStatus
 import com.reianix.reianix_local.data.library.ReiAnixLibrarySnapshotCodec
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
+import com.reianix.reianix_local.viewmodel.EpisodeThumbnailQueue
+import com.reianix.reianix_local.viewmodel.shouldScheduleAutomaticThumbnailBatch
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 class ReiAnixLibraryViewModelContractTest {
+    @Test
+    fun automaticThumbnailQueueIsSerialDeduplicatedAndPrioritizesDetails() {
+        val queue = EpisodeThumbnailQueue()
+        queue.enqueue(1L, false)
+        queue.enqueue(2L, false)
+        queue.enqueue(3L, false)
+        queue.enqueue(2L, false)
+        assertEquals(EpisodeThumbnailQueue.Batch(1L, false), queue.poll())
+
+        queue.enqueue(3L, true)
+        queue.enqueue(3L, false)
+        assertTrue(queue.hasPriorityOtherThan(1L))
+        assertTrue(queue.isExplicit(3L))
+        // Automatic work yields after the current episode and resumes later.
+        queue.enqueue(1L, false)
+        assertEquals(EpisodeThumbnailQueue.Batch(3L, true), queue.poll())
+        assertEquals(EpisodeThumbnailQueue.Batch(2L, false), queue.poll())
+        assertEquals(EpisodeThumbnailQueue.Batch(1L, false), queue.poll())
+        assertFalse(queue.contains(1L))
+        assertNull(queue.poll())
+    }
+
+    @Test
+    fun automaticThumbnailDiscoveryDoesNotRequeueItsOwnPublications() {
+        val missing = mapOf<String, String?>("episode1:revision1" to null)
+        val ready = mapOf<String, String?>("episode1:revision1" to "/cache/one.jpg")
+        assertTrue(shouldScheduleAutomaticThumbnailBatch(null, missing))
+        assertFalse(shouldScheduleAutomaticThumbnailBatch(missing, missing))
+        assertFalse(shouldScheduleAutomaticThumbnailBatch(missing, ready))
+        assertFalse(shouldScheduleAutomaticThumbnailBatch(ready, ready))
+        assertTrue(shouldScheduleAutomaticThumbnailBatch(ready, missing))
+        assertTrue(shouldScheduleAutomaticThumbnailBatch(ready, ready + ("episode2:revision1" to null)))
+        assertTrue(shouldScheduleAutomaticThumbnailBatch(ready, mapOf("episode1:revision2" to null)))
+        assertFalse(shouldScheduleAutomaticThumbnailBatch(ready, emptyMap()))
+    }
+
     @Test
     fun homeProjectionExcludesEpisodeProgressButDetailsProjectionRetainsIt() {
         val state = ReiAnixLibrarySnapshotCodec.decode(
