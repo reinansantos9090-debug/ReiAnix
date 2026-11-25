@@ -952,7 +952,10 @@ fun ReiAnixNativePlayerBottomControls(
                             label = "Proporção",
                             showLabel = !landscape,
                             contentDescription = "Alternar entre ajustar e preencher o vídeo",
-                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            // Normalize the wider rectangular artwork in portrait only.
+                            // Keep the same centered 48dp hit target and weighted slot.
+                            iconVisualScale = (if (fiveShortcuts) 0.88f else 1f) *
+                                (if (landscape) 1f else 0.8f),
                             onClick = onAspect,
                             enabled = !state.episodeTransitionInProgress && !state.audioOnly,
                         )
