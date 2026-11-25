@@ -41,10 +41,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reianix.reianix_local.data.sqlite.updateAniListMetadataAndAssociation
@@ -66,6 +70,25 @@ internal fun shouldAllowTraceMoeWithAutoMatchSetting(
     autoMatchEnabled: Boolean,
     userInitiated: Boolean,
 ): Boolean = autoMatchEnabled || userInitiated
+
+/** Detect actual visible Kitsu artwork or Kitsu-sourced editorial metadata. */
+internal fun isKitsuUpgradeTarget(row: ReiAnixLibraryCatalogRow): Boolean {
+    val anime = row.anime
+    if (anime.anilistMatchManual == true || anime.metadataSource.equals("manual", true) ||
+        anime.metadataStatus.equals("manual", true) ||
+        row.episodes.none { it.missing != true &&
+            (it.availabilityState.isNullOrBlank() || it.availabilityState.equals("available", true)) }
+    ) return false
+    if (anime.metadataSource.equals("kitsu", true) || anime.metadataSource.equals("kitsu_candidate", true)) return true
+    val ready = row.animeArtwork.filter { it.status.equals("ready", true) &&
+        it.localPath?.let { path -> File(path).isFile && File(path).length() > 0L } == true }
+    val posters = ready.filter { it.artworkType.equals("poster", true) || it.artworkType.equals("cover", true) }
+    val poster = posters.firstOrNull { it.manual == true || it.source.equals("manual", true) }
+        ?: posters.firstOrNull { it.localPath == anime.coverCache }
+        ?: posters.firstOrNull()
+    val backdrop = ready.firstOrNull { it.artworkType.equals("backdrop", true) || it.artworkType.equals("banner", true) }
+    return listOfNotNull(poster, backdrop).any { it.manual != true && it.source.equals("kitsu", true) }
+}
 
 internal fun shouldHonorTraceMoeSuccessfulCooldown(
     userInitiated: Boolean,
@@ -145,23 +168,27 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+private const val KITSU_UPGRADE_ATTEMPT_PREFIX = "__reianix.internal.kitsu_anilist_upgrade_v1."
+private const val KITSU_UPGRADE_INTERVAL_MS = 2_200L
+private const val KITSU_UPGRADE_COOLDOWN_SECONDS = 24L * 60L * 60L
 
 /** Read attempt timestamps from the existing schema-v29 preferences table. */
 internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
     database: ReiAnixSqliteDatabase,
+    keyPrefix: String = ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
 ): Map<Long, Double> = withContext(Dispatchers.IO) {
     database.read { connection ->
         connection.rawQuery(
             "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
             arrayOf(
-                ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX.length.toString(),
-                ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
+                keyPrefix.length.toString(),
+                keyPrefix,
             ),
         ).use { cursor ->
             buildMap<Long, Double> {
                 while (cursor.moveToNext()) {
                     val key = cursor.getString(0).orEmpty()
-                    val animeId = key.removePrefix(ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX)
+                    val animeId = key.removePrefix(keyPrefix)
                         .toLongOrNull()
                         ?.takeIf { it > 0L }
                         ?: continue
@@ -180,12 +207,13 @@ internal suspend fun writePersistedArtworkDiscoveryAttemptAt(
     database: ReiAnixSqliteDatabase,
     animeId: Long,
     attemptAtSeconds: Double,
+    keyPrefix: String = ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
 ) = withContext(Dispatchers.IO) {
     require(animeId > 0L) { "Artwork discovery requires a positive local anime ID." }
     require(attemptAtSeconds.isFinite()) { "Artwork discovery attempt timestamp must be finite." }
     database.transaction { connection ->
         val values = ContentValues().apply {
-            put("key", artworkDiscoveryAttemptPreferenceKey(animeId))
+            put("key", keyPrefix + animeId)
             put("value", attemptAtSeconds.toString())
             put("updated_at", attemptAtSeconds)
         }
@@ -254,6 +282,8 @@ class ReiAnixAniListIntegrationService(
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val explicitRepairInFlight = ConcurrentHashMap.newKeySet<Long>()
+    private val kitsuUpgradeMutex = Mutex()
+    private var kitsuUpgradeNotBeforeMs = 0L
 
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
@@ -336,7 +366,15 @@ class ReiAnixAniListIntegrationService(
      * Search the original local title and known aliases together, then commit only
      * a strongly supported non-MUSIC candidate. A failed search changes nothing.
      */
-    suspend fun repairMetadataAndArtwork(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
+    suspend fun repairMetadataAndArtwork(animeId: Long): AniListResult<ReiAnixAnimeRecord> =
+        repairMetadataAndArtworkInternal(animeId)
+
+    /** Identical evidence, aliases, ranking and thresholds; only ownership and scheduling differ. */
+    private suspend fun repairMetadataAndArtworkInternal(
+        animeId: Long,
+        automaticKitsuUpgrade: Boolean = false,
+        mayUpgrade: suspend () -> Boolean = { true },
+    ): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) return AniListResult.Failure(
             AniListError.InvalidRequest("A integração AniList está desativada nas configurações."),
         )
@@ -347,6 +385,9 @@ class ReiAnixAniListIntegrationService(
             val local = library.getAnime(animeId) ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
             )
+            if (automaticKitsuUpgrade && (!mayUpgrade() || local.anilistMatchManual == true ||
+                    local.metadataSource.equals("manual", true) || local.metadataStatus.equals("manual", true))
+            ) return AniListResult.Failure(AniListError.InvalidRequest("Automatic upgrade deferred."))
             val episodes = library.listEpisodes(animeId)
             val evidence = withContext(Dispatchers.Default) { explicitAniListLocalEvidence(episodes) }
             val titles = explicitAniListRepairTitles(local, evidence)
@@ -376,7 +417,7 @@ class ReiAnixAniListIntegrationService(
             if (best.score < EXPLICIT_REPAIR_MIN_SCORE) return AniListResult.Failure(
                 AniListError.InvalidRequest("Identificação inconclusiva. Capa e metadados atuais preservados."),
             )
-            val correctManualMusic = local.anilistMatchManual == true &&
+            val correctManualMusic = !automaticKitsuUpgrade && local.anilistMatchManual == true &&
                 local.anilistId != best.anime.id.toLong() && local.format.equals("MUSIC", true) &&
                 (evidence.episodeCount >= 2 || (evidence.durationMinutes ?: 0.0) >= 10.0) &&
                 best.score >= 0.86
@@ -396,10 +437,81 @@ class ReiAnixAniListIntegrationService(
                 latest, best.anime, manual = latest.anilistMatchManual == true && !correctManualMusic,
                 score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
                 correctManualMusic = correctManualMusic,
+                automaticKitsuUpgrade = automaticKitsuUpgrade,
+                mayUpgrade = mayUpgrade,
             )
         } finally {
             explicitRepairInFlight.remove(animeId)
         }
+    }
+
+    /**
+     * Separate, low-priority pass. The existing initial pipeline is not paced,
+     * blocked or modified. Persist attempts to avoid repeated unsuccessful lookups.
+     */
+    suspend fun upgradeKitsuLibraryToAniList(
+        ordinaryWorkIdle: () -> Boolean,
+    ): Int = kitsuUpgradeMutex.withLock {
+        if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
+            !settingEnabled("artwork.enabled", true)) return@withLock 0
+
+        suspend fun awaitIdle() {
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                if (pause > 0) {
+                    delay(pause)
+                    continue
+                }
+                if (ordinaryWorkIdle()) {
+                    delay(750L)
+                    if (ordinaryWorkIdle()) return
+                } else delay(500L)
+            }
+        }
+
+        awaitIdle()
+        val attempts = readPersistedArtworkDiscoveryAttemptTimes(library.database, KITSU_UPGRADE_ATTEMPT_PREFIX)
+        val targets = library.loadLibraryCatalogRows().filter(::isKitsuUpgradeTarget).map { it.anime.id }
+        var upgraded = 0
+        for (animeId in targets) {
+            currentCoroutineContext().ensureActive()
+            val previous = attempts[animeId]
+            if (previous != null && System.currentTimeMillis() / 1_000.0 - previous < KITSU_UPGRADE_COOLDOWN_SECONDS) continue
+            awaitIdle()
+            if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
+                !settingEnabled("artwork.enabled", true)) break
+            if (library.loadLibraryCatalogRows(setOf(animeId)).none(::isKitsuUpgradeTarget)) continue
+            for (retry in 0..1) {
+                awaitIdle()
+                var deferred = false
+                val result = repairMetadataAndArtworkInternal(animeId, automaticKitsuUpgrade = true) {
+                    val ready = ordinaryWorkIdle() && isAniListEnabled() &&
+                        settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true) &&
+                        library.loadLibraryCatalogRows(setOf(animeId)).any(::isKitsuUpgradeTarget)
+                    if (!ready) deferred = true
+                    ready
+                }
+                val now = android.os.SystemClock.elapsedRealtime()
+                kitsuUpgradeNotBeforeMs = now + KITSU_UPGRADE_INTERVAL_MS
+                if (result is AniListResult.Failure && result.error is AniListError.RateLimited) {
+                    val seconds = (result.error as AniListError.RateLimited).retryAfterSeconds
+                        ?.coerceIn(1L, 21_600L) ?: 60L
+                    kitsuUpgradeNotBeforeMs = now + maxOf(KITSU_UPGRADE_INTERVAL_MS, seconds * 1_000L)
+                    if (retry == 0) continue
+                    return@withLock upgraded
+                }
+                if (deferred) break
+                if (result is AniListResult.Success) upgraded++
+                if (result is AniListResult.Failure &&
+                    (result.error is AniListError.Network || result.error is AniListError.Http)) break
+                writePersistedArtworkDiscoveryAttemptAt(
+                    library.database, animeId, System.currentTimeMillis() / 1_000.0, KITSU_UPGRADE_ATTEMPT_PREFIX,
+                )
+                break
+            }
+        }
+        upgraded
     }
 
     suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
@@ -1446,6 +1558,8 @@ class ReiAnixAniListIntegrationService(
         explicitRepair: Boolean = false,
         correctManualMusic: Boolean = false,
         manualSelection: Boolean = false,
+        automaticKitsuUpgrade: Boolean = false,
+        mayUpgrade: suspend () -> Boolean = { true },
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1481,11 +1595,17 @@ class ReiAnixAniListIntegrationService(
                 }
                 remoteOriginal to displayDescription
             }
+            if (automaticKitsuUpgrade && !mayUpgrade()) return AniListResult.Failure(
+                AniListError.InvalidRequest("Automatic upgrade deferred."),
+            )
             val prepared = if ((explicitRepair || manualSelection) && artworkEnabled && (explicitRepair || prepareRepairArtwork != null)) {
                 prepareRepairArtwork?.invoke(local.id, remote) ?: return AniListResult.Failure(
                     AniListError.InvalidRequest("Não foi possível preparar a capa e o banner. Os dados anteriores foram mantidos."),
                 )
             } else null
+            if (automaticKitsuUpgrade && !mayUpgrade()) return AniListResult.Failure(
+                AniListError.InvalidRequest("Automatic upgrade deferred."),
+            )
             val updated = library.updateAniListMetadataAndAssociation(
                 patch = ReiAnixAnimeMetadataPatch(
                     animeId = local.id,
@@ -1520,8 +1640,11 @@ class ReiAnixAniListIntegrationService(
                 preparedArtwork = prepared,
                 manualSelection = manualSelection,
                 protectManualRefresh = manual && !manualSelection,
+                automaticKitsuUpgrade = automaticKitsuUpgrade,
             )
-            if (updated.anilistId != remote.id.toLong()) {
+            if (updated.anilistId != remote.id.toLong() || (automaticKitsuUpgrade &&
+                    (updated.anilistMatchManual == true || updated.metadataSource.equals("manual", true) ||
+                        updated.metadataStatus.equals("manual", true)))) {
                 return AniListResult.Failure(
                     AniListError.InvalidRequest(
                         "Automatic match was not applied because a manual or existing association has priority.",
