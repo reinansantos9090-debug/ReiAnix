@@ -340,12 +340,8 @@ fun ReiAnixNativePlayerCenterControls(
                             },
                     ) {
                         when {
-                            state.isBuffering && state.hasRenderedFirstFrame -> {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(ReiAnixTokens.PlayerDimensions.bufferingIndicatorSize),
-                                    color = ReiAnixTokens.Colors.primary,
-                                    strokeWidth = ReiAnixTokens.PlayerDimensions.bufferingStroke,
-                                )
+                            state.isBuffering -> {
+                                // The persistent native indicator owns loading visuals.
                             }
                             state.ended -> {
                                 Icon(
