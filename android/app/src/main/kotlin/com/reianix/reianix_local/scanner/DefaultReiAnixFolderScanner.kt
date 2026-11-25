@@ -38,11 +38,6 @@ internal object DefaultReiAnixFolderScanner {
         return normalized == root || normalized.startsWith("$root/")
     }
 
-    private fun isVideo(fileName: String, mimeType: String?): Boolean {
-        val extension = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        return mimeType?.startsWith("video/", ignoreCase = true) == true ||
-            MediaFilenameParser.supportsExtension(".$extension")
-    }
 
     /** MediaStore's generation changes when indexed media changes (Android 11+). */
     fun revision(context: Context): String? {
@@ -131,15 +126,14 @@ internal object DefaultReiAnixFolderScanner {
                             it.getInt(pendingColumn) != 0) continue
                         val directory = it.getString(pathColumn).orEmpty()
                         if (!isInFolder(directory)) continue
-                        val fileName = it.getString(nameColumn)?.trim().orEmpty()
-                        if (fileName.isBlank()) continue
+                        val id = it.getLong(idColumn)
+                        if (id <= 0L) continue
+                        val fileName = it.getString(nameColumn)?.trim()?.takeIf { name -> name.isNotBlank() } ?: "video-$id"
                         val mimeType = if (mimeColumn >= 0 && !it.isNull(mimeColumn))
                             it.getString(mimeColumn) else null
-                        if (!isVideo(fileName, mimeType)) continue
 
                         val relativePath = directory.trimEnd('/') + "/" + fileName
-                        val id = it.getLong(idColumn)
-                        if (id <= 0L || !seenPaths.add(relativePath.lowercase(Locale.ROOT))) continue
+                        if (!seenPaths.add("$volume:$id")) continue
                         val scopedPath = relativePath.substring(FOLDER.length).trimStart('/')
                         val parsed = MediaFilenameParser.parseVideoPath(
                             scopedPath, allowStandaloneMovie = '/' !in scopedPath,
