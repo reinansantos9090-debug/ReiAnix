@@ -29,6 +29,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         preparedArtwork: ReiAnixPreparedRepairArtwork? = null,
         manualSelection: Boolean = false,
         protectManualRefresh: Boolean = false,
+        automaticKitsuUpgrade: Boolean = false,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -58,6 +59,11 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val current = currentAndManualFields.first
             val protectedFields = currentAndManualFields.second
             require(!manualSelection || manual)
+            require(!automaticKitsuUpgrade || (explicitRepair && !manual && preparedArtwork != null))
+            if (automaticKitsuUpgrade && (current.anilistMatchManual == true ||
+                    current.metadataSource.equals("manual", true) || current.metadataStatus.equals("manual", true))) {
+                return@transaction current
+            }
             // A background refresh of the previous manual ID must never undo
             // a newer explicit choice made while the request was in flight.
             if (protectManualRefresh && current.anilistMatchManual == true &&
@@ -122,6 +128,12 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             patch.score?.let { if ("score" !in protectedFields) values.put("score", it) }
             patch.format?.takeIf(String::isNotBlank)?.let { if ("format" !in protectedFields) values.put("format", it) }
             patch.studio?.takeIf(String::isNotBlank)?.let { if ("studio" !in protectedFields) values.put("studio", it) }
+            // Protect the complete manual artwork pointer pair, even when only
+            // one of the two columns was explicitly selected by the user.
+            if (automaticKitsuUpgrade && ("cover_url" in protectedFields || "cover_cache" in protectedFields)) {
+                values.remove("cover_url")
+                values.remove("cover_cache")
+            }
             // A changed automatic URL must not inherit an unverified legacy
             // pointer from the previous identity. Preserve manual/local art and
             // keep old files on disk; the normal downloader publishes new art.
@@ -180,9 +192,10 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                     ).use { it.moveToFirst() }
                     if (owner) {
                         if (poster) values.remove("cover_cache")
+                        if (automaticKitsuUpgrade) values.remove(if (poster) "cover_url" else "banner_url")
                         continue
                     }
-                    if (image == null && !identityChanged) continue
+                    if (image == null && (!identityChanged || automaticKitsuUpgrade)) continue
                     connection.delete("artwork", "$baseWhere AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
                         arrayOf(patch.animeId.toString()))
                     if (image == null) {
@@ -201,7 +214,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                     connection.insertOrThrow("artwork", null, art)
                     if (poster) values.put("cover_cache", image.path)
                 }
-                if (identityChanged) {
+                if (identityChanged && !automaticKitsuUpgrade) {
                     // Do not retain editorial fields of the rejected identity.
                     val absent = listOf(
                         "romaji" to patch.romaji, "english" to patch.english, "native" to patch.nativeTitle,
@@ -238,6 +251,19 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                 values.put("metadata_status", "available")
                 values.put("metadata_confidence", "high")
                 values.put("metadata_updated_at", System.currentTimeMillis() / 1000.0)
+            }
+            if (automaticKitsuUpgrade) {
+                // A repaired AniList ID must not leave an older verified
+                // crosswalk pointing at a different anime. Do not guess new
+                // Kitsu/MAL IDs; an inconsistent mapping can be reverified later.
+                val key = ReiAnixExternalCatalogIdsCodec.preferenceKey(patch.animeId)
+                val stored = connection.rawQuery("SELECT value FROM preferences WHERE key=?", arrayOf(key)).use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                }
+                val oldMapping = stored?.let { runCatching { ReiAnixExternalCatalogIdsCodec.decode(it) }.getOrNull() }
+                if (oldMapping?.aniListId != null && oldMapping.aniListId != anilistId) {
+                    connection.delete("preferences", "key=?", arrayOf(key))
+                }
             }
             connection.update("anime", values, "id = ?", arrayOf(patch.animeId.toString()))
             connection.rawQuery(

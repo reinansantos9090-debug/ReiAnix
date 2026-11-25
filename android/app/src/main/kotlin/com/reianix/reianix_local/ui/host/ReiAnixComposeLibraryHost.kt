@@ -50,6 +50,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
 
 /**
  * Single native Compose root used during the incremental Flet -> Compose cutover.
@@ -149,6 +156,8 @@ class ReiAnixComposeLibraryHost(
             val welcomeRequired by activity.welcomeNeedsSetup.collectAsStateWithLifecycle()
             val welcomeFolderPaths by activity.welcomeFolderPaths.collectAsStateWithLifecycle()
 
+            val ordinaryEnrichmentPasses = remember { MutableStateFlow(0) }
+
             // A route mount must not cause remote reconciliation. Observe scan-state
             // transitions only; drop the first snapshot so a stored/idle state on process
             // startup never triggers AniList or artwork work.
@@ -160,6 +169,8 @@ class ReiAnixComposeLibraryHost(
                     .filter { scanning -> !scanning }
                     .collectLatest {
                         if (libraryViewModel.uiState.value.animes.isEmpty()) return@collectLatest
+                        ordinaryEnrichmentPasses.value += 1
+                        try {
                         val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
                         try {
                             withContext(Dispatchers.IO) {
@@ -211,6 +222,9 @@ class ReiAnixComposeLibraryHost(
                                     error::class.java.simpleName,
                             )
                         }
+                        } finally {
+                            ordinaryEnrichmentPasses.value -= 1
+                        }
                     }
             }
 
@@ -252,6 +266,8 @@ class ReiAnixComposeLibraryHost(
                     libraryState.animeCount == 0
                 ) return@LaunchedEffect
 
+                ordinaryEnrichmentPasses.value += 1
+                try {
                 val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
                 try {
                     withContext(Dispatchers.IO) {
@@ -311,6 +327,44 @@ class ReiAnixComposeLibraryHost(
                         "Ready-poster metadata recovery failed. errorType=" +
                             error::class.java.simpleName,
                     )
+                }
+                } finally {
+                    ordinaryEnrichmentPasses.value -= 1
+                }
+            }
+
+            // Separate pass: observe completed enrichment and late Kitsu publications.
+            // Ordinary loading never awaits this pass, even on a large library.
+            LaunchedEffect(libraryViewModel, bootstrapState.phase, bootstrapState.persistenceStatus) {
+                if (bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
+                    bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY
+                ) return@LaunchedEffect
+                val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                merge(
+                    ordinaryEnrichmentPasses.filter { it == 0 }.map { Unit },
+                    dependencies.artworkService.publishedArtworks
+                        // Cached remote publications use the generic AniList label;
+                        // inspect the persisted provider URL in the upgrade pass instead.
+                        .filter { it.entityType in setOf("anime", "movie") &&
+                            it.artworkType in setOf("poster", "cover", "backdrop", "banner") }.map { Unit },
+                    libraryViewModel.uiState.map { it.scanInProgress }.distinctUntilChanged()
+                        .filter { !it }.map { Unit },
+                    // Retry transient failures even if no new cover is published.
+                    flow { while (true) { delay(15 * 60_000L); emit(Unit) } },
+                ).debounce(1_000L).conflate().collect {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            dependencies.aniListIntegrationService.upgradeKitsuLibraryToAniList {
+                                ordinaryEnrichmentPasses.value == 0 &&
+                                    !libraryViewModel.uiState.value.scanInProgress &&
+                                    dependencies.artworkService.isOrdinaryArtworkIdle()
+                            }
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        android.util.Log.w(TAG, "Deferred AniList upgrade failed: " + error::class.java.simpleName)
+                    }
                 }
             }
 

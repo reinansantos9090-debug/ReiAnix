@@ -41,10 +41,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeMetadataPatch
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
+import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryCatalogRow
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteLibraryRepository
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteDatabase
 import com.reianix.reianix_local.data.sqlite.updateAniListMetadataAndAssociation
@@ -66,6 +70,38 @@ internal fun shouldAllowTraceMoeWithAutoMatchSetting(
     autoMatchEnabled: Boolean,
     userInitiated: Boolean,
 ): Boolean = autoMatchEnabled || userInitiated
+
+/** Ready artwork rows use source=cache. Recover origin from the provider URL, not its cache label. */
+internal fun isKitsuArtworkUrl(value: String?): Boolean {
+    val host = runCatching { URI(value.orEmpty()).host?.lowercase(Locale.ROOT) }.getOrNull() ?: return false
+    return host == "kitsu.io" || host.endsWith(".kitsu.io") ||
+        host == "kitsu.app" || host.endsWith(".kitsu.app") ||
+        host == "kitsu-production-media.s3.amazonaws.com" ||
+        (host.startsWith("kitsu-production-media.s3.") && host.endsWith(".amazonaws.com"))
+}
+
+/** Detect actual visible Kitsu artwork or Kitsu-sourced editorial metadata. */
+internal fun isKitsuUpgradeTarget(row: ReiAnixLibraryCatalogRow): Boolean {
+    val anime = row.anime
+    if (anime.anilistMatchManual == true || anime.metadataSource.equals("manual", true) ||
+        anime.metadataStatus.equals("manual", true) ||
+        row.episodes.none { it.missing != true &&
+            (it.availabilityState.isNullOrBlank() || it.availabilityState.equals("available", true)) }
+    ) return false
+    if (anime.metadataSource.equals("kitsu", true) || anime.metadataSource.equals("kitsu_candidate", true)) return true
+    val ready = row.animeArtwork.filter { it.status.equals("ready", true) &&
+        it.localPath?.let { path -> File(path).isFile && File(path).length() > 0L } == true }
+    val posters = ready.filter { it.artworkType.equals("poster", true) || it.artworkType.equals("cover", true) }
+    val poster = posters.firstOrNull { it.manual == true || it.source.equals("manual", true) }
+        ?: posters.firstOrNull { it.localPath == anime.coverCache }
+        ?: posters.firstOrNull()
+    val backdrop = ready.firstOrNull { it.artworkType.equals("backdrop", true) || it.artworkType.equals("banner", true) }
+    return listOfNotNull(poster, backdrop).any {
+        it.manual != true && !it.source.equals("manual", true) && !it.source.equals("local", true) &&
+            (it.source.equals("kitsu", true) || isKitsuArtworkUrl(it.externalUrl) || isKitsuArtworkUrl(it.sourceRef))
+    } || (poster == null && isKitsuArtworkUrl(anime.coverUrl) &&
+        anime.coverCache?.let { File(it).isFile && File(it).length() > 0L } == true)
+}
 
 internal fun shouldHonorTraceMoeSuccessfulCooldown(
     userInitiated: Boolean,
@@ -145,23 +181,28 @@ internal fun rotateArtworkDiscoveryIds(ids: List<Long>, cursor: Long): List<Long
 
 internal const val ARTWORK_DISCOVERY_CURSOR_PREFERENCE = "__reianix.internal.artwork_discovery_cursor_v1"
 internal const val ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX = "__reianix.internal.artwork_discovery_attempt_v1."
+private const val LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX = "__reianix.internal.kitsu_anilist_upgrade_v1."
+private const val KITSU_UPGRADE_ATTEMPT_PREFIX = "__reianix.internal.kitsu_anilist_upgrade_v2."
+private const val KITSU_UPGRADE_INTERVAL_MS = 2_200L
+private const val KITSU_UPGRADE_COOLDOWN_SECONDS = 24L * 60L * 60L
 
 /** Read attempt timestamps from the existing schema-v29 preferences table. */
 internal suspend fun readPersistedArtworkDiscoveryAttemptTimes(
     database: ReiAnixSqliteDatabase,
+    keyPrefix: String = ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
 ): Map<Long, Double> = withContext(Dispatchers.IO) {
     database.read { connection ->
         connection.rawQuery(
             "SELECT key, value FROM preferences WHERE substr(key, 1, ?) = ?",
             arrayOf(
-                ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX.length.toString(),
-                ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
+                keyPrefix.length.toString(),
+                keyPrefix,
             ),
         ).use { cursor ->
             buildMap<Long, Double> {
                 while (cursor.moveToNext()) {
                     val key = cursor.getString(0).orEmpty()
-                    val animeId = key.removePrefix(ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX)
+                    val animeId = key.removePrefix(keyPrefix)
                         .toLongOrNull()
                         ?.takeIf { it > 0L }
                         ?: continue
@@ -180,12 +221,13 @@ internal suspend fun writePersistedArtworkDiscoveryAttemptAt(
     database: ReiAnixSqliteDatabase,
     animeId: Long,
     attemptAtSeconds: Double,
+    keyPrefix: String = ARTWORK_DISCOVERY_ATTEMPT_PREFERENCE_PREFIX,
 ) = withContext(Dispatchers.IO) {
     require(animeId > 0L) { "Artwork discovery requires a positive local anime ID." }
     require(attemptAtSeconds.isFinite()) { "Artwork discovery attempt timestamp must be finite." }
     database.transaction { connection ->
         val values = ContentValues().apply {
-            put("key", artworkDiscoveryAttemptPreferenceKey(animeId))
+            put("key", keyPrefix + animeId)
             put("value", attemptAtSeconds.toString())
             put("updated_at", attemptAtSeconds)
         }
@@ -247,6 +289,7 @@ class ReiAnixAniListIntegrationService(
     private val explicitArtworkPublisher: ((Long) -> Unit)? = null,
     private val prepareRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
     private val traceMoeConsent: () -> Boolean = { false },
+    private val automaticRepairClient: ReiAnixAniListClient = client,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -254,6 +297,8 @@ class ReiAnixAniListIntegrationService(
     private val autoMatchAttempts: ConcurrentHashMap<Long, Long> = autoMatchAttemptTimestamps
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val explicitRepairInFlight = ConcurrentHashMap.newKeySet<Long>()
+    private val kitsuUpgradeMutex = Mutex()
+    private var kitsuUpgradeNotBeforeMs = 0L
 
     private data class TraceMoeProgressState(
         val matchesByEpisode: LinkedHashMap<Long, List<TraceMoeSearchMatch>>,
@@ -336,35 +381,76 @@ class ReiAnixAniListIntegrationService(
      * Search the original local title and known aliases together, then commit only
      * a strongly supported non-MUSIC candidate. A failed search changes nothing.
      */
-    suspend fun repairMetadataAndArtwork(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
+    suspend fun repairMetadataAndArtwork(animeId: Long): AniListResult<ReiAnixAnimeRecord> =
+        repairMetadataAndArtworkInternal(animeId)
+
+    /** Identical evidence, aliases, ranking and thresholds; only ownership and scheduling differ. */
+    private suspend fun repairMetadataAndArtworkInternal(
+        animeId: Long,
+        automaticKitsuUpgrade: Boolean = false,
+        mayUpgrade: suspend () -> Boolean = { true },
+    ): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) return AniListResult.Failure(
             AniListError.InvalidRequest("A integração AniList está desativada nas configurações."),
         )
-        if (!explicitRepairInFlight.add(animeId)) return AniListResult.Failure(
+        if (!automaticKitsuUpgrade && !explicitRepairInFlight.add(animeId)) return AniListResult.Failure(
             AniListError.InvalidRequest("Este anime já está sendo verificado."),
         )
         try {
             val local = library.getAnime(animeId) ?: return AniListResult.Failure(
                 AniListError.InvalidRequest("Anime não encontrado na biblioteca."),
             )
+            if (automaticKitsuUpgrade && (!mayUpgrade() || local.anilistMatchManual == true ||
+                    local.metadataSource.equals("manual", true) || local.metadataStatus.equals("manual", true))
+            ) return AniListResult.Failure(AniListError.InvalidRequest("Automatic upgrade deferred."))
             val episodes = library.listEpisodes(animeId)
             val evidence = withContext(Dispatchers.Default) { explicitAniListLocalEvidence(episodes) }
             val titles = explicitAniListRepairTitles(local, evidence)
             // Give each distinct stored title a query slot before spending
             // remaining slots on cleaned variants of the same title.
-            val terms = explicitAniListRepairSearchTerms(titles)
+            val expectedEdition = expectedRepairEdition(local, evidence)
+            if (expectedEdition.conflict) return AniListResult.Failure(
+                AniListError.InvalidRequest("Temporada ou parte local ambígua. Dados atuais preservados."),
+            )
+            val terms = editionAwareRepairSearchTerms(titles, local.lookupTitle, expectedEdition)
             val anchor = local.lookupTitle.takeIf(String::isNotBlank) ?: local.title
             if (terms.isEmpty() || anchor.isBlank()) return AniListResult.Failure(
                 AniListError.InvalidRequest("O anime não tem título válido para identificação."),
             )
             // All returned candidates are evaluated against every stored title.
             // The original name is a preference, not a mandatory match.
-            val candidates = when (val result = client.searchAnimeAliases(terms)) {
+            val repairClient = if (automaticKitsuUpgrade) automaticRepairClient else client
+            var candidates = when (val result = repairClient.searchAnimeAliases(terms)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
-            val ranked = withContext(Dispatchers.Default) {
+            var ranked = withContext(Dispatchers.Default) {
                 rankExplicitAniListRepair(local, anchor, candidates, evidence)
+            }
+            // If the expected edition is absent, follow only explicit AniList
+            // relations. Never substitute the first season as a fallback.
+            if ((expectedEdition.season != null || expectedEdition.part != null) &&
+                (ranked.firstOrNull()?.score ?: 0.0) < EXPLICIT_REPAIR_MIN_SCORE) {
+                for (followUp in 0 until 2) {
+                    val relatedIds = repairRelatedEditionIds(candidates, titles, expectedEdition)
+                    if (relatedIds.isEmpty()) break
+                    if (automaticKitsuUpgrade) {
+                        delay(KITSU_UPGRADE_INTERVAL_MS)
+                        if (!mayUpgrade()) return AniListResult.Failure(
+                            AniListError.InvalidRequest("Automatic upgrade deferred."),
+                        )
+                    }
+                    val additional = when (val result = repairClient.lookupRepairRelatedAnime(relatedIds)) {
+                        is AniListResult.Success -> result.value
+                        is AniListResult.Failure -> return result
+                    }
+                    if (additional.isEmpty()) break
+                    candidates = (candidates + additional).distinctBy { it.id }
+                    ranked = withContext(Dispatchers.Default) {
+                        rankExplicitAniListRepair(local, anchor, candidates, evidence)
+                    }
+                    if ((ranked.firstOrNull()?.score ?: 0.0) >= EXPLICIT_REPAIR_MIN_SCORE) break
+                }
             }
             Log.d(TAG, "Explicit AniList repair animeId=$animeId queries=${terms.size} returned=${candidates.size} " +
                 "music=${candidates.count { it.format.equals("MUSIC", true) }} ranked=${ranked.size} " +
@@ -373,10 +459,14 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("Nenhuma correspondência confiável no AniList. Dados atuais preservados."),
             )
             val margin = best.score - (ranked.getOrNull(1)?.score ?: 0.0)
+            if ((expectedEdition.season != null || expectedEdition.part != null) &&
+                ranked.size > 1 && margin < 0.03) return AniListResult.Failure(
+                AniListError.InvalidRequest("Mais de uma edição compatível. Capa e metadados preservados."),
+            )
             if (best.score < EXPLICIT_REPAIR_MIN_SCORE) return AniListResult.Failure(
                 AniListError.InvalidRequest("Identificação inconclusiva. Capa e metadados atuais preservados."),
             )
-            val correctManualMusic = local.anilistMatchManual == true &&
+            val correctManualMusic = !automaticKitsuUpgrade && local.anilistMatchManual == true &&
                 local.anilistId != best.anime.id.toLong() && local.format.equals("MUSIC", true) &&
                 (evidence.episodeCount >= 2 || (evidence.durationMinutes ?: 0.0) >= 10.0) &&
                 best.score >= 0.86
@@ -396,10 +486,116 @@ class ReiAnixAniListIntegrationService(
                 latest, best.anime, manual = latest.anilistMatchManual == true && !correctManualMusic,
                 score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
                 correctManualMusic = correctManualMusic,
+                automaticKitsuUpgrade = automaticKitsuUpgrade,
+                mayUpgrade = mayUpgrade,
             )
         } finally {
-            explicitRepairInFlight.remove(animeId)
+            if (!automaticKitsuUpgrade) explicitRepairInFlight.remove(animeId)
         }
+    }
+
+    /**
+     * Separate, low-priority pass. The existing initial pipeline is not paced,
+     * blocked or modified. Persist attempts to avoid repeated unsuccessful lookups.
+     */
+    suspend fun upgradeKitsuLibraryToAniList(
+        ordinaryWorkIdle: () -> Boolean,
+    ): Int = kitsuUpgradeMutex.withLock {
+        if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
+            !settingEnabled("artwork.enabled", true)) return@withLock 0
+
+        suspend fun awaitIdle() {
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                if (pause > 0) {
+                    delay(pause)
+                    continue
+                }
+                if (ordinaryWorkIdle()) {
+                    delay(750L)
+                    if (ordinaryWorkIdle()) return
+                } else delay(500L)
+            }
+        }
+
+        awaitIdle()
+        val attempts = readPersistedArtworkDiscoveryAttemptTimes(library.database, KITSU_UPGRADE_ATTEMPT_PREFIX)
+        val previousUpgradeIds = readPersistedArtworkDiscoveryAttemptTimes(library.database, LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX).keys
+        // Cheap provenance prefilter; materialize catalog/episode rows only for
+        // plausible targets. The actual visible artwork is checked below.
+        val targets = library.database.read { db ->
+            db.rawQuery(
+                """
+                SELECT a.id FROM anime a
+                WHERE COALESCE(a.anilist_match_manual,0)=0
+                  AND LOWER(COALESCE(a.metadata_source,''))!='manual'
+                  AND LOWER(COALESCE(a.metadata_status,''))!='manual'
+                  AND (LOWER(COALESCE(a.metadata_source,'')) IN ('kitsu','kitsu_candidate')
+                    OR INSTR(LOWER(COALESCE(a.cover_url,'')),'kitsu')>0
+                    OR EXISTS (SELECT 1 FROM artwork art
+                      WHERE art.entity_id=CAST(a.id AS TEXT)
+                        AND art.entity_type IN ('anime','movie')
+                        AND art.artwork_type IN ('poster','cover','backdrop','banner')
+                        AND art.status='ready' AND COALESCE(art.manual,0)=0
+                        AND (LOWER(COALESCE(art.source,''))='kitsu'
+                          OR INSTR(LOWER(COALESCE(art.external_url,'')),'kitsu')>0
+                          OR INSTR(LOWER(COALESCE(art.source_ref,'')),'kitsu')>0)))
+                ORDER BY a.id
+                """.trimIndent(), null,
+            ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+        }
+        var upgraded = 0
+        for (animeId in (targets + previousUpgradeIds).distinct()) {
+            currentCoroutineContext().ensureActive()
+            val previous = attempts[animeId]
+            if (previous != null && System.currentTimeMillis() / 1_000.0 - previous < KITSU_UPGRADE_COOLDOWN_SECONDS) continue
+            awaitIdle()
+            if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
+                !settingEnabled("artwork.enabled", true)) break
+            if (library.loadLibraryCatalogRows(setOf(animeId)).none { isKitsuUpgradeTarget(it) ||
+                    (animeId in previousUpgradeIds && needsLegacySeasonRepair(it)) }) continue
+            for (retry in 0..1) {
+                awaitIdle()
+                if (animeId in explicitRepairInFlight) break
+                var deferred = false
+                val result = repairMetadataAndArtworkInternal(animeId, automaticKitsuUpgrade = true) {
+                    val ready = animeId !in explicitRepairInFlight && ordinaryWorkIdle() && isAniListEnabled() &&
+                        settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true) &&
+                        library.loadLibraryCatalogRows(setOf(animeId)).any { isKitsuUpgradeTarget(it) ||
+                            (animeId in previousUpgradeIds && needsLegacySeasonRepair(it)) }
+                    val stillIdle = ready && ordinaryWorkIdle() && animeId !in explicitRepairInFlight
+                    if (!stillIdle) deferred = true
+                    stillIdle
+                }
+                val now = android.os.SystemClock.elapsedRealtime()
+                kitsuUpgradeNotBeforeMs = now + KITSU_UPGRADE_INTERVAL_MS
+                if (result is AniListResult.Failure && result.error is AniListError.RateLimited) {
+                    val seconds = (result.error as AniListError.RateLimited).retryAfterSeconds
+                        ?.coerceIn(1L, 21_600L) ?: 60L
+                    kitsuUpgradeNotBeforeMs = now + maxOf(KITSU_UPGRADE_INTERVAL_MS, seconds * 1_000L)
+                    if (retry == 0) continue
+                    return@withLock upgraded
+                }
+                if (deferred) {
+                    if (retry == 0) continue
+                    break
+                }
+                if (result is AniListResult.Success) {
+                    upgraded++
+                    if (animeId in previousUpgradeIds) library.database.transaction { db ->
+                        db.delete("preferences", "key=?", arrayOf(LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX + animeId))
+                    }
+                }
+                if (result is AniListResult.Failure &&
+                    (result.error is AniListError.Network || result.error is AniListError.Http)) break
+                writePersistedArtworkDiscoveryAttemptAt(
+                    library.database, animeId, System.currentTimeMillis() / 1_000.0, KITSU_UPGRADE_ATTEMPT_PREFIX,
+                )
+                break
+            }
+        }
+        upgraded
     }
 
     suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
@@ -1446,6 +1642,8 @@ class ReiAnixAniListIntegrationService(
         explicitRepair: Boolean = false,
         correctManualMusic: Boolean = false,
         manualSelection: Boolean = false,
+        automaticKitsuUpgrade: Boolean = false,
+        mayUpgrade: suspend () -> Boolean = { true },
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
             // Artwork preference controls whether the remote URL becomes eligible
@@ -1481,11 +1679,17 @@ class ReiAnixAniListIntegrationService(
                 }
                 remoteOriginal to displayDescription
             }
+            if (automaticKitsuUpgrade && (!artworkEnabled || !mayUpgrade())) return AniListResult.Failure(
+                AniListError.InvalidRequest("Automatic upgrade deferred."),
+            )
             val prepared = if ((explicitRepair || manualSelection) && artworkEnabled && (explicitRepair || prepareRepairArtwork != null)) {
                 prepareRepairArtwork?.invoke(local.id, remote) ?: return AniListResult.Failure(
                     AniListError.InvalidRequest("Não foi possível preparar a capa e o banner. Os dados anteriores foram mantidos."),
                 )
             } else null
+            if (automaticKitsuUpgrade && !mayUpgrade()) return AniListResult.Failure(
+                AniListError.InvalidRequest("Automatic upgrade deferred."),
+            )
             val updated = library.updateAniListMetadataAndAssociation(
                 patch = ReiAnixAnimeMetadataPatch(
                     animeId = local.id,
@@ -1520,8 +1724,11 @@ class ReiAnixAniListIntegrationService(
                 preparedArtwork = prepared,
                 manualSelection = manualSelection,
                 protectManualRefresh = manual && !manualSelection,
+                automaticKitsuUpgrade = automaticKitsuUpgrade,
             )
-            if (updated.anilistId != remote.id.toLong()) {
+            if (updated.anilistId != remote.id.toLong() || (automaticKitsuUpgrade &&
+                    (updated.anilistMatchManual == true || updated.metadataSource.equals("manual", true) ||
+                        updated.metadataStatus.equals("manual", true)))) {
                 return AniListResult.Failure(
                     AniListError.InvalidRequest(
                         "Automatic match was not applied because a manual or existing association has priority.",
@@ -1778,6 +1985,7 @@ internal data class ExplicitAniListLocalEvidence(
     val episodeCount: Int = 0,
     val durationMinutes: Double? = null,
     val fileTitles: List<String> = titles,
+    val editionTitles: List<String> = emptyList(),
 )
 
 private val repairMarks = Regex("\\p{M}+")
@@ -1820,6 +2028,7 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
     val durations = available.mapNotNull { it.duration?.takeIf { seconds -> seconds.isFinite() && seconds > 0 } }.sorted()
     val files = linkedSetOf<String>()
     val folders = linkedSetOf<String>()
+    val editionTitles = linkedSetOf<String>()
     fun addTitle(raw: String, target: MutableSet<String>) {
         val title = raw.trim()
         if (usefulRepairTitle(title)) target.add(title)
@@ -1828,6 +2037,8 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
         val name = decodedRepairPath(raw).substringAfterLast('/')
             .replace(Regex("(?i)^(?:primary|home|[0-9a-f]{4}-[0-9a-f]{4}):"), "")
         if (name.isBlank() || !MediaFilenameParser.supportsExtension("." + name.substringAfterLast('.', "").lowercase(Locale.ROOT))) return
+        val rawTitle = name.substringBeforeLast('.')
+        if (repairEdition(rawTitle, allowBare = false).hasMarker) editionTitles.add(rawTitle)
         val parsed = MediaFilenameParser.parseVideoPath(name, allowStandaloneMovie = true)
         addTitle(parsed.animeTitle, files)
     }
@@ -1843,6 +2054,8 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
             if (!folder.contains('%') && !folder.startsWith("com.") &&
                 !folder.startsWith("content:", true) && !folder.startsWith("file:", true) &&
                 !folder.matches(Regex("(?i)(?:primary|home|[0-9a-f]{4}-[0-9a-f]{4}):.*"))) {
+                // Keep explicit season/part markers which the filename normalizer may remove.
+                if (repairEdition(folder).hasMarker && folder !in editionTitles) editionTitles.add(folder)
                 addTitle(MediaTitleNormalizer.cleanMediaTitle(folder), folders)
             }
         }
@@ -1863,7 +2076,7 @@ internal fun explicitAniListLocalEvidence(episodes: List<ReiAnixEpisodeRecord>):
     }
     val fileTitles = files.distinctBy(::repairPlain).take(4)
     val titles = (fileTitles + folders).distinctBy(::repairPlain).take(8)
-    return ExplicitAniListLocalEvidence(titles, available.size, durations.getOrNull(durations.size / 2)?.div(60.0), fileTitles)
+    return ExplicitAniListLocalEvidence(titles, available.size, durations.getOrNull(durations.size / 2)?.div(60.0), fileTitles, editionTitles.toList())
 }
 
 private fun independentRepairTitles(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence): List<String> {
@@ -1927,6 +2140,232 @@ internal fun explicitAniListRepairSearchTerms(titles: List<String>): List<String
         .distinctBy(::repairPlain).take(8)
 }
 
+
+/**
+ * Edition is an identity constraint, not a similarity bonus. Do not infer a
+ * season from the default local episode group (often always 1), release year,
+ * or a title previously copied from a remote association.
+ */
+internal data class RepairEdition(
+    val season: Int? = null,
+    val part: Int? = null,
+    val format: String? = null,
+    val conflict: Boolean = false,
+) {
+    val hasMarker: Boolean get() = season != null || part != null || format != null
+}
+
+private val repairRomanNumbers = listOf("i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx")
+private const val REPAIR_EDITION_NUMBER = "(\\d{1,2}|xviii|xvii|xvi|xv|xiv|xiii|xii|xi|xx|x|viii|vii|vi|iv|iii|ii|ix|v|i)"
+private val repairSeasonPrefix = Regex("\\b(?:season|temporada|temp|s)\\s*" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th|a|o)?(?=\\b|e\\d)")
+private val repairSeasonSuffix = Regex("\\b" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th|a|o)?\\s*(?:season|temporada|temp|ki)\\b")
+private val repairJapaneseSeason = Regex("第\\s*(\\d{1,2})\\s*期")
+private val repairPartPrefix = Regex("\\b(?:part|parte|cour|c)\\s*" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th)?\\b")
+private val repairPartSuffix = Regex("\\b" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th)?\\s*(?:part|parte|cour)\\b")
+private val repairBareEdition = Regex("\\s+(\\d{1,2}|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)$")
+private val repairYearSuffix = Regex("\\s+(?:19\\d{2}|20\\d{2})$")
+private val repairMovieMarker = Regex("(?:\\bthe movie\\b|\\b(?:movie|filme)$|^\\s*(?:gekijouban|gekijoban)\\b)")
+private val repairSpecialMarker = Regex("\\b(?:special|especia[li]|ova|oad)(?:\\s+\\d{1,2})?$")
+private val repairSeriesFormats = setOf("TV", "TV_SHORT", "ONA")
+
+private fun repairEditionNumber(raw: String): Int? =
+    (raw.toIntOrNull() ?: (repairRomanNumbers.indexOf(raw) + 1)).takeIf { it in 1..30 }
+
+private fun repairEditionFormat(value: String): String? = when {
+    repairMovieMarker.containsMatchIn(value) -> "MOVIE"
+    repairSpecialMarker.containsMatchIn(value) -> if (Regex("\\b(?:ova|oad)\\b").containsMatchIn(value)) "OVA" else "SPECIAL"
+    else -> null
+}
+
+/** Bare suffixes are accepted on titles/folders, never raw episode filenames. */
+internal fun repairEdition(value: String, allowBare: Boolean = true): RepairEdition {
+    // NFKD turns ½ into 1⁄2: the fraction belongs to the franchise name.
+    val plain = repairPlain(java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+        .replace(Regex("\\d+\\s*[/⁄]\\s*\\d+"), " fraction "))
+    // In "Season 2 Part 1", the 2 belongs to Season, not to Part.
+    // In "3rd Season 2nd Part", both ordinals belong to the suffix markers.
+    val seasonSuffixes = repairSeasonSuffix.findAll(plain).toList()
+    val partSuffixes = repairPartSuffix.findAll(plain).toList()
+    fun sameNumber(a: MatchResult, b: MatchResult): Boolean = a.groups[1]?.range == b.groups[1]?.range
+    fun ordinal(m: MatchResult): Boolean {
+        val number = m.groups[1] ?: return false
+        return Regex("^(?:st|nd|rd|th|a|o)\\b").containsMatchIn(plain.substring(number.range.last + 1))
+    }
+    val seasonPrefixes = repairSeasonPrefix.findAll(plain).filterNot { p ->
+        partSuffixes.any { ordinal(it) && sameNumber(p, it) }
+    }.toList()
+    val partPrefixes = repairPartPrefix.findAll(plain).filterNot { p ->
+        seasonSuffixes.any { ordinal(it) && sameNumber(p, it) }
+    }.toList()
+    val seasons = (seasonPrefixes + seasonSuffixes.filterNot { suffix ->
+        partPrefixes.any { sameNumber(suffix, it) }
+    } + repairJapaneseSeason.findAll(plain).toList()).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toSet()
+    val parts = (partPrefixes + partSuffixes.filterNot { suffix ->
+        seasonPrefixes.any { sameNumber(suffix, it) }
+    }).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toSet()
+    val withoutYear = plain.replace(repairYearSuffix, "")
+    val suffix = if (allowBare && seasons.isEmpty() && parts.isEmpty()) repairBareEdition.find(withoutYear) else null
+    val stem = suffix?.let { withoutYear.substring(0, it.range.first).trim() }.orEmpty()
+    // Numbers in literal names such as "Kaiju No. 8" are not season markers.
+    val bare = suffix?.takeIf { stem.any(Char::isLetter) &&
+        stem.substringAfterLast(' ') !in setOf("no", "number", "episode", "ep", "capitulo", "episodio", "volume", "vol") }
+        ?.let { repairEditionNumber(it.groupValues[1]) }
+    return RepairEdition(seasons.singleOrNull() ?: bare, parts.singleOrNull(),
+        repairEditionFormat(plain), seasons.size > 1 || parts.size > 1)
+}
+
+private fun combineRepairEditions(values: List<RepairEdition>): RepairEdition {
+    val seasons = values.mapNotNull { it.season }.toSet()
+    val parts = values.mapNotNull { it.part }.toSet()
+    val formats = values.mapNotNull { it.format }.toSet()
+    return RepairEdition(seasons.singleOrNull(), parts.singleOrNull(), formats.singleOrNull(),
+        values.any { it.conflict } || seasons.size > 1 || parts.size > 1 || formats.size > 1)
+}
+
+internal fun expectedRepairEdition(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence): RepairEdition {
+    val lookup = repairEdition(local.lookupTitle)
+    val explicit = evidence.editionTitles.map { repairEdition(it, allowBare = !it.contains(Regex("(?i)\\bs\\d+e\\d+\\b"))) }
+    val independent = combineRepairEditions(listOf(lookup) + explicit)
+    if (independent.hasMarker || independent.conflict) return independent
+    // The parsed filenames/folders are secondary evidence; do not trust an
+    // automatically associated remote title or its potentially wrong aliases.
+    val parsed = combineRepairEditions(evidence.titles.map { repairEdition(it) })
+    if (parsed.hasMarker || parsed.conflict) return parsed
+    if (local.anilistId == null && local.metadataSource?.startsWith("kitsu", true) == true) {
+        return repairEdition(local.title)
+    }
+    return independent
+}
+
+private fun canonicalRepairEdition(candidate: AniListAnime): RepairEdition =
+    combineRepairEditions(listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
+        .map { repairEdition(it) })
+
+private fun remoteRepairEdition(candidate: AniListAnime): RepairEdition {
+    val primary = canonicalRepairEdition(candidate)
+    val aliases = combineRepairEditions(candidate.synonyms.map { repairEdition(it) })
+    // Canonical numbering outranks synonyms; an ambiguous alias cannot prove a season.
+    return RepairEdition(primary.season ?: aliases.season.takeUnless { aliases.conflict },
+        primary.part ?: aliases.part.takeUnless { aliases.conflict }, primary.format,
+        primary.conflict)
+}
+
+/**
+ * PREQUEL chains provide secondary evidence for sequels with a subtitle
+ * rather than a number. Only an unambiguous TV/ONA chain counts. A split
+ * cour is not an additional season, and movies/specials never count.
+ * Missing relation data fails closed rather than guessing a sequel's number.
+ */
+private fun inferredRepairSeason(
+    candidate: AniListAnime,
+    byId: Map<Int, AniListAnime>,
+    seen: Set<Int> = emptySet(),
+): Int? {
+    if (candidate.id in seen || seen.size >= 10 || candidate.format !in repairSeriesFormats) return null
+    val edition = remoteRepairEdition(candidate)
+    if (edition.conflict) return null
+    val canonical = canonicalRepairEdition(candidate)
+    canonical.season?.let { return it }
+    val aliasSeason = edition.season
+    val relations = candidate.repairRelations ?: return aliasSeason
+    val predecessors = relations.filter { it.kind == "PREQUEL" && it.format in repairSeriesFormats }.distinctBy { it.id }
+    if (predecessors.isEmpty()) {
+        // A node with only a movie/OVA prequel does not establish TV season 1.
+        return if (relations.any { it.kind == "PREQUEL" } || (edition.part ?: 1) > 1 ||
+            (aliasSeason != null && aliasSeason != 1)) null else 1
+    }
+    val previous = predecessors.singleOrNull() ?: return null
+    val previousEdition = combineRepairEditions(previous.titles.map { repairEdition(it) })
+    if (previousEdition.conflict) return null
+    val previousSeason = previousEdition.season ?: byId[previous.id]?.let {
+        inferredRepairSeason(it, byId, seen + candidate.id)
+    } ?: return null
+    val inferred = if ((edition.part ?: 1) > 1) previousSeason else previousSeason + 1
+    return inferred.takeIf { it <= 30 && (aliasSeason == null || aliasSeason == it) }
+}
+
+internal fun repairEditionCompatible(expected: RepairEdition, candidate: AniListAnime, candidates: List<AniListAnime>): Boolean {
+    if (expected.conflict) return false
+    if (!expected.hasMarker) return true
+    val remote = remoteRepairEdition(candidate)
+    if (remote.conflict) return false
+    if (expected.format != null && candidate.format != expected.format) return false
+    if (expected.season != null && expected.format == null && candidate.format !in repairSeriesFormats) return false
+    if (expected.part != null && remote.part != expected.part) return false
+    if (expected.part == null && expected.season != null && (remote.part ?: 1) > 1) return false
+    if (expected.season != null) {
+        val season = if (candidate.format in repairSeriesFormats) {
+            inferredRepairSeason(candidate, candidates.associateBy { it.id })
+        } else remote.season
+        if (season != expected.season) return false
+    }
+    return true
+}
+
+internal fun editionAwareRepairSearchTerms(titles: List<String>, lookupTitle: String, edition: RepairEdition): List<String> {
+    val existing = explicitAniListRepairSearchTerms(titles)
+    if (edition.season == null && edition.part == null) return existing
+    val original = lookupTitle.trim().takeIf(::usefulRepairTitle) ?: titles.firstOrNull() ?: return existing
+    var base = repairPlain(original).replace(repairYearSuffix, "")
+    listOf(repairSeasonPrefix, repairSeasonSuffix, repairJapaneseSeason, repairPartPrefix, repairPartSuffix).forEach { regex ->
+        base = base.replace(regex, " ")
+    }
+    if (repairEdition(original).season != null) base = base.replace(repairBareEdition, "")
+    base = base.replace(repairWhitespace, " ").trim()
+    if (!usefulRepairTitle(base)) return existing
+    val numbered = edition.season?.let { season -> "$base Season $season" } ?: base
+    val full = edition.part?.let { "$numbered Part $it" } ?: numbered
+    val short = edition.season?.let { "$base $it" } ?: base
+    val shortPart = edition.part?.let { "$short Part $it" } ?: short
+    return (listOf(original, full, shortPart, numbered, short, base) + existing)
+        .filter(::usefulRepairTitle).distinctBy(::repairPlain).take(8)
+}
+
+/** Follow only related candidates connected to plausible franchise names. */
+internal fun repairRelatedEditionIds(
+    candidates: List<AniListAnime>,
+    localTitles: List<String>,
+    expected: RepairEdition,
+): List<Int> {
+    val known = candidates.map { it.id }.toSet()
+    val words = localTitles.flatMap { repairWords(it) }.toSet()
+    if (words.isEmpty()) return emptyList()
+    fun overlap(names: List<String>): Int = names.maxOfOrNull { name ->
+        repairWords(name).intersect(words).size
+    } ?: 0
+    return candidates.filter { candidate ->
+        overlap(listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
+            candidate.synonyms) > 0
+    }.flatMap { it.repairRelations.orEmpty() }
+        .filter { it.id !in known && it.format in repairSeriesFormats }
+        .distinctBy { it.id }
+        .sortedWith(compareByDescending<AniListRepairRelation> { relation ->
+            relation.titles.any { title ->
+                val edition = repairEdition(title)
+                (expected.season == null || edition.season == expected.season) &&
+                    (expected.part == null || edition.part == expected.part)
+            }
+        }.thenByDescending { overlap(it.titles) })
+        .take(8).map { it.id }
+}
+
+/** Revisit previous automatic conversions if original local edition evidence disagrees. */
+internal fun needsLegacySeasonRepair(row: ReiAnixLibraryCatalogRow): Boolean {
+    val local = row.anime
+    if (local.anilistId == null || local.anilistMatchManual == true ||
+        local.metadataSource.equals("manual", true) || local.metadataStatus.equals("manual", true) ||
+        row.episodes.none { it.missing != true && (it.availabilityState.isNullOrBlank() || it.availabilityState.equals("available", true)) }
+    ) return false
+    val expected = expectedRepairEdition(local, explicitAniListLocalEvidence(row.episodes))
+    if (expected.conflict || !expected.hasMarker) return false
+    val stored = combineRepairEditions(listOfNotNull(local.title, local.romaji, local.english, local.nativeTitle)
+        .map { repairEdition(it) })
+    return stored.conflict || (expected.season != null && stored.season != expected.season) ||
+        (expected.part != null && stored.part != expected.part) ||
+        (expected.format != null && local.format != expected.format)
+}
+
 private fun repairEditSimilarity(left: String, right: String): Double {
     if (left == right) return 1.0
     if (left.isEmpty() || right.isEmpty()) return 0.0
@@ -1964,8 +2403,28 @@ internal fun rankExplicitAniListRepair(
         (0 until raw.length()).map { repairPlain(raw.optString(it)) }.toSet()
     }.orEmpty()
     val localSynopsis = repairWords(local.descriptionOriginal ?: local.description.orEmpty())
-    val eligible = candidates.distinctBy { it.id }.filter { !it.format.equals("MUSIC", true) && it.coverCandidates.isNotEmpty() }
-        .map { candidate ->
+    val edition = expectedRepairEdition(local, evidence)
+    if (edition.conflict) return emptyList()
+    val compatible = candidates.distinctBy { it.id }.filter {
+        !it.format.equals("MUSIC", true) && it.coverCandidates.isNotEmpty() &&
+            repairEditionCompatible(edition, it, candidates)
+    }
+    // An unnumbered, exact local title must not be replaced with a numbered
+    // sequel merely because that sequel carries the base franchise as an alias.
+    // Do not impose this when an independently sourced canonical sequel title
+    // matches (some subsequent seasons have a subtitle rather than a number).
+    val localKeys = primary.map(::explicitAniListCompactTitle).toSet()
+    fun exactCanonical(candidate: AniListAnime): Boolean =
+        listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
+            .any { explicitAniListCompactTitle(it) in localKeys }
+    val hasExactUnnumbered = !edition.hasMarker && compatible.any {
+        exactCanonical(it) && !canonicalRepairEdition(it).hasMarker
+    }
+    val eligible = compatible.filter { candidate ->
+        !hasExactUnnumbered || exactCanonical(candidate) ||
+            (!remoteRepairEdition(candidate).hasMarker &&
+                inferredRepairSeason(candidate, candidates.associateBy { it.id })?.let { it <= 1 } != false)
+    }.map { candidate ->
             candidate to (listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) + candidate.synonyms)
                 .filter(::usefulRepairTitle).distinctBy(::explicitAniListCompactTitle).map { RepairTitle(it) }
         }
