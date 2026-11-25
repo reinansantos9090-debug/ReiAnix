@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.organize
 
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+
 import androidx.annotation.Keep
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilterEngine
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryFilters
@@ -55,7 +57,7 @@ fun filterOrganizeAnimes(
 
     val genreFiltered = filters.genreKey
         ?.takeIf { it.isNotBlank() }
-        ?.let { key -> stateFiltered.filter { anime -> anime.genres.any { it.stableKey == key } } }
+        ?.let { key -> stateFiltered.filter { anime -> anime.genres.any { ReiAnixGenreNames.matches(it, key) } } }
         ?: stateFiltered
 
     return ReiAnixLibraryFilterEngine.filter(
