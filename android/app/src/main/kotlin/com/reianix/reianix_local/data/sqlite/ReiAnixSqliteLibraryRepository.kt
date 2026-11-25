@@ -1698,7 +1698,7 @@ class ReiAnixSqliteLibraryRepository(
                             }
                         }
                     } else emptyList()
-                    val existingLookup = if (confident) db.rawQuery(
+                    val existingLookup = if (confident && animeIds.isEmpty()) db.rawQuery(
                         "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1", arrayOf(title),
                     ).use { cursor -> cursor.moveToFirst() } else false
                     val fallback = !confident || animeIds.size > 1 ||
