@@ -263,6 +263,9 @@ fun ReiAnixNativePlayerCenterControls(
     onPlayPause: () -> Unit,
     onSeekRelative: (Long) -> Unit,
     accumulatedSeekSeconds: Long = 0L,
+    rewindAlpha: () -> Float = { 1f },
+    playAlpha: () -> Float = { 1f },
+    forwardAlpha: () -> Float = { 1f },
     onSeekIconPositioned: (Boolean, Offset) -> Unit = { _, _ -> },
 ) {
     BoxWithConstraints(
@@ -300,7 +303,8 @@ fun ReiAnixNativePlayerCenterControls(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .absoluteOffset { IntOffset(x = -seekDistancePx, y = 0) },
+                    .absoluteOffset { IntOffset(x = -seekDistancePx, y = 0) }
+                    .graphicsLayer { alpha = rewindAlpha() },
                 contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
@@ -317,7 +321,8 @@ fun ReiAnixNativePlayerCenterControls(
             }
 
             Box(
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier.align(Alignment.Center)
+                    .graphicsLayer { alpha = playAlpha() },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -387,7 +392,8 @@ fun ReiAnixNativePlayerCenterControls(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .absoluteOffset { IntOffset(x = seekDistancePx, y = 0) },
+                    .absoluteOffset { IntOffset(x = seekDistancePx, y = 0) }
+                    .graphicsLayer { alpha = forwardAlpha() },
                 contentAlignment = Alignment.Center,
             ) {
                 PlayerSeekIconButton(
