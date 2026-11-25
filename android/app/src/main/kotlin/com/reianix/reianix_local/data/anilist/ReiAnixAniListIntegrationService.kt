@@ -552,7 +552,12 @@ class ReiAnixAniListIntegrationService(
                     if (retry == 0) continue
                     break
                 }
-                if (result is AniListResult.Success) upgraded++
+                if (result is AniListResult.Success) {
+                    upgraded++
+                    if (animeId in previousUpgradeIds) library.database.transaction { db ->
+                        db.delete("preferences", "key=?", arrayOf(LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX + animeId))
+                    }
+                }
                 if (result is AniListResult.Failure &&
                     (result.error is AniListError.Network || result.error is AniListError.Http)) break
                 writePersistedArtworkDiscoveryAttemptAt(
@@ -2131,8 +2136,8 @@ private val repairPartPrefix = Regex("\\b(?:part|parte|cour|c)\\s*" + REPAIR_EDI
 private val repairPartSuffix = Regex("\\b" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th)?\\s*(?:part|parte|cour)\\b")
 private val repairBareEdition = Regex("\\s+(\\d{1,2}|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)$")
 private val repairYearSuffix = Regex("\\s+(?:19\\d{2}|20\\d{2})$")
-private val repairMovieMarker = Regex("\\b(?:the movie|movie|filme|gekijouban|gekijoban)\\b")
-private val repairSpecialMarker = Regex("\\b(?:special|especia[li]|ova|oad)\\b")
+private val repairMovieMarker = Regex("(?:\\bthe movie\\b|\\b(?:movie|filme)$|^\\s*(?:gekijouban|gekijoban)\\b)")
+private val repairSpecialMarker = Regex("\\b(?:special|especia[li]|ova|oad)(?:\\s+\\d{1,2})?$")
 private val repairSeriesFormats = setOf("TV", "TV_SHORT", "ONA")
 
 private fun repairEditionNumber(raw: String): Int? =
@@ -2227,6 +2232,7 @@ private fun inferredRepairSeason(
 
 internal fun repairEditionCompatible(expected: RepairEdition, candidate: AniListAnime, candidates: List<AniListAnime>): Boolean {
     if (expected.conflict) return false
+    if (!expected.hasMarker) return true
     val remote = remoteRepairEdition(candidate)
     if (remote.conflict) return false
     if (expected.format != null && candidate.format != expected.format) return false
