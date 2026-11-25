@@ -26,14 +26,12 @@ internal object ReiAnixArtPack {
         "cidade_chuvosa_violeta" to "Cidade chuvosa violeta",
     ).map { PersonalArt("wallpapers", it.first, it.second) } + listOf(
         "cafe_chuvoso" to "Café chuvoso", "caminho_sakura" to "Caminho sakura",
-        "cascatas_misticas" to "Cascatas místicas", "cidade_cyberpunk" to "Cidade cyberpunk",
         "costa_ao_entardecer" to "Costa ao entardecer", "crepusculo_urbano" to "Crepúsculo urbano",
-        "magia_violeta" to "Magia violeta", "montanhas_estreladas" to "Montanhas estreladas",
-        "vale_dos_templos" to "Vale dos templos", "viajante_lunar" to "Viajante lunar",
+        "magia_violeta" to "Magia violeta", 
+        "viajante_lunar" to "Viajante lunar",
     ).map { PersonalArt("wallpapers", it.first, it.second) } + listOf(
         "samurai_escarlate" to "Samurai escarlate", "toquio_violeta" to "Tóquio violeta",
-        "ceu_de_estrelas" to "Céu de estrelas", "manga_lunar" to "Mangá lunar",
-        "santuario_esmeralda" to "Santuário esmeralda", "templo_do_sol_poente" to "Templo do sol poente",
+        "manga_lunar" to "Mangá lunar",
     ).map { PersonalArt("wallpapers", it.first, it.second, "png") }
     private val allowed = (banners + wallpapers).associateBy { it.path }
 
