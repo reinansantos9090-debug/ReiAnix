@@ -23,16 +23,9 @@ object SafScanner {
     const val STATUS_COMPLETED = "COMPLETED"
     // Match Nova's broad local video extension surface; provider MIME values
     // remain authoritative when available.
-    private val videoExtensions = setOf(
-        "3g2","3gp","3gp2","3gpp","asf","avi","divx","flv","f4v","qt","m4v",
-        "mtv","mkv","mp4","mpeg","mpe","mpg","mov","ogm","ogv","ogx","vob","wtv",
-        "webm","ts","m2ts","wmv"
-    )
 
     internal fun isPotentialVideoDocument(name: String?, mimeType: String?): Boolean {
-        if (mimeType?.trim()?.startsWith("video/", ignoreCase = true) == true) return true
-        val extension = name?.substringAfterLast('.', "")?.trim()?.lowercase().orEmpty()
-        return extension in videoExtensions
+        return LocalVideoRecognition.accepts(name, mimeType)
     }
 
     /**
@@ -367,10 +360,7 @@ object SafScanner {
                             continue
                         }
                         stats.put("files",stats.getInt("files")+1)
-                        val extension=name.substringAfterLast(".", "").lowercase()
-                        val mimeVideo=mime.startsWith("video/")
-                        val extensionVideo=extension in videoExtensions
-                        if(!mimeVideo&&!extensionVideo)continue
+                        if (!isPotentialVideoDocument(name, mime)) continue
                         videoChildren.add(Child(id,name,providerName != null,mime,providerMime != null,size,modified))
                     }
                     val parentUri = runCatching {
