@@ -111,6 +111,43 @@ class ReiAnixAniListClient(
         }
     }
 
+    /**
+     * Automatic upgrade only: group alias pages across independent anime.
+     * Keep each term's results isolated; callers reconstruct the same ordered
+     * candidate set as searchAnimeAliases, never rank another anime's results.
+     */
+    internal suspend fun searchUpgradeAliasesByTerm(
+        terms: List<String>,
+    ): AniListResult<Map<String, List<AniListAnime>>> {
+        val searches = terms.map(String::trim).filter(String::isNotBlank).distinct()
+        require(searches.size <= 16)
+        if (searches.isEmpty()) return AniListResult.Success(emptyMap())
+        val variables = JSONObject()
+        val declarations = searches.indices.joinToString(", ") { i -> "$" + "term" + i + ": String!" }
+        val fields = searches.mapIndexed { i, term ->
+            variables.put("term$i", term)
+            "alias$i: Page(page: 1, perPage: 20) { media(search: " +
+                "$" + "term" + i + ", type: ANIME, isAdult: false, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS $REPAIR_RELATIONS } }"
+        }.joinToString("\n")
+        return execute("query UpgradeAnime($declarations) { $fields }", variables) { data ->
+            val results = linkedMapOf<String, List<AniListAnime>>()
+            for ((i, term) in searches.withIndex()) {
+                val media = data.objectOrNull("alias$i")?.arrayOrNull("media")
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing upgrade alias response"))
+                val candidates = linkedMapOf<Int, AniListAnime>()
+                for (j in 0 until media.length()) {
+                    val item = media.optJSONObject(j)
+                    if (item?.optBoolean("isAdult", false) == true) continue
+                    val anime = item?.let(::parseAnime)
+                        ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid upgrade alias item"))
+                    candidates.putIfAbsent(anime.id, anime)
+                }
+                results[term] = candidates.values.toList()
+            }
+            AniListResult.Success(results)
+        }
+    }
+
     /** Bounded follow-up for a numbered edition absent from the alias results. */
     suspend fun lookupRepairRelatedAnime(ids: List<Int>): AniListResult<List<AniListAnime>> {
         val selected = ids.filter { it > 0 }.distinct().take(8)
