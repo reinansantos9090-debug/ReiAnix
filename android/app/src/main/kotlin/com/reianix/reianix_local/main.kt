@@ -87,11 +87,14 @@ internal fun resolveNativePlaybackStartPosition(
             rawProgress < 0.0 ||
             (knownDuration > 0.0 && rawProgress > knownDuration)
         )
-    val forceStartAtZero = !resumeEnabled || invalid || watched == true
+    // Watched is a library/completion flag, not a resume-position veto.
+    // Marking watched with a known duration and actual end-of-playback both
+    // persist the duration; a subsequent partial rewatch saves a smaller position.
+    val finished = watched == true && knownDuration > 0.0 && rawProgress >= knownDuration
+    val forceStartAtZero = !resumeEnabled || invalid || finished
     val position = if (forceStartAtZero) 0.0 else rawProgress.coerceAtLeast(0.0)
-    // Legacy start_native_player omitted position_ms for a valid zero-progress
-    // episode, allowing the native player to consult its canonical progress row.
-    // It explicitly sent zero only for disabled resume, invalid progress or watched episodes.
+    // A valid zero-progress episode can still consult its canonical row.
+    // Disabled resume, invalid progress and an ended video explicitly start at zero.
     val positionOverride = when {
         forceStartAtZero -> 0L
         position > 0.0 -> (position * 1_000.0).toLong().coerceAtLeast(0L)
