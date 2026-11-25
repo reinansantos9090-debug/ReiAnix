@@ -1626,6 +1626,47 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(1, second.unchanged)
         assertEquals(inserted.id, repository.listEpisodes(1L).single { it.path.endsWith("episode-02.mkv") }.id)
         assertEquals(11.0, repository.getEpisode(7L)!!.progress!!, 0.0)
+
+        // Even missing metadata, uncertain naming, or a colliding catalog title
+        // must not silently discard a verified physical file.
+        val unknown = listOf(
+            NativeDiscoveredMedia(
+                location = "/media/show/sem-nome",
+                fileName = "sem-nome",
+                mimeType = "video/x-custom",
+                sourceFolder = "/media/show",
+                mediaIdentity = "verified:unknown",
+                ambiguous = true,
+            ),
+            NativeDiscoveredMedia(
+                location = "/media/show/720p.rm",
+                fileName = "720p.rm",
+                identificationConfidence = "low",
+                sourceFolder = "/media/show",
+                mediaIdentity = "verified:rm",
+            ),
+            NativeDiscoveredMedia(
+                location = "/media/show/Original Title.mkv",
+                fileName = "Original Title.mkv",
+                animeTitle = "Original Title",
+                episodeType = "movie",
+                identificationConfidence = "high",
+                sourceFolder = "/media/show",
+                mediaIdentity = "verified:movie-collision",
+            ),
+        )
+        val expanded = snapshot.copy(operationId = "unidentified-files", complete = false, items = snapshot.items + unknown)
+        assertEquals(3, repository.indexDiscoveredMedia(expanded).inserted)
+        val rows = repository.loadLibraryCatalogRows()
+        val allFiles = rows.flatMap { it.episodes }
+        assertTrue(unknown.all { item -> allFiles.any { it.path == item.location } })
+        val idsBefore = allFiles.filter { episode -> unknown.any { it.location == episode.path } }.associate { it.path to it.id }
+        assertEquals(3, idsBefore.size)
+        assertEquals(0, repository.indexDiscoveredMedia(expanded.copy(operationId = "unidentified-repeat")).inserted)
+        val rowsAfter = repository.loadLibraryCatalogRows()
+        assertEquals(idsBefore, rowsAfter.flatMap { it.episodes }.filter { it.path in idsBefore }.associate { it.path to it.id })
+        val visibleIds = repository.searchAnimeIds("", null, false, false, false, null, 1, 0, libraryOnly = true, allResults = true).animeIds
+        assertEquals(rowsAfter.map { it.anime.id }.toSet(), visibleIds.toSet())
     }
 
     @Test
