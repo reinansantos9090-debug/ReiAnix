@@ -117,6 +117,7 @@ class ReiAnixAniListClientTest {
         assertEquals("Dorohedoro", variables.getString("search"))
         assertEquals(1, variables.getInt("page"))
         assertEquals(7, variables.getInt("perPage"))
+        assertFalse(query.contains("relations {"))
     }
 
     @Test
@@ -136,6 +137,7 @@ class ReiAnixAniListClientTest {
         assertTrue(body.getString("query").contains("alias1: Page"))
         assertTrue(body.getString("query").contains("format_not: MUSIC"))
         assertTrue(body.getString("query").contains("perPage: 20"))
+        assertTrue(body.getString("query").contains("relationType(version: 2)"))
     }
 
     @Test
@@ -144,6 +146,18 @@ class ReiAnixAniListClientTest {
         val result = ReiAnixAniListClient(transport, 0).searchAnimeAliases(listOf("Original", "Alternative"))
         assertTrue(result is AniListResult.Failure)
         assertEquals(1, transport.calls)
+
+        val relationTransport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{"Page":{"media":[{"id":43,"title":{"romaji":"Example II"},"format":"TV",
+              "relations":{"edges":[{"relationType":"PREQUEL","node":{"id":42,"format":"TV","title":{"romaji":"Example"}}}]}}]}}}
+        """.trimIndent()))
+        val related = ReiAnixAniListClient(relationTransport, 0).lookupRepairRelatedAnime(listOf(43, 43))
+        assertTrue(related is AniListResult.Success)
+        assertEquals(42, (related as AniListResult.Success).value.single().repairRelations?.single()?.id)
+        val relationBody = relationTransport.requestBody!!
+        assertEquals(43, relationBody.getJSONObject("variables").getJSONArray("ids").getInt(0))
+        assertEquals(1, relationBody.getJSONObject("variables").getJSONArray("ids").length())
+        assertTrue(relationBody.getString("query").contains("id_in: " + '$' + "ids"))
     }
 
     @Test
