@@ -1195,7 +1195,7 @@ private fun DetailsHero(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xl),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ReiAnixGenreNames.options(anime.genres).forEach { genre ->
+                anime.genres.distinctBy { ReiAnixGenreNames.key(it.name) }.forEach { genre ->
                     Text(
                         text = genre.name,
                         style = MaterialTheme.typography.bodyMedium,
