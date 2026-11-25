@@ -29,6 +29,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
         preparedArtwork: ReiAnixPreparedRepairArtwork? = null,
         manualSelection: Boolean = false,
         protectManualRefresh: Boolean = false,
+        automaticKitsuUpgrade: Boolean = false,
     ): ReiAnixAnimeRecord = withContext(Dispatchers.IO) {
         require(anilistId > 0L) { "AniList ID must be positive." }
         require(score == null || (score.isFinite() && score in 0.0..1.0))
@@ -58,6 +59,11 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
             val current = currentAndManualFields.first
             val protectedFields = currentAndManualFields.second
             require(!manualSelection || manual)
+            require(!automaticKitsuUpgrade || (explicitRepair && !manual))
+            if (automaticKitsuUpgrade && (current.anilistMatchManual == true ||
+                    current.metadataSource.equals("manual", true) || current.metadataStatus.equals("manual", true))) {
+                return@transaction current
+            }
             // A background refresh of the previous manual ID must never undo
             // a newer explicit choice made while the request was in flight.
             if (protectManualRefresh && current.anilistMatchManual == true &&
@@ -180,9 +186,10 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                     ).use { it.moveToFirst() }
                     if (owner) {
                         if (poster) values.remove("cover_cache")
+                        if (automaticKitsuUpgrade) values.remove(if (poster) "cover_url" else "banner_url")
                         continue
                     }
-                    if (image == null && !identityChanged) continue
+                    if (image == null && (!identityChanged || automaticKitsuUpgrade)) continue
                     connection.delete("artwork", "$baseWhere AND COALESCE(manual,0)=0 AND LOWER(COALESCE(source,'')) NOT IN ('manual','local')",
                         arrayOf(patch.animeId.toString()))
                     if (image == null) {
@@ -201,7 +208,7 @@ suspend fun ReiAnixSqliteLibraryRepository.updateAniListMetadataAndAssociation(
                     connection.insertOrThrow("artwork", null, art)
                     if (poster) values.put("cover_cache", image.path)
                 }
-                if (identityChanged) {
+                if (identityChanged && !automaticKitsuUpgrade) {
                     // Do not retain editorial fields of the rejected identity.
                     val absent = listOf(
                         "romaji" to patch.romaji, "english" to patch.english, "native" to patch.nativeTitle,
