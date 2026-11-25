@@ -71,6 +71,15 @@ internal fun shouldAllowTraceMoeWithAutoMatchSetting(
     userInitiated: Boolean,
 ): Boolean = autoMatchEnabled || userInitiated
 
+/** Ready artwork rows use source=cache. Recover origin from the provider URL, not its cache label. */
+internal fun isKitsuArtworkUrl(value: String?): Boolean {
+    val host = runCatching { URI(value.orEmpty()).host?.lowercase(Locale.ROOT) }.getOrNull() ?: return false
+    return host == "kitsu.io" || host.endsWith(".kitsu.io") ||
+        host == "kitsu.app" || host.endsWith(".kitsu.app") ||
+        host == "kitsu-production-media.s3.amazonaws.com" ||
+        (host.startsWith("kitsu-production-media.s3.") && host.endsWith(".amazonaws.com"))
+}
+
 /** Detect actual visible Kitsu artwork or Kitsu-sourced editorial metadata. */
 internal fun isKitsuUpgradeTarget(row: ReiAnixLibraryCatalogRow): Boolean {
     val anime = row.anime
@@ -87,7 +96,11 @@ internal fun isKitsuUpgradeTarget(row: ReiAnixLibraryCatalogRow): Boolean {
         ?: posters.firstOrNull { it.localPath == anime.coverCache }
         ?: posters.firstOrNull()
     val backdrop = ready.firstOrNull { it.artworkType.equals("backdrop", true) || it.artworkType.equals("banner", true) }
-    return listOfNotNull(poster, backdrop).any { it.manual != true && it.source.equals("kitsu", true) }
+    return listOfNotNull(poster, backdrop).any {
+        it.manual != true && !it.source.equals("manual", true) && !it.source.equals("local", true) &&
+            (it.source.equals("kitsu", true) || isKitsuArtworkUrl(it.externalUrl) || isKitsuArtworkUrl(it.sourceRef))
+    } || (poster == null && isKitsuArtworkUrl(anime.coverUrl) &&
+        anime.coverCache?.let { File(it).isFile && File(it).length() > 0L } == true)
 }
 
 internal fun shouldHonorTraceMoeSuccessfulCooldown(
@@ -484,13 +497,15 @@ class ReiAnixAniListIntegrationService(
             if (library.loadLibraryCatalogRows(setOf(animeId)).none(::isKitsuUpgradeTarget)) continue
             for (retry in 0..1) {
                 awaitIdle()
+                if (animeId in explicitRepairInFlight) break
                 var deferred = false
                 val result = repairMetadataAndArtworkInternal(animeId, automaticKitsuUpgrade = true) {
                     val ready = ordinaryWorkIdle() && isAniListEnabled() &&
                         settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true) &&
                         library.loadLibraryCatalogRows(setOf(animeId)).any(::isKitsuUpgradeTarget)
-                    if (!ready) deferred = true
-                    ready
+                    val stillIdle = ready && ordinaryWorkIdle()
+                    if (!stillIdle) deferred = true
+                    stillIdle
                 }
                 val now = android.os.SystemClock.elapsedRealtime()
                 kitsuUpgradeNotBeforeMs = now + KITSU_UPGRADE_INTERVAL_MS
@@ -501,7 +516,10 @@ class ReiAnixAniListIntegrationService(
                     if (retry == 0) continue
                     return@withLock upgraded
                 }
-                if (deferred) break
+                if (deferred) {
+                    if (retry == 0) continue
+                    break
+                }
                 if (result is AniListResult.Success) upgraded++
                 if (result is AniListResult.Failure &&
                     (result.error is AniListError.Network || result.error is AniListError.Http)) break
