@@ -224,24 +224,26 @@ data class ReiAnixTraceMoeIdentificationUiState(
 
 /** Main-thread queue: FIFO automatic work, newest explicit request first. */
 internal class EpisodeThumbnailQueue {
-    data class Batch(val animeId: Long, val priority: Boolean)
+    data class Batch(val animeId: Long, val priority: Boolean, val priorityOrder: Long = 0L)
     private val automatic = linkedSetOf<Long>()
-    private val explicit = linkedSetOf<Long>()
+    private val explicit = linkedMapOf<Long, Long>()
+    private var priorityOrder = 0L
 
     fun enqueue(animeId: Long, priority: Boolean) {
         if (priority) {
             automatic.remove(animeId)
             explicit.remove(animeId)
-            explicit.add(animeId)
+            explicit[animeId] = ++priorityOrder
         } else if (animeId !in explicit) {
             automatic.add(animeId)
         }
     }
 
     fun poll(): Batch? {
-        explicit.lastOrNull()?.let {
-            explicit.remove(it)
-            return Batch(it, true)
+        explicit.entries.lastOrNull()?.let { entry ->
+            val batch = Batch(entry.key, true, entry.value)
+            explicit.remove(batch.animeId)
+            return batch
         }
         automatic.firstOrNull()?.let {
             automatic.remove(it)
@@ -252,7 +254,14 @@ internal class EpisodeThumbnailQueue {
 
     fun contains(animeId: Long): Boolean = animeId in explicit || animeId in automatic
     fun isExplicit(animeId: Long): Boolean = animeId in explicit
-    fun hasPriorityOtherThan(animeId: Long): Boolean = explicit.any { it != animeId }
+    fun shouldYield(batch: Batch): Boolean = explicit.any { (id, order) ->
+        id != batch.animeId && order > batch.priorityOrder
+    }
+
+    fun defer(batch: Batch) {
+        explicit.remove(batch.animeId)
+        automatic.add(batch.animeId)
+    }
 }
 
 /** New media or a removed thumbnail association is work; our own publications are not. */
@@ -1878,7 +1887,7 @@ class ReiAnixLibraryViewModel(
                 episodeThumbnailForeground.first { it }
                 val batch = episodeThumbnailQueue.poll() ?: break
                 try {
-                    generateEpisodeThumbnailBatch(batch.animeId, batch.priority)
+                    generateEpisodeThumbnailBatch(batch)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -1896,7 +1905,9 @@ class ReiAnixLibraryViewModel(
      * Reuse the existing local frame extractor and canonical artwork registration.
      * Only one anime batch runs at a time, including explicit Details requests.
      */
-    private suspend fun generateEpisodeThumbnailBatch(animeId: Long, priority: Boolean) {
+    private suspend fun generateEpisodeThumbnailBatch(batch: EpisodeThumbnailQueue.Batch) {
+        val animeId = batch.animeId
+        val priority = batch.priority
         val anime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId } ?: return
         if (!priority && com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
                 .blocked(anime.genres.map { it.name })) return
@@ -1974,10 +1985,11 @@ class ReiAnixLibraryViewModel(
                 continue
             }
             episodeThumbnailForeground.first { it }
-            // Yield automatic work at a frame boundary, never interrupt the
-            // existing decoder. Cached progress remains in the canonical table.
-            if (!priority && episodeThumbnailQueue.hasPriorityOtherThan(animeId)) {
-                enqueueEpisodeThumbnailBatch(animeId, priority = false)
+            // Yield at a frame boundary to a newer Details request, never interrupt
+            // the decoder or an explicitly active Trace.moe sample session.
+            // Cached progress remains in the canonical table.
+            if (!traceMoeSampleSessions.containsKey(animeId) && episodeThumbnailQueue.shouldYield(batch)) {
+                episodeThumbnailQueue.defer(batch)
                 return
             }
             val currentAnime = nativeCatalogState.value.animes.firstOrNull { it.id == animeId }
