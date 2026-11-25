@@ -107,6 +107,29 @@ internal fun isKitsuUpgradeTarget(row: ReiAnixLibraryCatalogRow): Boolean {
         anime.coverCache?.let { File(it).isFile && File(it).length() > 0L } == true)
 }
 
+/** Startup upgrades only replace an already materialized Kitsu poster. */
+internal fun hasReadyKitsuUpgradePoster(row: ReiAnixLibraryCatalogRow): Boolean {
+    if (!isKitsuUpgradeTarget(row)) return false
+    val anime = row.anime
+    val posters = row.animeArtwork.filter {
+        (it.artworkType.equals("poster", true) || it.artworkType.equals("cover", true)) &&
+            it.status.equals("ready", true) &&
+            it.localPath?.let { path -> File(path).isFile && File(path).length() > 0L } == true
+    }
+    val poster = posters.firstOrNull { it.manual == true || it.source.equals("manual", true) }
+        ?: posters.firstOrNull { it.localPath == anime.coverCache }
+        ?: posters.firstOrNull()
+    return if (poster != null) {
+        poster.manual != true && !poster.source.equals("manual", true) &&
+            !poster.source.equals("local", true) &&
+            (poster.source.equals("kitsu", true) || isKitsuArtworkUrl(poster.externalUrl) ||
+                isKitsuArtworkUrl(poster.sourceRef))
+    } else {
+        isKitsuArtworkUrl(anime.coverUrl) &&
+            anime.coverCache?.let { File(it).isFile && File(it).length() > 0L } == true
+    }
+}
+
 internal fun shouldHonorTraceMoeSuccessfulCooldown(
     userInitiated: Boolean,
     previousAttemptSeconds: Double?,
@@ -294,6 +317,7 @@ class ReiAnixAniListIntegrationService(
     private val prepareRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
     private val traceMoeConsent: () -> Boolean = { false },
     private val automaticRepairClient: ReiAnixAniListClient = client,
+    private val prepareEarlyRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -395,6 +419,7 @@ class ReiAnixAniListIntegrationService(
         automaticKitsuUpgrade: Boolean = false,
         searchOverride: (suspend (List<String>) -> AniListResult<List<AniListAnime>>)? = null,
         relatedOverride: (suspend (List<Int>) -> AniListResult<List<AniListAnime>>)? = null,
+        earlyUpgrade: Boolean = false,
         mayUpgrade: suspend () -> Boolean = { true },
     ): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) return AniListResult.Failure(
@@ -495,6 +520,7 @@ class ReiAnixAniListIntegrationService(
                     score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
                     correctManualMusic = correctManualMusic,
                     automaticKitsuUpgrade = automaticKitsuUpgrade,
+                    earlyUpgrade = earlyUpgrade,
                     mayUpgrade = mayUpgrade,
                 )
             }
@@ -512,6 +538,8 @@ class ReiAnixAniListIntegrationService(
      * blocked or modified. Persist attempts to avoid repeated unsuccessful lookups.
      */
     suspend fun upgradeKitsuLibraryToAniList(
+        earlyWorkAllowed: () -> Boolean = { false },
+        animeArtworkIdle: (Long) -> Boolean = { true },
         ordinaryWorkIdle: () -> Boolean,
     ): Int = kitsuUpgradeMutex.withLock {
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
@@ -520,12 +548,12 @@ class ReiAnixAniListIntegrationService(
         suspend fun enabled(): Boolean = isAniListEnabled() &&
             settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true)
 
-        suspend fun awaitIdle() {
-            while (!ordinaryWorkIdle()) {
-                currentCoroutineContext().ensureActive()
-                delay(500L)
-            }
-        }
+        // A busy pass uses one low-impact worker only. On a transition to
+        // idle, the host starts a fresh four-worker pass. Do not hold the pass
+        // mutex waiting for the whole ordinary pipeline to finish.
+        val early = !ordinaryWorkIdle()
+        fun mayContinue(): Boolean = if (early) earlyWorkAllowed() else ordinaryWorkIdle()
+        if (!mayContinue() || (early && prepareEarlyRepairArtwork == null)) return@withLock 0
 
         // Pace only the original individual API requests, not ranking,
         // downloading, validating or committing images in other workers.
@@ -542,11 +570,11 @@ class ReiAnixAniListIntegrationService(
             suspend fun send(): AniListResult<T> {
                 val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
                 if (pause > 0L) delay(pause)
-                awaitIdle()
-                if (!mayRequest()) return AniListResult.Failure(
+                if (!mayContinue() || !mayRequest()) return AniListResult.Failure(
                     AniListError.InvalidRequest("Automatic upgrade deferred."),
                 )
-                kitsuUpgradeNotBeforeMs = android.os.SystemClock.elapsedRealtime() + KITSU_UPGRADE_INTERVAL_MS
+                val interval = if (early && !ordinaryWorkIdle()) KITSU_UPGRADE_INTERVAL_MS * 2 else KITSU_UPGRADE_INTERVAL_MS
+                kitsuUpgradeNotBeforeMs = android.os.SystemClock.elapsedRealtime() + interval
                 val result = action()
                 val error = (result as? AniListResult.Failure)?.error
                 if (error is AniListError.RateLimited) {
@@ -569,10 +597,9 @@ class ReiAnixAniListIntegrationService(
             second
         }
 
-        // Preserve the initial quiet period once, not for every anime.
-        awaitIdle()
-        delay(750L)
-        awaitIdle()
+        // Only a normal idle pass needs the previous startup quiet period.
+        if (!early) delay(750L)
+        if (!mayContinue()) return@withLock 0
         val attempts = readPersistedArtworkDiscoveryAttemptTimes(library.database, KITSU_UPGRADE_ATTEMPT_PREFIX)
         val previousUpgradeIds = readPersistedArtworkDiscoveryAttemptTimes(library.database, LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX).keys
         // Cheap provenance prefilter; materialize catalog/episode rows only for
@@ -598,19 +625,21 @@ class ReiAnixAniListIntegrationService(
                 """.trimIndent(), null,
             ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
         }
-        suspend fun eligible(animeId: Long): Boolean =
-            library.loadLibraryCatalogRows(setOf(animeId)).any {
-                isKitsuUpgradeTarget(it) || (animeId in previousUpgradeIds && needsLegacySeasonRepair(it))
+        suspend fun eligible(animeId: Long): Boolean {
+            if (early && !animeArtworkIdle(animeId)) return false
+            return library.loadLibraryCatalogRows(setOf(animeId)).any {
+                if (early) hasReadyKitsuUpgradePoster(it)
+                else isKitsuUpgradeTarget(it) || (animeId in previousUpgradeIds && needsLegacySeasonRepair(it))
             }
+        }
 
         suspend fun upgradeOne(animeId: Long): Int {
             for (retry in 0..1) {
-                awaitIdle()
-                if (stopRequests.get() || !enabled() || animeId in explicitRepairInFlight || !eligible(animeId)) return 0
+                if (!mayContinue() || stopRequests.get() || !enabled() || animeId in explicitRepairInFlight || !eligible(animeId)) return 0
                 var deferred = false
                 suspend fun mayUpgrade(): Boolean {
-                    val ready = animeId !in explicitRepairInFlight && ordinaryWorkIdle() && enabled() && eligible(animeId)
-                    val stillIdle = ready && ordinaryWorkIdle() && animeId !in explicitRepairInFlight
+                    val ready = animeId !in explicitRepairInFlight && mayContinue() && enabled() && eligible(animeId)
+                    val stillIdle = ready && mayContinue() && (!early || animeArtworkIdle(animeId)) && animeId !in explicitRepairInFlight
                     if (!stillIdle) deferred = true
                     return stillIdle
                 }
@@ -622,9 +651,10 @@ class ReiAnixAniListIntegrationService(
                     relatedOverride = { ids ->
                         requestUpgrade(::mayUpgrade) { automaticRepairClient.lookupRepairRelatedAnime(ids) }
                     },
+                    earlyUpgrade = early,
                     mayUpgrade = ::mayUpgrade,
                 )
-                if (deferred) {
+                if (!mayContinue() || deferred) {
                     if (retry == 0) continue
                     return 0
                 }
@@ -651,13 +681,13 @@ class ReiAnixAniListIntegrationService(
         // Four independent slots; retain the earlier small-heap safeguard.
         // No prefetch groups or group barriers. Each worker takes another anime
         // immediately after its own repair has finished.
-        val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 4 else 2
+        val parallelism = if (early) 1 else if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 4 else 2
         val nextIndex = AtomicInteger(0)
         coroutineScope {
             List(minOf(parallelism, candidates.size)) {
                 async {
                     var upgraded = 0
-                    while (!stopRequests.get() && enabled()) {
+                    while (!stopRequests.get() && mayContinue() && (!early || !ordinaryWorkIdle()) && enabled()) {
                         currentCoroutineContext().ensureActive()
                         val index = nextIndex.getAndIncrement()
                         if (index >= candidates.size) break
@@ -1721,6 +1751,7 @@ class ReiAnixAniListIntegrationService(
         correctManualMusic: Boolean = false,
         manualSelection: Boolean = false,
         automaticKitsuUpgrade: Boolean = false,
+        earlyUpgrade: Boolean = false,
         mayUpgrade: suspend () -> Boolean = { true },
     ): AniListResult<ReiAnixAnimeRecord> {
         return try {
@@ -1761,7 +1792,8 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("Automatic upgrade deferred."),
             )
             val prepared = if ((explicitRepair || manualSelection) && artworkEnabled && (explicitRepair || prepareRepairArtwork != null)) {
-                prepareRepairArtwork?.invoke(local.id, remote) ?: return AniListResult.Failure(
+                val prepare = if (automaticKitsuUpgrade && earlyUpgrade) prepareEarlyRepairArtwork else prepareRepairArtwork
+                prepare?.invoke(local.id, remote) ?: return AniListResult.Failure(
                     AniListError.InvalidRequest("Não foi possível preparar a capa e o banner. Os dados anteriores foram mantidos."),
                 )
             } else null
