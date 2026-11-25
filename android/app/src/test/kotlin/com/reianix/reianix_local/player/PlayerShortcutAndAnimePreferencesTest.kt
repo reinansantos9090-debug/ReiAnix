@@ -65,6 +65,20 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(-PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION,
             PlayerShortcutPolicy.centerActionGroupShiftFraction(five, landscape = true), 0f)
     }
+    @Test fun fourNewShortcutsPersistWithoutChangingTheDefaultOrFiveSlotLimit() {
+        val additions = listOf(PlayerShortcut.AUDIO, PlayerShortcut.ASPECT,
+            PlayerShortcut.SKIP_OP_ED, PlayerShortcut.NOTES)
+        val selection = additions + PlayerShortcut.OPTIONS
+        val raw = "audio,aspect,skip_op_ed,notes,options"
+        assertEquals(12, PlayerShortcut.entries.size)
+        assertEquals(raw, ReiAnixSettingsContract.normalize("player.shortcuts", raw))
+        assertEquals(selection, PlayerShortcutPolicy.parse(raw))
+        assertEquals(selection, PlayerShortcutPolicy.toggle(selection, PlayerShortcut.CAST, true))
+        assertEquals(PlayerShortcut.OPTIONS, selection.last())
+        assertEquals(85_000L, PlayerShortcutPolicy.MANUAL_OP_ED_SKIP_MS)
+        assertEquals("cast,episodes,lock,next,options", PlayerShortcutPolicy.defaultValue)
+    }
+
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
         val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAST, false)
         assertEquals(listOf(PlayerShortcut.EPISODES, PlayerShortcut.LOCK,
