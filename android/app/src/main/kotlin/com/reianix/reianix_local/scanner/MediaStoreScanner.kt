@@ -26,11 +26,6 @@ object MediaStoreScanner {
     private const val TAG = "[REIANIX][MEDIASTORE]"
     // Match Nova's broad local video extension surface; provider MIME values
     // remain authoritative when available.
-    private val videoExtensions = setOf(
-        "3g2","3gp","3gp2","3gpp","asf","avi","divx","flv","f4v","qt","m4v",
-        "mtv","mkv","mp4","mpeg","mpe","mpg","mov","ogm","ogv","ogx","vob","wtv",
-        "webm","ts","m2ts","wmv"
-    )
     private val mediaStoreChanged = AtomicBoolean(false)
     @Volatile private var changeObserver: ContentObserver? = null
 
@@ -278,7 +273,7 @@ object MediaStoreScanner {
                         val name=providerName ?: "video-"+id
                         val providerMime=if(mimeCol>=0&&!cursor.isNull(mimeCol))cursor.getString(mimeCol)?.trim()?.takeIf { it.isNotEmpty() } else null
                         val mime=providerMime ?: "video/*"
-                        val ext=name.substringAfterLast('.',"").lowercase();if(!mime.startsWith("video/")&&ext !in videoExtensions)continue
+                        // The row already belongs to MediaStore.Video; do not reject it on MIME or extension.
                         val relDir=if(relCol>=0&&!cursor.isNull(relCol))cursor.getString(relCol).orEmpty().trimEnd('/')else ""
                         val rel=if(relDir.isBlank())name else relDir+"/"+name
                         val actualVol=if(volCol>=0&&!cursor.isNull(volCol))cursor.getString(volCol)else volumeName
