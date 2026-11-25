@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.data.sqlite
 
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+
 import java.io.File
 import android.content.ContentValues
 import android.content.Context
@@ -7,6 +9,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.reianix.reianix_local.data.organize.parseReiAnixGenreNames
 import org.json.JSONArray
 import org.json.JSONObject
 import com.reianix.reianix_local.data.media.MediaTitleNormalizer
@@ -237,7 +240,9 @@ class ReiAnixSqliteLibraryRepository(
             )"""
         }
 
-        if (genreKey != null) {
+        val canonicalGenre = genreKey?.takeIf { it.startsWith(ReiAnixGenreNames.PREFIX) }
+        val needsPostFilter = terms.isNotEmpty() || canonicalGenre != null
+        if (genreKey != null && canonicalGenre == null) {
             if (genreKey.startsWith("name:")) {
                 val name = genreKey.removePrefix("name:")
                 where += "(EXISTS (SELECT 1 FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id WHERE ag.anime_id=a.id AND lower(g.canonical_name)=?) OR a.genres LIKE ?)"
@@ -287,7 +292,7 @@ class ReiAnixSqliteLibraryRepository(
         // SQL candidate narrowing uses first-character variants, then the streamed cursor
         // applies the canonical Unicode-normalized token predicate.
         val candidateArgs = mutableListOf<String>()
-        for (character in terms.map { it.first().toString() }.distinct()) {
+        for (character in terms.filterNot(ReiAnixGenreNames::mayMatchTranslatedTerm).map { it.first().toString() }.distinct()) {
             val variants = nativeSearchCharacterVariants(character)
             val alternatives = mutableListOf<String>()
             for (variant in variants) {
@@ -344,14 +349,17 @@ class ReiAnixSqliteLibraryRepository(
                    COALESCE((SELECT GROUP_CONCAT(g.canonical_name || ' ' || COALESCE(ga.alias,''), ' ')
                              FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
                              LEFT JOIN genre_aliases ga ON ga.genre_id=g.id WHERE ag.anime_id=a.id), '') AS genre_search_text
-                   """.trimIndent()}
+                   """.trimIndent()},
+                   ${if (needsPostFilter) """COALESCE((SELECT GROUP_CONCAT(g.canonical_name, char(31))
+                       FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
+                       WHERE ag.anime_id=a.id), '')""" else "''"} AS canonical_genre_names
             FROM anime a
             ${if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")}
             ORDER BY $sort
-            ${if (terms.isEmpty() && !allResults) "LIMIT ? OFFSET ?" else ""}
+            ${if (!needsPostFilter && !allResults) "LIMIT ? OFFSET ?" else ""}
         """.trimIndent()
         val queryArgs = args.toMutableList()
-        if (terms.isEmpty() && !allResults) {
+        if (!needsPostFilter && !allResults) {
             queryArgs += (limit + 1).toString()
             queryArgs += offset.toString()
         }
@@ -367,7 +375,7 @@ class ReiAnixSqliteLibraryRepository(
             val queryText = terms.joinToString(" ")
             val relevanceOrder = compareByDescending<Pair<Long, Int>> { it.second }.thenBy { it.first }
             val bestMatches = java.util.PriorityQueue<Pair<Long, Int>>(relevanceOrder.reversed())
-            val exactTotal = if (terms.isEmpty()) {
+            val exactTotal = if (!needsPostFilter) {
                 val countSql = buildString {
                     append("SELECT COUNT(*) FROM anime a")
                     if (where.isNotEmpty()) {
@@ -386,17 +394,24 @@ class ReiAnixSqliteLibraryRepository(
             connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
                     searchContext.ensureActive()
+                    val genreNames = if (needsPostFilter) {
+                        val registered = cursor.getString(21).orEmpty()
+                        if (registered.isNotBlank()) registered.split('\u001f')
+                        else parseReiAnixGenreNames(cursor.getString(10))
+                    } else emptyList()
+                    if (canonicalGenre != null && genreNames.none { ReiAnixGenreNames.key(it) == canonicalGenre }) continue
                     if (terms.isNotEmpty()) {
                         val searchable = buildString {
                             for (column in 1..18) {
                                 if (!cursor.isNull(column)) append(cursor.getString(column)).append(' ')
                             }
                             append(cursor.getString(19).orEmpty()).append(' ').append(cursor.getString(20).orEmpty())
+                            genreNames.forEach { append(' ').append(ReiAnixGenreNames.label(it)) }
                         }
                         val normalized = normalizeNativeSearchText(searchable)
                         if (!terms.all { term -> normalized.contains(term) }) continue
-                        scannedMatches++
                     }
+                    if (needsPostFilter) scannedMatches++
 
                     val id = cursor.getLong(0)
                     val score = if (relevanceMode) {
@@ -451,10 +466,10 @@ class ReiAnixSqliteLibraryRepository(
             } else matchedIds
             val pageIds = when {
                 allResults -> orderedIds
-                terms.isEmpty() -> orderedIds
+                !needsPostFilter -> orderedIds
                 else -> orderedIds.drop(offset).take(limit + 1)
             }
-            val totalCount = if (terms.isEmpty()) exactTotal else scannedMatches
+            val totalCount = if (!needsPostFilter) exactTotal else scannedMatches
             val resultIds = if (allResults) pageIds else pageIds.take(limit)
             ReiAnixSqliteSearchPage(
                 animeIds = resultIds,
