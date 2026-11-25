@@ -2045,6 +2045,19 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun confirmedEpisodeDeletionRequiresTheExactPersistedPath() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val original = requireNotNull(repository.getEpisode(7L))
+        assertFalse(repository.removeConfirmedDeletedEpisode(7L, original.path + ".other"))
+        assertEquals(original, repository.getEpisode(7L))
+        assertTrue(repository.removeConfirmedDeletedEpisode(7L, original.path))
+        assertNull(repository.getEpisode(7L))
+        assertTrue(repository.getAnime(original.animeId) != null)
+        assertTrue(repository.removeConfirmedDeletedEpisode(7L, original.path))
+    }
+
+    @Test
     fun watchedEpisodeKeepsItsFlagAndPartialRewatchPositionAfterReopen() = runBlocking {
         createCanonicalFixture()
         val service = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
