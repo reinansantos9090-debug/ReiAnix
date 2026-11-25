@@ -138,6 +138,42 @@ class ReiAnixAniListClientTest {
         assertTrue(body.getString("query").contains("format_not: MUSIC"))
         assertTrue(body.getString("query").contains("perPage: 20"))
         assertTrue(body.getString("query").contains("relationType(version: 2)"))
+
+        // Compare batched search with the original repair for one anime, while
+        // sharing an alias with another anime. Neither may see unrelated results.
+        val groupedTransport = FakeTransport(AniListHttpResponse(200, """
+            {"data":{
+              "alias0":{"media":[{"id":42,"title":{"romaji":"Example"}}]},
+              "alias1":{"media":[{"id":42,"title":{"romaji":"Example"}},{"id":43,"title":{"romaji":"Other"}}]},
+              "alias2":{"media":[{"id":90,"title":{"romaji":"Different Anime II"}}]},
+              "alias3":{"media":[{"id":91,"isAdult":true}]}
+            }}
+        """.trimIndent()))
+        val grouped = ReiAnixAniListClient(groupedTransport, 0).searchUpgradeAliasesByTerm(
+            listOf("Example", "Alternative", "Different Anime II", "Empty", "Alternative"),
+        )
+        assertTrue(grouped is AniListResult.Success)
+        val byTerm = (grouped as AniListResult.Success).value
+        assertEquals(listOf("Example", "Alternative", "Different Anime II", "Empty"), byTerm.keys.toList())
+        assertEquals(listOf(42, 43), orderedUpgradeCandidates(listOf("Example", "Alternative", "Example"), byTerm)?.map { it.id })
+        assertEquals(listOf(90, 42, 43), orderedUpgradeCandidates(listOf("Different Anime II", "Alternative"), byTerm)?.map { it.id })
+        assertEquals(emptyList<AniListAnime>(), orderedUpgradeCandidates(listOf("Empty"), byTerm))
+        assertEquals(null, orderedUpgradeCandidates(listOf("Example", "Missing"), byTerm))
+        assertEquals(1, groupedTransport.calls)
+        assertEquals(4, groupedTransport.requestBody!!.getJSONObject("variables").length())
+        assertTrue(groupedTransport.requestBody!!.getString("query").contains("alias3: Page"))
+        assertTrue(groupedTransport.requestBody!!.getString("query").contains("perPage: 20"))
+
+        // The automatic path permits grouping more than eight aliases while
+        // a single anime's original eight-term ranking budget remains unchanged.
+        val terms = (0 until 16).map { "Term $it" }
+        val pages = JSONObject()
+        terms.indices.forEach { i -> pages.put("alias$i", JSONObject().put("media", org.json.JSONArray())) }
+        val wideTransport = FakeTransport(AniListHttpResponse(200, JSONObject().put("data", pages).toString()))
+        val wide = ReiAnixAniListClient(wideTransport, 0).searchUpgradeAliasesByTerm(terms)
+        assertEquals(16, (wide as AniListResult.Success).value.size)
+        assertEquals(1, wideTransport.calls)
+        assertEquals(16, wideTransport.requestBody!!.getJSONObject("variables").length())
     }
 
     @Test
@@ -146,6 +182,13 @@ class ReiAnixAniListClientTest {
         val result = ReiAnixAniListClient(transport, 0).searchAnimeAliases(listOf("Original", "Alternative"))
         assertTrue(result is AniListResult.Failure)
         assertEquals(1, transport.calls)
+
+        val partial = FakeTransport(AniListHttpResponse(200, """{"data":{"alias0":{"media":[]}}}"""))
+        val partialResult = ReiAnixAniListClient(partial, 0).searchUpgradeAliasesByTerm(listOf("Original", "Alternative"))
+        assertTrue(partialResult is AniListResult.Failure)
+        val limited = FakeTransport(AniListHttpResponse(429, "{}", 30))
+        val limitedResult = ReiAnixAniListClient(limited, 0).searchUpgradeAliasesByTerm(listOf("Original", "Alternative"))
+        assertEquals(AniListError.RateLimited(30), (limitedResult as AniListResult.Failure).error)
 
         val relationTransport = FakeTransport(AniListHttpResponse(200, """
             {"data":{"Page":{"media":[{"id":43,"title":{"romaji":"Example II"},"format":"TV",
