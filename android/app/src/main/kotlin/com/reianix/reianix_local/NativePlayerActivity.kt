@@ -3052,6 +3052,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onSource = { toggleMorePanel() },
                         onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
                         onCast = { showTvPicker() },
+                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Selecionar faixa de áudio") },
+                        onAspect = ::toggleAspectMode,
+                        onManualSkip = ::skipOpeningOrEndingManually,
+                        onNotes = ::showAddLocalNoteDialog,
                         onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
                         onSleepTimer = { showSleepTimerSelection() },
                         onNext = {
@@ -4169,6 +4173,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             .setNegativeButton("Cancelar", null)
             .create().also { showPlayerMenuDialog(it) }
+    }
+
+    private fun skipOpeningOrEndingManually() {
+        if (episodeChangePending || locked || errorVisible ||
+            inPictureInPicture || sessionState != SessionState.ACTIVE ||
+            !::player.isInitialized || player.duration <= 0L
+        ) return
+        val target = PlayerGesturePolicy.seekTarget(
+            currentPositionMs = player.currentPosition,
+            deltaMs = PlayerShortcutPolicy.MANUAL_OP_ED_SKIP_MS,
+            durationMs = player.duration,
+        )
+        // This is a manual jump; it never modifies detected OP/ED segments.
+        seekToMarker(target)
     }
 
     private fun seekBy(deltaMs: Long, showControls: Boolean = true) {
@@ -6822,7 +6840,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun showAddLocalNoteDialog() {
-        if (!::localMetadataStore.isInitialized || !::uri.isInitialized) return
+        if (!::localMetadataStore.isInitialized || !::uri.isInitialized ||
+            !::player.isInitialized || episodeChangePending || favoriteClipSession != null ||
+            sessionState != SessionState.ACTIVE || errorVisible
+        ) return
+        findViewByTag<GestureLayer>("reianix_gesture_layer")?.cancelInteractions()
+        val noteUri = uri
+        val noteGeneration = transitionGeneration
+        val notePositionMs = player.currentPosition.coerceAtLeast(0L)
         val input = android.widget.EditText(this).apply {
             hint = "Nota neste ponto do episódio"
             setSingleLine(false)
@@ -6832,23 +6857,40 @@ override fun onCreate(savedInstanceState: Bundle?) {
             backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             setTextSize(14f)
         }
-        AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Nota em " + formatTime(if (::player.isInitialized) player.currentPosition else 0L))
+        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
+            .setTitle("Nota em " + formatTime(notePositionMs))
             .setView(input)
             .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Salvar") { _, _ ->
+            .setPositiveButton("Salvar", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val noteText = input.text?.toString().orEmpty().trim()
+                if (noteText.isBlank()) {
+                    input.error = "Escreva uma anotação"
+                    return@setOnClickListener
+                }
+                if (noteText.length > 500) {
+                    input.error = "Use até 500 caracteres"
+                    return@setOnClickListener
+                }
                 try {
-                    localMetadata = localMetadataStore.addNote(
-                        uri.toString(),
-                        if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else 0L,
-                        input.text?.toString().orEmpty(),
-                    )
-                    updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
+                    // Save to the episode and timestamp captured when opening,
+                    // even if playback advances while the user is typing.
+                    val updated = localMetadataStore.addNote(noteUri.toString(), notePositionMs, noteText)
+                    if (::uri.isInitialized && uri == noteUri && transitionGeneration == noteGeneration &&
+                        sessionState == SessionState.ACTIVE && favoriteClipSession == null
+                    ) {
+                        localMetadata = updated
+                        updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
+                    }
+                    dialog.dismiss()
                 } catch (_: Exception) {
-                    showFeedback("Não foi possível salvar a nota")
+                    input.error = "Não foi possível salvar a nota"
                 }
             }
-            .create().also { showPlayerMenuDialog(it) }
+        }
+        showPlayerMenuDialog(dialog)
     }
 
     private fun parseTimestampMs(raw: String?): Long? {
