@@ -153,6 +153,10 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var playerControlScrim: View
     private var playerControlsMotion: AnimatorSet? = null
+    // Separate alpha tracks, sharing the same native animation clock.
+    private val rewindControlAlpha = mutableStateOf(0f)
+    private val playControlAlpha = mutableStateOf(0f)
+    private val forwardControlAlpha = mutableStateOf(0f)
     private var playerControlsPresentation: ControlsPresentation? = null
 
     private enum class ControlsPresentation { HIDDEN, FULL, LOCKED, LOCKED_HIDDEN, ERROR, PIP }
@@ -3016,6 +3020,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onPlayPause = { togglePlayPause() },
                         onSeekRelative = { seekBy(it) },
                         accumulatedSeekSeconds = accumulatedSeekSeconds.value,
+                        rewindAlpha = { rewindControlAlpha.value },
+                        playAlpha = { playControlAlpha.value },
+                        forwardAlpha = { forwardControlAlpha.value },
                         onSeekIconPositioned = relativeSeekOverlay::updateIconCenter,
                     )
                 }
@@ -3234,12 +3241,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val targetAlpha = if (full) 1f else 0f
         val topY = if (full) 0f else -distance
         val bottomY = if (full) 0f else distance
-        val layers = listOf(playerControlScrim, composeTopView, composeCenterView, composeBottomView)
+        val layers = listOf(playerControlScrim, composeTopView, composeBottomView)
+        val centerAlphas = listOf(rewindControlAlpha, playControlAlpha, forwardControlAlpha)
+        // Do not fade the parent as well: that would multiply the individual alphas.
+        composeCenterView.alpha = 1f
 
         fun settle() {
             playerControlScrim.alpha = targetAlpha
             composeTopView.alpha = targetAlpha
-            composeCenterView.alpha = targetAlpha
+            centerAlphas.forEach { it.value = targetAlpha }
             composeBottomView.alpha = if (full || lockedAffordance) 1f else 0f
             composeTopView.translationY = topY
             composeBottomView.translationY = if (lockedAffordance) 0f else bottomY
@@ -3259,9 +3269,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         controls.visibility = View.VISIBLE
         layers.forEach { it.visibility = View.VISIBLE }
+        composeCenterView.visibility = View.VISIBLE
         val animations = layers.map { layer ->
             ObjectAnimator.ofFloat(layer, View.ALPHA, targetAlpha).apply {
                 duration = 100L
+            }
+        } + centerAlphas.map { controlAlpha ->
+            // CloudStream creates a distinct 100ms fade for each center control.
+            // Keep current alpha on reversal, and start all tracks in this same AnimatorSet.
+            ValueAnimator.ofFloat(controlAlpha.value, targetAlpha).apply {
+                duration = 100L
+                addUpdateListener { controlAlpha.value = it.animatedValue as Float }
             }
         } + listOf(
             ObjectAnimator.ofFloat(composeTopView, View.TRANSLATION_Y, topY).apply {
