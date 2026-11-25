@@ -66,11 +66,6 @@ object BroadStorageScanner {
     const val DISPLAY_NAME = "Armazenamento local"
     // Keep the extension fallback close to Nova's local video intent/indexing
     // surface, while still allowing MediaStore/SAF MIME types to win when present.
-    private val videoExtensions = setOf(
-        "3g2","3gp","3gp2","3gpp","asf","avi","divx","flv","f4v","qt","m4v",
-        "mtv","mkv","mp4","mpeg","mpe","mpg","mov","ogm","ogv","ogx","vob","wtv",
-        "webm","ts","m2ts","wmv"
-    )
 
     /** A physical shared-storage root, not merely a path supplied by one scanner. */
     data class StorageRoot(
@@ -468,7 +463,7 @@ object BroadStorageScanner {
                     volumeStats.put("nomediaFiles", volumeStats.optInt("nomediaFiles", 0) + 1)
                     continue
                 }
-                if (!child.isFile || child.extension.lowercase() !in videoExtensions) continue
+                if (!child.isFile || !LocalVideoRecognition.accepts(child.name, null)) continue
 
                 val file = runCatching { child.canonicalFile }.getOrNull() ?: continue
                 if (!isInside(file, root.file) || isRestricted(file)) {
