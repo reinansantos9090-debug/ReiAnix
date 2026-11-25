@@ -14,6 +14,9 @@ class SafTreeChangeDetectionTest {
             "OVA.webm",
             "movie.m2ts",
             "clip.avi",
+            "episode.MXF",
+            "recording.rmvb",
+            "episode.MTS",
         )) {
             assertTrue(
                 "Expected $name to be treated as a video document.",
