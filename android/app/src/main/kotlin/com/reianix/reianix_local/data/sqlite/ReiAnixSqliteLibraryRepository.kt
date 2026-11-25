@@ -242,6 +242,8 @@ class ReiAnixSqliteLibraryRepository(
 
         val canonicalGenre = genreKey?.takeIf { it.startsWith(ReiAnixGenreNames.PREFIX) }
         val needsPostFilter = terms.isNotEmpty() || canonicalGenre != null
+        val translatedSearch = terms.any(ReiAnixGenreNames::mayMatchTranslatedTerm)
+        val needsGenreNames = canonicalGenre != null || translatedSearch
         if (genreKey != null && canonicalGenre == null) {
             if (genreKey.startsWith("name:")) {
                 val name = genreKey.removePrefix("name:")
@@ -349,10 +351,10 @@ class ReiAnixSqliteLibraryRepository(
                    COALESCE((SELECT GROUP_CONCAT(g.canonical_name || ' ' || COALESCE(ga.alias,''), ' ')
                              FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
                              LEFT JOIN genre_aliases ga ON ga.genre_id=g.id WHERE ag.anime_id=a.id), '') AS genre_search_text
-                   """.trimIndent()},
-                   ${if (needsPostFilter) """COALESCE((SELECT GROUP_CONCAT(g.canonical_name, char(31))
+                   """.trimIndent()}
+                   ${if (needsGenreNames) """, COALESCE((SELECT GROUP_CONCAT(g.canonical_name, char(31))
                        FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id
-                       WHERE ag.anime_id=a.id), '')""" else "''"} AS canonical_genre_names
+                       WHERE ag.anime_id=a.id), '') AS canonical_genre_names""" else ""}
             FROM anime a
             ${if (where.isEmpty()) "" else "WHERE " + where.joinToString(" AND ")}
             ORDER BY $sort
@@ -394,10 +396,12 @@ class ReiAnixSqliteLibraryRepository(
             connection.rawQuery(sql, queryArgs.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
                     searchContext.ensureActive()
-                    val genreNames = if (needsPostFilter) {
-                        val registered = cursor.getString(21).orEmpty()
-                        if (registered.isNotBlank()) registered.split('\u001f')
-                        else parseReiAnixGenreNames(cursor.getString(10))
+                    val genreNames = if (needsGenreNames) {
+                        // The canonical catalog includes both persisted associations
+                        // and original metadata, even when only some genres were backfilled.
+                        val registered = cursor.getString(21).orEmpty().split('\u001f')
+                            .filter(String::isNotBlank)
+                        registered + parseReiAnixGenreNames(cursor.getString(10))
                     } else emptyList()
                     if (canonicalGenre != null && genreNames.none { ReiAnixGenreNames.key(it) == canonicalGenre }) continue
                     if (terms.isNotEmpty()) {
