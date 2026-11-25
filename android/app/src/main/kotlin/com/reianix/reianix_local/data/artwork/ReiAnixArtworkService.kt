@@ -262,6 +262,10 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     private val cacheClearInProgress = AtomicBoolean(false)
     @Volatile private var backfillJob: Job? = null
 
+    /** Read-only gate for supplementary work; never delays ordinary artwork requests. */
+    fun isOrdinaryArtworkIdle(): Boolean = !backfillRunning.get() && !missingPosterBackfillRunning.get() &&
+        !cacheClearInProgress.get() && jobs.isEmpty() && candidateFollowUpRequests.isEmpty() && forceFollowUpIds.isEmpty()
+
     private data class Anime(
         val anilistId: Long?,
         val kind: String?,
