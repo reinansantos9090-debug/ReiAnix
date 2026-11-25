@@ -186,6 +186,8 @@ class ReiAnixAppDependencies(context: Context) {
     ) {
         ReiAnixAniListIntegrationService(
             client = aniListClient,
+            // The supplementary pass must not hold the regular AniList client's request lock.
+            automaticRepairClient = ReiAnixAniListClient(),
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
             genreRegistry = genreRegistry,
