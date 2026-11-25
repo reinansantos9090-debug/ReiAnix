@@ -629,7 +629,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
             } else {
                 settingsPageSections(category).forEach { section ->
-                    item(key = "section:$section") { SettingsSectionLabel(settingsSectionTitle(section)) }
+                    if (section != "Sobre") {
+                        item(key = "section:$section") { SettingsSectionLabel(settingsSectionTitle(section)) }
+                    }
                     when (section) {
                 "Biblioteca" -> {
                     item(key = "setting:library.sort_default") {
@@ -802,6 +804,37 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 }
 
                 "Sobre" -> {
+                    item(key = "about:terms") {
+                        ReiAnixSettingsRow(
+                            icon = settingsIcon("about:terms"),
+                            title = "Termos de uso",
+                            description = "Condições de utilização do ReiAnix",
+                            onClick = { onOpenSubmenu("Termos de uso") },
+                        )
+                    }
+                    item(key = "about:privacy") {
+                        ReiAnixSettingsRow(
+                            icon = settingsIcon("about:privacy"),
+                            title = "Política de privacidade",
+                            description = "Uso, proteção e exclusão de dados",
+                            onClick = { onOpenSubmenu("Política de privacidade") },
+                        )
+                    }
+                    item(key = "about:licenses") {
+                        ReiAnixSettingsRow(
+                            icon = Icons.Filled.Info,
+                            title = "Licenças",
+                            description = "Bibliotecas de código aberto e créditos",
+                            onClick = { onOpenSubmenu("Licenças") },
+                        )
+                    }
+                    item(key = "section:$section") {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = ReiAnixTokens.Spacing.lg),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                        SettingsSectionLabel(settingsSectionTitle(section))
+                    }
                     item(key = "about:app") {
                         ReiAnixSettingsSurface(
                             modifier = Modifier.fillMaxWidth(),
@@ -823,7 +856,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 ReiAnixBadge(
-                                    text = BuildConfig.VERSION_NAME,
+                                    text = "Versão ${BuildConfig.VERSION_NAME}",
                                     tone = ReiAnixBadgeTone.Neutral,
                                 )
                                 Text(
@@ -838,30 +871,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                             }
                         }
-                    }
-                    item(key = "about:licenses") {
-                        ReiAnixSettingsRow(
-                            icon = Icons.Filled.Info,
-                            title = "Licenças",
-                            description = "Bibliotecas de código aberto e créditos usados no ReiAnix",
-                            onClick = { onOpenSubmenu("Licenças") },
-                        )
-                    }
-                    item(key = "about:privacy") {
-                        ReiAnixSettingsRow(
-                            icon = settingsIcon("about:privacy"),
-                            title = "Política de privacidade",
-                            description = "Uso, proteção e exclusão de dados",
-                            onClick = { onOpenSubmenu("Política de privacidade") },
-                        )
-                    }
-                    item(key = "about:terms") {
-                        ReiAnixSettingsRow(
-                            icon = settingsIcon("about:terms"),
-                            title = "Termos de uso",
-                            description = "Condições de utilização do ReiAnix",
-                            onClick = { onOpenSubmenu("Termos de uso") },
-                        )
                     }
                 }
 
