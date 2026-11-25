@@ -153,6 +153,10 @@ class ReiAnixAppDependencies(context: Context) {
         )
     }
 
+    private val aniMapIdResolver by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        externalCatalogProviderRegistry.coordinate(ReiAnixAniMapCatalogIdResolver())
+    }
+
     /** AniMap is a read-only crosswalk for IDs already linked to a local anime. */
     val externalCatalogIntegrationService: ReiAnixExternalCatalogIntegrationService by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
@@ -161,9 +165,7 @@ class ReiAnixAppDependencies(context: Context) {
             library = sqliteLibraryRepository,
             providers = externalCatalogProviderRegistry,
             artwork = artworkService,
-            identifierResolver = externalCatalogProviderRegistry.coordinate(
-                ReiAnixAniMapCatalogIdResolver(),
-            ),
+            identifierResolver = aniMapIdResolver,
             candidateMetadataPublisher = { animeId, candidate ->
                 candidateMetadataService.offerKitsu(animeId, candidate)
             },
@@ -188,6 +190,7 @@ class ReiAnixAppDependencies(context: Context) {
             client = aniListClient,
             // The supplementary pass must not hold the regular AniList client's request lock.
             automaticRepairClient = ReiAnixAniListClient(),
+            automaticIdResolver = aniMapIdResolver,
             library = sqliteLibraryRepository,
             settings = sqliteSettingsRepository,
             genreRegistry = genreRegistry,
