@@ -5,6 +5,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 import com.reianix.reianix_local.scanner.BroadStorageScanner
+import com.reianix.reianix_local.data.sqlite.NativeDiscoveredMedia
 import com.reianix.reianix_local.scanner.DiscoveredMediaMetadata
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -44,6 +45,80 @@ class DiscoveredMediaMetadataTest {
         assertFalse(document.getJSONObject("metadataAvailability").getBoolean("modifiedAtAvailable"))
         assertTrue(document.isNull("size"))
         assertTrue(document.isNull("modifiedAt"))
+    }
+
+    @Test
+    fun standaloneSafVideosKeepTheirCatalogIdentityWhenAnAncestorIsSelected() {
+        val examples = listOf(
+            "Solo Leveling.mp4" to "reianix",
+            "Assistir Dragon Ball Z.mkv" to "animes/anime/reivex",
+            "Another Story.webm" to "a/b/c/d/e/f/g",
+        )
+        for ((name, folder) in examples) {
+            fun discover(relative: String): JSONObject = DiscoveredMediaMetadata.attach(
+                document = JSONObject().put("relativePath", relative),
+                fileName = name,
+                relativePath = relative,
+                source = "saf",
+                mimeType = "video/*",
+                sizeBytes = 128L,
+                modifiedAtMillis = null,
+                providerId = "primary:Download/ADM/$folder/$name",
+            )
+
+            val direct = discover(name)
+            val ancestor = discover("$folder/$name")
+            val expected = direct.getJSONObject("parsedMedia")
+            val actual = ancestor.getJSONObject("parsedMedia")
+            assertEquals("movie", expected.getString("kind"))
+            assertEquals("standalone_root_movie", expected.getString("identificationSource"))
+            assertEquals("movie", actual.getString("kind"))
+            assertEquals("high", actual.getString("confidence"))
+            assertEquals(expected.getString("animeTitle"), actual.getString("animeTitle"))
+            assertEquals(expected.getString("identificationSource"), actual.getString("identificationSource"))
+            assertTrue(actual.isNull("episodeNumber"))
+            assertEquals("$folder/$name", ancestor.getString("relativePath"))
+            val indexed = NativeDiscoveredMedia(
+                location = "content://provider/document/video",
+                fileName = name,
+                animeTitle = actual.getString("animeTitle"),
+                episodeType = actual.getString("kind"),
+                identificationConfidence = actual.getString("confidence"),
+            )
+            assertTrue(indexed.hasConfidentEpisodeIdentity)
+        }
+    }
+
+    @Test
+    fun nestedSafFallbackPreservesEpisodeEvidenceAndDoesNotPromoteGenericClips() {
+        fun parse(relative: String): JSONObject = DiscoveredMediaMetadata.attach(
+            document = JSONObject(),
+            fileName = relative.substringAfterLast('/'),
+            relativePath = relative,
+            source = "saf",
+            mimeType = "video/*",
+            sizeBytes = null,
+            modifiedAtMillis = null,
+            providerId = "primary:Download/ADM/$relative",
+        ).getJSONObject("parsedMedia")
+
+        val numbered = parse("animes/Show Season 2/03.mkv")
+        assertEquals("regular", numbered.getString("kind"))
+        assertEquals(2, numbered.getInt("season"))
+        assertEquals(3.0, numbered.getDouble("episodeNumber"), 0.0)
+        assertEquals("high", numbered.getString("confidence"))
+
+        val explicit = parse("reianix/Show S01E02.mp4")
+        assertEquals("regular", explicit.getString("kind"))
+        assertEquals(2.0, explicit.getDouble("episodeNumber"), 0.0)
+
+        val ambiguous = parse("Show/Season 2/03.mkv")
+        assertEquals("unknown", ambiguous.getString("kind"))
+        assertTrue(ambiguous.isNull("episodeNumber"))
+
+        val clip = parse("a/b/c/trailer.mp4")
+        assertEquals("unknown", clip.getString("kind"))
+        assertTrue(clip.isNull("episodeNumber"))
     }
 
     @Test
