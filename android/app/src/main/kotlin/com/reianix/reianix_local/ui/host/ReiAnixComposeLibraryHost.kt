@@ -345,6 +345,7 @@ class ReiAnixComposeLibraryHost(
                 fun earlyAllowed(): Boolean = !libraryViewModel.uiState.value.scanInProgress &&
                     dependencies.artworkService.canRunEarlyArtworkUpgrade()
 
+                val needsIdlePass = java.util.concurrent.atomic.AtomicBoolean(false)
                 merge(
                     ordinaryEnrichmentPasses.map { Unit },
                     dependencies.artworkService.publishedArtworks
@@ -359,13 +360,15 @@ class ReiAnixComposeLibraryHost(
                         while (true) {
                             delay(3_000L)
                             val idle = ordinaryIdle()
-                            if (idle != wasIdle || (!idle && earlyAllowed())) emit(Unit)
+                            if (idle != wasIdle || (!idle && earlyAllowed()) || (idle && needsIdlePass.get())) emit(Unit)
                             wasIdle = idle
                         }
                     },
                     // Retry transient failures even if no new cover is published.
                     flow { while (true) { delay(15 * 60_000L); emit(Unit) } },
                 ).conflate().collect {
+                    val startedIdle = ordinaryIdle()
+                    needsIdlePass.set(!startedIdle)
                     try {
                         withContext(Dispatchers.IO) {
                             dependencies.aniListIntegrationService.upgradeKitsuLibraryToAniList(
@@ -379,6 +382,7 @@ class ReiAnixComposeLibraryHost(
                     } catch (error: Exception) {
                         android.util.Log.w(TAG, "Deferred AniList upgrade failed: " + error::class.java.simpleName)
                     }
+                    if (!ordinaryIdle()) needsIdlePass.set(true)
                     // Coalesce bursts without postponing the first ready poster.
                     delay(500L)
                 }
