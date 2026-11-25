@@ -42,5 +42,12 @@ class ReiAnixGenreClassifierTest {
         )
         assertEquals(emptyList<String>(), parseReiAnixGenreNames("null"))
         assertTrue(parseReiAnixGenreNames("not-json").contains("not-json"))
+
+        val registered = listOf(com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel("existing-id", "Action"))
+        val preserved = ReiAnixGenreNames.preserveMetadataGenres(registered, listOf("Ação", "Drama", "Music"))
+        assertEquals(listOf("Action", "Drama", "Music"), preserved.map { it.name })
+        assertEquals(listOf("existing-id", null, null), preserved.map { it.id })
+        assertEquals(listOf("Ação", "Drama", "Música"), ReiAnixGenreNames.options(preserved).map { it.name })
+        assertEquals(listOf("Music"), ReiAnixGenreNames.preserveMetadataGenres(emptyList(), listOf("Music")).map { it.name })
     }
 }
