@@ -866,6 +866,7 @@ internal fun DetailsOverflowActions(
     traceMoeStatus: ReiAnixTraceMoeIdentificationStatus,
     onTogglePinned: () -> Unit,
     onIdentifyOrCancel: () -> Unit,
+    iconTint: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val running = traceMoeStatus == ReiAnixTraceMoeIdentificationStatus.RUNNING
@@ -888,7 +889,7 @@ internal fun DetailsOverflowActions(
                 imageVector = Icons.Filled.MoreVert,
                 contentDescription = "Mais opções",
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = iconTint,
             )
         }
         DropdownMenu(
@@ -935,7 +936,10 @@ internal fun DetailsOverflowActions(
 
 /** Independent manual lookup; the existing automatic repair remains unchanged. */
 @Composable
-internal fun DetailsManualAniListAction(onClick: () -> Unit) {
+internal fun DetailsManualAniListAction(
+    onClick: () -> Unit,
+    iconTint: Color = MaterialTheme.colorScheme.onSurface,
+) {
     IconButton(
         onClick = onClick,
         modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).testTag("details-manual-anilist"),
@@ -944,7 +948,7 @@ internal fun DetailsManualAniListAction(onClick: () -> Unit) {
             imageVector = Icons.Filled.Search,
             contentDescription = "Pesquisar e associar anime ao AniList",
             modifier = Modifier.size(ReiAnixTokens.Dimensions.iconMedium),
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = iconTint,
         )
     }
 }
@@ -1047,31 +1051,25 @@ private fun DetailsHero(
             )
             ReiAnixTopBar(
                 title = "Detalhes",
+                titleColor = Color.White,
                 modifier = Modifier
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                // A minimal scrim keeps controls readable while
-                                // preserving the original brightness of the banner.
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.16f),
-                                MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
-                                Color.Transparent,
-                            ),
-                        ),
-                    )
+                    // CloudStream-style 40% black scrim, confined to the header.
+                    // The banner artwork and its existing lower fade stay intact.
+                    .background(Color(0x66000000))
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 navigationContentDescription = "Voltar",
                 onNavigationClick = onBack,
                 actions = {
                     if (onManualAniList != null) {
-                        DetailsManualAniListAction(onClick = onManualAniList)
+                        DetailsManualAniListAction(onClick = onManualAniList, iconTint = Color.White)
                         Spacer(Modifier.width(8.dp))
                     }
                     DetailsOverflowActions(
                         pinned = anime.pinned,
                         pinEnabled = !pinSaving,
                         traceMoeStatus = traceMoeState.status,
+                        iconTint = Color.White,
                         onIdentifyOrCancel = {
                             if (traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING) {
                                 onCancelTraceMoe(anime.id)
