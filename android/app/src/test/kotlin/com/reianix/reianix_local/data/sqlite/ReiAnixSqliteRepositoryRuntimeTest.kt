@@ -2068,6 +2068,30 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             listOf(1L, 2L),
             repository.searchAnimeIds("", null, false, false, false, "Episódio", 36, 0).animeIds,
         )
+
+        // Mixed provider IDs, partial registry backfill and legacy-only genres
+        // must not change the unfiltered catalog or lose a page of results.
+        SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE anime SET genres=? WHERE id=1", arrayOf("""["Action","Drama"]"""))
+            db.execSQL("UPDATE anime SET genres=? WHERE id=2", arrayOf("""["Ação","Music"]"""))
+        }
+        val canonicalFirst = repository.searchAnimeIds("", "genre:action", false, false, false, null, 1, 0)
+        val canonicalSecond = repository.searchAnimeIds("", "genre:action", false, false, false, null, 1, 1)
+        val canonicalAll = repository.searchAnimeIds("", "genre:action", false, false, false, null, 1, 0, allResults = true)
+        assertEquals(listOf(2L), canonicalFirst.animeIds)
+        assertEquals(listOf(1L), canonicalSecond.animeIds)
+        assertEquals(2, canonicalFirst.totalCount)
+        assertTrue(canonicalFirst.hasMore)
+        assertFalse(canonicalSecond.hasMore)
+        assertEquals(listOf(2L, 1L), canonicalAll.animeIds)
+        assertEquals(listOf(1L), repository.searchAnimeIds("", "genre:drama", false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(2L), repository.searchAnimeIds("", "genre:music", false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(2L), repository.searchAnimeIds("música", null, false, false, false, null, 36, 0).animeIds)
+        assertEquals(listOf(2L, 1L), repository.searchAnimeIds("", null, false, false, false, null, 1, 0, allResults = true).animeIds)
+        val catalog = com.reianix.reianix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(repository.loadLibraryCatalogRows())
+        val genres = catalog.animes.first { it.id == 1L }.genres
+        assertEquals(listOf("Action", "Drama"), genres.map { it.name })
+        assertEquals(listOf("action-id", null), genres.map { it.id })
     }
 
     @Test
