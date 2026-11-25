@@ -288,6 +288,7 @@ class ReiAnixAniListIntegrationService(
     private val explicitArtworkPublisher: ((Long) -> Unit)? = null,
     private val prepareRepairArtwork: (suspend (Long, AniListAnime) -> ReiAnixPreparedRepairArtwork?)? = null,
     private val traceMoeConsent: () -> Boolean = { false },
+    private val automaticRepairClient: ReiAnixAniListClient = client,
 ) {
     private val effectiveGenreRegistry: ReiAnixGenreRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         genreRegistry ?: ReiAnixGenreRegistry(library.database)
@@ -391,7 +392,7 @@ class ReiAnixAniListIntegrationService(
         if (!isAniListEnabled()) return AniListResult.Failure(
             AniListError.InvalidRequest("A integração AniList está desativada nas configurações."),
         )
-        if (!explicitRepairInFlight.add(animeId)) return AniListResult.Failure(
+        if (!automaticKitsuUpgrade && !explicitRepairInFlight.add(animeId)) return AniListResult.Failure(
             AniListError.InvalidRequest("Este anime já está sendo verificado."),
         )
         try {
@@ -413,7 +414,8 @@ class ReiAnixAniListIntegrationService(
             )
             // All returned candidates are evaluated against every stored title.
             // The original name is a preference, not a mandatory match.
-            val candidates = when (val result = client.searchAnimeAliases(terms)) {
+            val repairClient = if (automaticKitsuUpgrade) automaticRepairClient else client
+            val candidates = when (val result = repairClient.searchAnimeAliases(terms)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
@@ -454,7 +456,7 @@ class ReiAnixAniListIntegrationService(
                 mayUpgrade = mayUpgrade,
             )
         } finally {
-            explicitRepairInFlight.remove(animeId)
+            if (!automaticKitsuUpgrade) explicitRepairInFlight.remove(animeId)
         }
     }
 
@@ -485,7 +487,29 @@ class ReiAnixAniListIntegrationService(
 
         awaitIdle()
         val attempts = readPersistedArtworkDiscoveryAttemptTimes(library.database, KITSU_UPGRADE_ATTEMPT_PREFIX)
-        val targets = library.loadLibraryCatalogRows().filter(::isKitsuUpgradeTarget).map { it.anime.id }
+        // Cheap provenance prefilter; materialize catalog/episode rows only for
+        // plausible targets. The actual visible artwork is checked below.
+        val targets = library.database.read { db ->
+            db.rawQuery(
+                """
+                SELECT a.id FROM anime a
+                WHERE COALESCE(a.anilist_match_manual,0)=0
+                  AND LOWER(COALESCE(a.metadata_source,''))!='manual'
+                  AND LOWER(COALESCE(a.metadata_status,''))!='manual'
+                  AND (LOWER(COALESCE(a.metadata_source,'')) IN ('kitsu','kitsu_candidate')
+                    OR INSTR(LOWER(COALESCE(a.cover_url,'')),'kitsu')>0
+                    OR EXISTS (SELECT 1 FROM artwork art
+                      WHERE art.entity_id=CAST(a.id AS TEXT)
+                        AND art.entity_type IN ('anime','movie')
+                        AND art.artwork_type IN ('poster','cover','backdrop','banner')
+                        AND art.status='ready' AND COALESCE(art.manual,0)=0
+                        AND (LOWER(COALESCE(art.source,''))='kitsu'
+                          OR INSTR(LOWER(COALESCE(art.external_url,'')),'kitsu')>0
+                          OR INSTR(LOWER(COALESCE(art.source_ref,'')),'kitsu')>0)))
+                ORDER BY a.id
+                """.trimIndent(), null,
+            ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+        }
         var upgraded = 0
         for (animeId in targets) {
             currentCoroutineContext().ensureActive()
@@ -500,10 +524,10 @@ class ReiAnixAniListIntegrationService(
                 if (animeId in explicitRepairInFlight) break
                 var deferred = false
                 val result = repairMetadataAndArtworkInternal(animeId, automaticKitsuUpgrade = true) {
-                    val ready = ordinaryWorkIdle() && isAniListEnabled() &&
+                    val ready = animeId !in explicitRepairInFlight && ordinaryWorkIdle() && isAniListEnabled() &&
                         settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true) &&
                         library.loadLibraryCatalogRows(setOf(animeId)).any(::isKitsuUpgradeTarget)
-                    val stillIdle = ready && ordinaryWorkIdle()
+                    val stillIdle = ready && ordinaryWorkIdle() && animeId !in explicitRepairInFlight
                     if (!stillIdle) deferred = true
                     stillIdle
                 }
@@ -1613,7 +1637,7 @@ class ReiAnixAniListIntegrationService(
                 }
                 remoteOriginal to displayDescription
             }
-            if (automaticKitsuUpgrade && !mayUpgrade()) return AniListResult.Failure(
+            if (automaticKitsuUpgrade && (!artworkEnabled || !mayUpgrade())) return AniListResult.Failure(
                 AniListError.InvalidRequest("Automatic upgrade deferred."),
             )
             val prepared = if ((explicitRepair || manualSelection) && artworkEnabled && (explicitRepair || prepareRepairArtwork != null)) {
