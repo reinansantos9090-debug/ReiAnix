@@ -52,7 +52,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -333,38 +332,55 @@ class ReiAnixComposeLibraryHost(
                 }
             }
 
-            // Separate pass: observe completed enrichment and late Kitsu publications.
-            // Ordinary loading never awaits this pass, even on a large library.
+            // Supplementary repair reacts to ready posters without debouncing
+            // indefinitely while the ordinary pipeline is still publishing artwork.
             LaunchedEffect(libraryViewModel, bootstrapState.phase, bootstrapState.persistenceStatus) {
                 if (bootstrapState.phase != ReiAnixBootstrapPhase.READY ||
                     bootstrapState.persistenceStatus != ReiAnixBootstrapPersistenceStatus.HEALTHY
                 ) return@LaunchedEffect
                 val dependencies = ReiAnixAppDependencies.from(activity.applicationContext)
+                fun ordinaryIdle(): Boolean = ordinaryEnrichmentPasses.value == 0 &&
+                    !libraryViewModel.uiState.value.scanInProgress &&
+                    dependencies.artworkService.isOrdinaryArtworkIdle()
+                fun earlyAllowed(): Boolean = !libraryViewModel.uiState.value.scanInProgress &&
+                    dependencies.artworkService.canRunEarlyArtworkUpgrade()
+
                 merge(
-                    ordinaryEnrichmentPasses.filter { it == 0 }.map { Unit },
+                    ordinaryEnrichmentPasses.map { Unit },
                     dependencies.artworkService.publishedArtworks
-                        // Cached remote publications use the generic AniList label;
-                        // inspect the persisted provider URL in the upgrade pass instead.
                         .filter { it.entityType in setOf("anime", "movie") &&
                             it.artworkType in setOf("poster", "cover", "backdrop", "banner") }.map { Unit },
                     libraryViewModel.uiState.map { it.scanInProgress }.distinctUntilChanged()
                         .filter { !it }.map { Unit },
+                    // A publication can precede removal of its ordinary artwork
+                    // job. Check again during startup and on the transition to idle.
+                    flow {
+                        var wasIdle = ordinaryIdle()
+                        while (true) {
+                            delay(3_000L)
+                            val idle = ordinaryIdle()
+                            if (idle != wasIdle || (!idle && earlyAllowed())) emit(Unit)
+                            wasIdle = idle
+                        }
+                    },
                     // Retry transient failures even if no new cover is published.
                     flow { while (true) { delay(15 * 60_000L); emit(Unit) } },
-                ).debounce(1_000L).conflate().collect {
+                ).conflate().collect {
                     try {
                         withContext(Dispatchers.IO) {
-                            dependencies.aniListIntegrationService.upgradeKitsuLibraryToAniList {
-                                ordinaryEnrichmentPasses.value == 0 &&
-                                    !libraryViewModel.uiState.value.scanInProgress &&
-                                    dependencies.artworkService.isOrdinaryArtworkIdle()
-                            }
+                            dependencies.aniListIntegrationService.upgradeKitsuLibraryToAniList(
+                                earlyWorkAllowed = ::earlyAllowed,
+                                animeArtworkIdle = dependencies.artworkService::isAnimeArtworkIdle,
+                                ordinaryWorkIdle = ::ordinaryIdle,
+                            )
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
                         android.util.Log.w(TAG, "Deferred AniList upgrade failed: " + error::class.java.simpleName)
                     }
+                    // Coalesce bursts without postponing the first ready poster.
+                    delay(500L)
                 }
             }
 
