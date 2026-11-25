@@ -1206,6 +1206,34 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             polar, polar.lookupTitle, listOf(candidate(201, title2), sequel),
         ).map { it.anime.id })
 
+        // A verified-ID shortcut still requires independent canonical title,
+        // exact edition and compatible Kitsu metadata. Otherwise use full search.
+        val directLocal = anime.copy(
+            lookupTitle = "Kusuriya no Hitorigoto 3rd Season",
+            title = "Kusuriya no Hitorigoto 3rd Season",
+            romaji = "Kusuriya no Hitorigoto 3rd Season",
+            english = null, anilistId = null, metadataSource = "kitsu",
+            year = 2027, season = null, format = "TV",
+        )
+        val directRemote = third.copy(seasonYear = 2027, repairRelations = emptyList())
+        val directEvidence = com.reianix.reianix_local.data.anilist.ExplicitAniListLocalEvidence(
+            titles = listOf(directLocal.lookupTitle), episodeCount = 2, durationMinutes = 24.0,
+        )
+        fun canUseDirect(remote: com.reianix.reianix_local.data.anilist.AniListAnime,
+                         local: ReiAnixAnimeRecord = directLocal) =
+            com.reianix.reianix_local.data.anilist.isSafeDirectAutomaticRepair(
+                local, local.lookupTitle, remote, directEvidence,
+            )
+        assertTrue(canUseDirect(directRemote))
+        assertFalse(canUseDirect(first.copy(seasonYear = 2027)))
+        assertFalse(canUseDirect(directRemote.copy(format = "MOVIE")))
+        assertFalse(canUseDirect(directRemote.copy(seasonYear = 2026)))
+        assertFalse(canUseDirect(directRemote.copy(repairRelations = null)))
+        assertFalse(canUseDirect(directRemote.copy(titleRomaji = "Different Anime",
+            synonyms = listOf(directLocal.lookupTitle))))
+        assertFalse(canUseDirect(directRemote, directLocal.copy(metadataSource = "kitsu_candidate")))
+        assertFalse(canUseDirect(directRemote, directLocal.copy(anilistMatchManual = true)))
+
         val marked = com.reianix.reianix_local.data.anilist.repairEdition("Example Season 3 Part 2")
         assertEquals(3, marked.season)
         assertEquals(2, marked.part)
