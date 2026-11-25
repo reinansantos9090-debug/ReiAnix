@@ -1837,7 +1837,7 @@ class ReiAnixLibraryViewModel(
     /** Discover work from the complete canonical catalog, not the visible page. */
     private suspend fun observeAutomaticEpisodeThumbnails() {
         var previous = emptyMap<Long, ThumbnailCatalogRevision>()
-        nativeCatalogState.conflate().collect { state ->
+        nativeCatalogState.collect { state ->
             if (state.status != com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.READY &&
                 state.status != com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.EMPTY
             ) return@collect
