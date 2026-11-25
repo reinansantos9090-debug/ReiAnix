@@ -1601,7 +1601,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     playerView.setKeepContentOnPlayerReset(true)
                 }
 
-                if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
+                hidePreparingIndicatorImmediately()
                 syncComposePlayerUiState()
                 firstFrameRenderedAtMs = System.currentTimeMillis()
 
@@ -1708,6 +1708,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onRenderedFirstFrame() {
             if (!isCurrent()) return
+            hidePreparingIndicatorImmediately()
             logPlayer(
                 "FIRST_FRAME_CALLBACK requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -1744,6 +1745,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
+            // READY is the end of loading, not a request to finish the spinner's
+            // animation. TextureView can already present video before the batched
+            // first-frame notification reaches this listener.
+            if (state == Player.STATE_READY || state == Player.STATE_ENDED) {
+                hidePreparingIndicatorImmediately()
+                composePlayerUiState.value = composePlayerUiState.value.copy(isBuffering = false)
+            }
             val clipSession = favoriteClipSession
             val restoredEpisode = (state == Player.STATE_READY || state == Player.STATE_ENDED) &&
                 clipSession?.restoring == true &&
@@ -1779,12 +1787,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val firstReadyForGeneration = playerReadyAtMs == 0L
                     if (firstReadyForGeneration) {
                         playerReadyAtMs = readyAtMs
-                    }
-                    val waitingForInitialVideoFrame = !firstFrameRenderedForTesting &&
-                        !audioOnly && player.playWhenReady &&
-                        player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
-                    if (::preparingIndicator.isInitialized && !waitingForInitialVideoFrame) {
-                        preparingIndicator.visibility = View.GONE
                     }
                     if (firstReadyForGeneration) {
                         logPlayer(
@@ -1939,7 +1941,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (!isCurrent()) return
             if (isPlaying) {
-
+                hidePreparingIndicatorImmediately()
+                composePlayerUiState.value = composePlayerUiState.value.copy(isBuffering = false)
             }
             logPlayer(
                 "IS_PLAYING_CHANGED=" + isPlaying +
@@ -3174,10 +3177,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun syncBufferingIndicatorVisibility() {
         if (!::preparingIndicator.isInitialized) return
         if (errorVisible) {
-            preparingIndicator.visibility = View.GONE
+            hidePreparingIndicatorImmediately()
             return
         }
-        if (!::player.isInitialized || player.playbackState != Player.STATE_BUFFERING) return
+        if (!::player.isInitialized) return
+        val state = player.playbackState
+        if (state != Player.STATE_BUFFERING) {
+            // Do not resurrect or retain a spinner over ready/playing video.
+            // IDLE before prepare still retains the initial loading indicator.
+            if (state == Player.STATE_READY || state == Player.STATE_ENDED || player.isPlaying) {
+                hidePreparingIndicatorImmediately()
+            }
+            return
+        }
 
         val composeIndicatorVisible =
             firstFrameRenderedForTesting &&
@@ -3187,8 +3199,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 !locked &&
                 !inPictureInPicture
         val hiddenSeekFeedbackVisible = !controlsVisible && accumulatedSeekSeconds.value != 0L
-        preparingIndicator.visibility =
-            if (composeIndicatorVisible || hiddenSeekFeedbackVisible) View.GONE else View.VISIBLE
+        if (composeIndicatorVisible || hiddenSeekFeedbackVisible) {
+            hidePreparingIndicatorImmediately()
+        } else if (preparingIndicator.visibility != View.VISIBLE) {
+            preparingIndicator.visibility = View.VISIBLE
+        }
+    }
+
+    private fun hidePreparingIndicatorImmediately() {
+        if (!::preparingIndicator.isInitialized || preparingIndicator.visibility == View.GONE) return
+        // Visibility alone is not our animation cancellation contract: explicitly
+        // stop the drawable and clear any View animation, with no exit transition.
+        preparingIndicator.visibility = View.GONE
+        preparingIndicator.clearAnimation()
+        (preparingIndicator.indeterminateDrawable as? android.graphics.drawable.Animatable)?.stop()
     }
 
     private fun showTvPicker() {
