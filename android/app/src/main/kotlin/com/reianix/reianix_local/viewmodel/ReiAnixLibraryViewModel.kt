@@ -310,6 +310,8 @@ class ReiAnixLibraryViewModel(
         val animes: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel> = emptyList(),
         val continueWatching: List<ReiAnixContinueWatchingUiModel> = emptyList(),
         val error: String? = null,
+        // Artwork publications change card presentation, not SQLite result membership.
+        val searchRevision: Long = 0L,
     )
 
     private val nativeCatalogState = MutableStateFlow(NativeCatalogState())
@@ -1238,10 +1240,17 @@ class ReiAnixLibraryViewModel(
     }
 
     private data class SearchRequest(
-        val catalog: List<com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel>,
         val requestedQuery: String,
         val settledQuery: String,
         val filters: ReiAnixSearchFilters,
+    )
+
+    private data class SearchSelection(
+        val query: String,
+        val filters: ReiAnixSearchFilters,
+        val ids: List<Long> = emptyList(),
+        val error: String? = null,
+        val isLoading: Boolean = false,
     )
 
     private val _searchQuery = MutableStateFlow("")
@@ -1259,105 +1268,101 @@ class ReiAnixLibraryViewModel(
     private val _searchFilters = MutableStateFlow(ReiAnixSearchFilters())
 
     /**
-     * Search result identities come from the canonical SQLite query service.
-     * The in-memory canonical projection is used only to provide existing Compose
-     * presentation models for those persisted IDs; it does not decide membership.
+     * Only a new user request cancels the current query and shows the loading state.
+     * Real catalog changes are conflated and processed serially for that request:
+     * an ongoing metadata/index update must not clear the grid or starve the first
+     * query by continuously cancelling it. Artwork-only updates never query SQLite.
      */
-    val searchState: StateFlow<ReiAnixSearchUiState> = combine(
-        canonicalCatalog,
+    private val searchSelection = combine(
         _searchQuery,
         debouncedSearchQuery,
         _searchFilters,
-    ) { catalog, requestedQuery, settledQuery, filters ->
-        SearchRequest(catalog, requestedQuery, settledQuery, filters)
+    ) { requestedQuery, settledQuery, filters ->
+        SearchRequest(requestedQuery, settledQuery, filters)
     }
+        .distinctUntilChanged()
         .transformLatest { request ->
             val filters = request.filters
             if (request.requestedQuery != request.settledQuery) {
-                emit(
-                    ReiAnixSearchUiState(
-                        query = request.settledQuery,
-                        results = emptyList(),
-                        filters = filters,
-                    ),
-                )
+                emit(SearchSelection(query = request.settledQuery, filters = filters, isLoading = true))
                 return@transformLatest
             }
             if (request.settledQuery.isBlank() && !filters.hasAnyFilter) {
-                emit(
-                    ReiAnixSearchUiState(
-                        query = request.settledQuery,
-                        results = emptyList(),
-                        filters = filters,
-                    ),
-                )
+                emit(SearchSelection(query = request.settledQuery, filters = filters))
                 return@transformLatest
             }
 
-            emit(
-                ReiAnixSearchUiState(
-                    query = request.settledQuery,
-                    results = emptyList(),
-                    filters = filters,
-                    isLoading = true,
-                ),
-            )
+            emit(SearchSelection(query = request.settledQuery, filters = filters, isLoading = true))
 
-            // Request the same two-page result window in one SQLite traversal.
-            // A second offset query previously repeated normalization of every candidate.
-            var queryError: String? = null
-            val selectedIds = when (val result = nativeLibraryQueries.searchAnime(
-                searchText = request.settledQuery,
-                genreKey = filters.selectedGenreKey,
-                favoritesOnly = filters.favoritesOnly,
-                watchingOnly = filters.watchingOnly,
-                completedOnly = filters.completedOnly,
-                sortLabel = filters.sort,
-                limit = ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS,
-                offset = 0,
-                libraryOnly = true,
-            )) {
-                is ReiAnixLibraryQueryResult.Success -> result.value.animeIds
-                is ReiAnixLibraryQueryResult.Empty -> emptyList()
-                is ReiAnixLibraryQueryResult.Failure -> {
-                    queryError = result.cause.message?.takeIf(String::isNotBlank)
-                        ?: "Não foi possível pesquisar no banco SQLite da biblioteca."
-                    emptyList()
-                }
-                is ReiAnixLibraryQueryResult.NotFound -> {
-                    queryError = "O banco SQLite não encontrou o item solicitado."
-                    emptyList()
-                }
-            }
-
-            val completedState = if (queryError != null) {
-                ReiAnixSearchUiState(
-                    query = request.settledQuery,
-                    results = emptyList(),
-                    filters = filters,
-                    error = queryError,
-                )
-            } else {
-                val byId = request.catalog.associateBy { it.id }
-                val orderedIds = selectedIds.distinct()
-                val missingIds = orderedIds.filterNot(byId::containsKey)
-                if (missingIds.isNotEmpty()) {
-                    ReiAnixSearchUiState(
+            nativeCatalogState
+                .map { it.searchRevision }
+                .distinctUntilChanged()
+                .conflate()
+                .collect {
+                    // Preserve the existing SQLite matching, filters, ordering and result window.
+                    var queryError: String? = null
+                    val selectedIds = when (val result = nativeLibraryQueries.searchAnime(
+                        searchText = request.settledQuery,
+                        genreKey = filters.selectedGenreKey,
+                        favoritesOnly = filters.favoritesOnly,
+                        watchingOnly = filters.watchingOnly,
+                        completedOnly = filters.completedOnly,
+                        sortLabel = filters.sort,
+                        limit = ReiAnixLibraryQueryService.MAX_SEARCH_RESULTS,
+                        offset = 0,
+                        libraryOnly = true,
+                    )) {
+                        is ReiAnixLibraryQueryResult.Success -> result.value.animeIds
+                        is ReiAnixLibraryQueryResult.Empty -> emptyList()
+                        is ReiAnixLibraryQueryResult.Failure -> {
+                            queryError = result.cause.message?.takeIf(String::isNotBlank)
+                                ?: "Não foi possível pesquisar no banco SQLite da biblioteca."
+                            emptyList()
+                        }
+                        is ReiAnixLibraryQueryResult.NotFound -> {
+                            queryError = "O banco SQLite não encontrou o item solicitado."
+                            emptyList()
+                        }
+                    }
+                    emit(SearchSelection(
                         query = request.settledQuery,
-                        results = emptyList(),
                         filters = filters,
-                        error = "A pesquisa SQLite retornou itens que ainda não estão disponíveis na projeção da biblioteca. Atualize a biblioteca e tente novamente.",
-                    )
-                } else {
-                    ReiAnixSearchUiState(
-                        query = request.settledQuery,
-                        results = orderedIds.mapNotNull(byId::get),
-                        filters = filters,
-                    )
+                        ids = selectedIds.distinct(),
+                        error = queryError,
+                    ))
                 }
-            }
-            emit(completedState)
         }
+
+    /**
+     * SQLite owns membership/order. Resolve those IDs against the latest canonical
+     * snapshot, not the snapshot captured before the query. This lets a single
+     * poster update replace only its existing card (stable anime ID) without
+     * removing the lazy grid, resetting scroll, or restarting the search.
+     */
+    val searchState: StateFlow<ReiAnixSearchUiState> = combine(
+        searchSelection,
+        nativeCatalogState,
+    ) { selection, catalog ->
+        val results = if (selection.ids.isEmpty()) {
+            emptyList()
+        } else {
+            val byId = catalog.animes.associateBy { it.id }
+            selection.ids.mapNotNull(byId::get)
+        }
+        val missingProjection = selection.ids.isNotEmpty() && results.isEmpty()
+        ReiAnixSearchUiState(
+            query = selection.query,
+            results = results,
+            filters = selection.filters,
+            error = selection.error ?: if (missingProjection &&
+                catalog.status != com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING
+            ) {
+                "A pesquisa SQLite retornou itens que ainda não estão disponíveis na projeção da biblioteca. Atualize a biblioteca e tente novamente."
+            } else null,
+            isLoading = selection.isLoading || (missingProjection &&
+                catalog.status == com.reianix.reianix_local.ui.model.ReiAnixLibraryLoadStatus.LOADING),
+        )
+    }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(
@@ -1365,7 +1370,6 @@ class ReiAnixLibraryViewModel(
             SharingStarted.WhileSubscribed(DERIVED_FLOW_STOP_TIMEOUT_MS),
             ReiAnixSearchUiState(query = "", results = emptyList()),
         )
-
 
     fun setSearchQuery(value: String) {
         _searchQuery.value = value
@@ -2267,6 +2271,7 @@ class ReiAnixLibraryViewModel(
                     },
                     animes = projected.animes,
                     continueWatching = projected.continueWatching,
+                    searchRevision = nativeCatalogState.value.searchRevision + if (artworkOnly) 0L else 1L,
                 )
                 if (artworkOnly) {
                     val byId = projected.animes.associateBy { it.id }
