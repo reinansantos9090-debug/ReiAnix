@@ -42,6 +42,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -65,6 +68,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 internal fun shouldAllowTraceMoeWithAutoMatchSetting(
     autoMatchEnabled: Boolean,
@@ -298,6 +302,7 @@ class ReiAnixAniListIntegrationService(
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val explicitRepairInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val kitsuUpgradeMutex = Mutex()
+    private val kitsuUpgradeArtworkLocks = List(64) { Mutex() }
     private var kitsuUpgradeNotBeforeMs = 0L
 
     private data class TraceMoeProgressState(
@@ -388,6 +393,8 @@ class ReiAnixAniListIntegrationService(
     private suspend fun repairMetadataAndArtworkInternal(
         animeId: Long,
         automaticKitsuUpgrade: Boolean = false,
+        searchOverride: (suspend (List<String>) -> AniListResult<List<AniListAnime>>)? = null,
+        relatedOverride: (suspend (List<Int>) -> AniListResult<List<AniListAnime>>)? = null,
         mayUpgrade: suspend () -> Boolean = { true },
     ): AniListResult<ReiAnixAnimeRecord> {
         if (!isAniListEnabled()) return AniListResult.Failure(
@@ -420,7 +427,7 @@ class ReiAnixAniListIntegrationService(
             // All returned candidates are evaluated against every stored title.
             // The original name is a preference, not a mandatory match.
             val repairClient = if (automaticKitsuUpgrade) automaticRepairClient else client
-            var candidates = when (val result = repairClient.searchAnimeAliases(terms)) {
+            var candidates = when (val result = searchOverride?.invoke(terms) ?: repairClient.searchAnimeAliases(terms)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
@@ -435,12 +442,12 @@ class ReiAnixAniListIntegrationService(
                     val relatedIds = repairRelatedEditionIds(candidates, titles, expectedEdition)
                     if (relatedIds.isEmpty()) break
                     if (automaticKitsuUpgrade) {
-                        delay(KITSU_UPGRADE_INTERVAL_MS)
+                        if (relatedOverride == null) delay(KITSU_UPGRADE_INTERVAL_MS)
                         if (!mayUpgrade()) return AniListResult.Failure(
                             AniListError.InvalidRequest("Automatic upgrade deferred."),
                         )
                     }
-                    val additional = when (val result = repairClient.lookupRepairRelatedAnime(relatedIds)) {
+                    val additional = when (val result = relatedOverride?.invoke(relatedIds) ?: repairClient.lookupRepairRelatedAnime(relatedIds)) {
                         is AniListResult.Success -> result.value
                         is AniListResult.Failure -> return result
                     }
@@ -482,13 +489,19 @@ class ReiAnixAniListIntegrationService(
                 latest.lookupTitle != local.lookupTitle) return AniListResult.Failure(
                 AniListError.InvalidRequest("A identificação mudou durante a busca. Tente novamente."),
             )
-            return applyRemote(
-                latest, best.anime, manual = latest.anilistMatchManual == true && !correctManualMusic,
-                score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
-                correctManualMusic = correctManualMusic,
-                automaticKitsuUpgrade = automaticKitsuUpgrade,
-                mayUpgrade = mayUpgrade,
-            )
+            val publish: suspend () -> AniListResult<ReiAnixAnimeRecord> = {
+                applyRemote(
+                    latest, best.anime, manual = latest.anilistMatchManual == true && !correctManualMusic,
+                    score = best.score, margin = margin.coerceIn(0.0, 1.0), explicitRepair = true,
+                    correctManualMusic = correctManualMusic,
+                    automaticKitsuUpgrade = automaticKitsuUpgrade,
+                    mayUpgrade = mayUpgrade,
+                )
+            }
+            return if (automaticKitsuUpgrade) {
+                // Protect shared remote artwork cache keys between automatic workers.
+                kitsuUpgradeArtworkLocks[best.anime.id % kitsuUpgradeArtworkLocks.size].withLock { publish() }
+            } else publish()
         } finally {
             if (!automaticKitsuUpgrade) explicitRepairInFlight.remove(animeId)
         }
