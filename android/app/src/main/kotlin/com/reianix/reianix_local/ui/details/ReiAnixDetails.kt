@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+
 import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent
 import com.reianix.reianix_local.ui.privacy.TraceMoeConsentDialog
 
@@ -1193,7 +1195,7 @@ private fun DetailsHero(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xl),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                anime.genres.forEach { genre ->
+                ReiAnixGenreNames.options(anime.genres).forEach { genre ->
                     Text(
                         text = genre.name,
                         style = MaterialTheme.typography.bodyMedium,
