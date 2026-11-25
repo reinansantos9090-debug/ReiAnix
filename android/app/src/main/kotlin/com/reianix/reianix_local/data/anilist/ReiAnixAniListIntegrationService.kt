@@ -621,8 +621,20 @@ class ReiAnixAniListIntegrationService(
                         AND (LOWER(COALESCE(art.source,''))='kitsu'
                           OR INSTR(LOWER(COALESCE(art.external_url,'')),'kitsu')>0
                           OR INSTR(LOWER(COALESCE(art.source_ref,'')),'kitsu')>0)))
+                  AND (?=0 OR (
+                    (INSTR(LOWER(COALESCE(a.cover_url,'')),'kitsu')>0
+                      AND COALESCE(a.cover_cache,'')!='')
+                    OR EXISTS (SELECT 1 FROM artwork poster
+                      WHERE poster.entity_id=CAST(a.id AS TEXT)
+                        AND poster.entity_type IN ('anime','movie')
+                        AND poster.artwork_type IN ('poster','cover')
+                        AND poster.status='ready' AND COALESCE(poster.manual,0)=0
+                        AND COALESCE(poster.local_path,'')!=''
+                        AND (LOWER(COALESCE(poster.source,''))='kitsu'
+                          OR INSTR(LOWER(COALESCE(poster.external_url,'')),'kitsu')>0
+                          OR INSTR(LOWER(COALESCE(poster.source_ref,'')),'kitsu')>0))))
                 ORDER BY a.id
-                """.trimIndent(), null,
+                """.trimIndent(), arrayOf(if (early) "1" else "0"),
             ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
         }
         suspend fun eligible(animeId: Long): Boolean {
@@ -674,7 +686,7 @@ class ReiAnixAniListIntegrationService(
             return 0
         }
 
-        val candidates = (targets + previousUpgradeIds).distinct().filter { animeId ->
+        val candidates = (if (early) targets else targets + previousUpgradeIds).distinct().filter { animeId ->
             val previous = attempts[animeId]
             previous == null || System.currentTimeMillis() / 1_000.0 - previous >= KITSU_UPGRADE_COOLDOWN_SECONDS
         }
