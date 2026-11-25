@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import com.reianix.reianix_local.R
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -88,6 +90,7 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "player.anime_preferences_enabled" -> Icons.Filled.FolderSpecial
     "player.autoplay_next" -> Icons.Filled.SkipNext
     "player.resume" -> Icons.Filled.PlayCircleOutline
+    "player.smart_resume" -> Icons.Filled.History
     "player.default_speed" -> Icons.Filled.Speed
     "player.aspect_ratio" -> Icons.Filled.FitScreen
     "player.max_video_resolution" -> Icons.Filled.Hd
@@ -106,6 +109,8 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "audio.preferred_subtitle_language" -> Icons.Filled.Language
     "audio.subtitle_scale" -> Icons.Filled.FormatSize
     "audio.subtitle_bottom_padding" -> Icons.Filled.VerticalAlignBottom
+    "audio.subtitle_color" -> Icons.Filled.Palette
+    "audio.subtitle_font" -> Icons.Filled.FontDownload
     "audio.subtitle_embedded_style" -> Icons.Filled.FormatColorText
     "audio.subtitles" -> Icons.Filled.Subtitles
     "player.immersive" -> Icons.Filled.Fullscreen
@@ -134,6 +139,13 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
 
 @Composable
 internal fun SettingsLeadingIcon(key: String, modifier: Modifier = Modifier) {
-    Icon(settingsIcon(key), contentDescription = null,
+    val icon = when (key) {
+        "gestures.horizontal_seek" -> ImageVector.vectorResource(R.drawable.ic_gesture_horizontal_seek)
+        "gestures.volume", "gestures.brightness" -> ImageVector.vectorResource(R.drawable.ic_gesture_vertical_adjust)
+        "gestures.long_press" -> ImageVector.vectorResource(R.drawable.ic_gesture_long_press)
+        "player.zoom_enabled" -> ImageVector.vectorResource(R.drawable.ic_gesture_adjust_fill)
+        else -> settingsIcon(key)
+    }
+    Icon(icon, contentDescription = null,
         modifier = modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
 }
