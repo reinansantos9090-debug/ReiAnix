@@ -115,7 +115,7 @@ class PlayerLocalMetadataStore(context: Context) {
         }
         val updated = current.copy(notes = retained)
         val written = write(updateRoot(readRoot(), updated))
-        if (favorite) check(written) { "Unable to persist favorite scene" }
+        check(written) { "Unable to persist episode note" }
         return updated
     }
 
