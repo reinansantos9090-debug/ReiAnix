@@ -111,6 +111,1383 @@ class ReiAnixAniListClient(
         }
     }
 
+    /** Bounded follow-up for a numbered edition absent from the alias results. */
+    suspend fun lookupRepairRelatedAnime(ids: List<Int>): AniListResult<List<AniListAnime>> {
+        val selected = ids.filter { it > 0 }.distinct().take(8)
+        if (selected.isEmpty()) return AniListResult.Success(emptyList())
+        val query = """
+            query RepairRelatedAnime(${' {
+                Page(page: 1, perPage: 8) {
+                    media(id_in: ${' type: ANIME, isAdult: false, format_not: MUSIC) {
+                        $MEDIA_FIELDS $REPAIR_RELATIONS
+                    }
+                }
+            }
+        """.trimIndent()
+        return execute(query, JSONObject().put("ids", JSONArray(selected))) { data ->
+            val media = data.objectOrNull("Page")?.arrayOrNull("media")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing related anime response"))
+            val results = mutableListOf<AniListAnime>()
+            for (i in 0 until media.length()) {
+                val item = media.optJSONObject(i)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime"))
+                if (item.optBoolean("isAdult", false)) continue
+                val anime = parseAnime(item)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime ID"))
+                if (anime.id in selected) results += anime
+            }
+            AniListResult.Success(results.distinctBy { it.id })
+        }
+    }
+
+    suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
+        if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
+        val gql = """
+            query AnimeById(${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) { $MEDIA_FIELDS }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id)) { data ->
+            if (!data.has("Media")) {
+                return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing Media field in AniList detail response"),
+                )
+            }
+            if (data.isNull("Media")) return@execute AniListResult.Success(null)
+            val media = data.objectOrNull("Media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
+                )
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(null)
+            val anime = parseAnime(media)
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
+                )
+            AniListResult.Success(anime)
+        }
+    }
+
+
+    /** Characters are requested only when the user opens the character section. */
+    suspend fun getCharacters(id: Int, limit: Int = 18): AniListResult<List<ReiAnixAnimeCharacter>> {
+        if (id <= 0 || limit !in 1..25) {
+            return AniListResult.Failure(AniListError.InvalidRequest("Invalid character request"))
+        }
+        val gql = """
+            query AnimeCharacters(${'$'}id: Int, ${'$'}limit: Int) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) {
+                isAdult
+                characters(perPage: ${'$'}limit, sort: [ROLE, FAVOURITES_DESC]) {
+                  edges { role node { id name { full } image { medium } } }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id).put("limit", limit)) { data ->
+            val media = data.optJSONObject("Media")
+                ?: return@execute AniListResult.Success(emptyList())
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(emptyList())
+            val edges = media.optJSONObject("characters")?.optJSONArray("edges")
+                ?: return@execute AniListResult.Success(emptyList())
+            val result = buildList {
+                for (i in 0 until edges.length()) {
+                    val edge = edges.optJSONObject(i) ?: continue
+                    val character = edge.optJSONObject("node") ?: continue
+                    val characterId = character.optInt("id").takeIf { it > 0 } ?: continue
+                    val name = character.optJSONObject("name")?.optString("full")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val role = when (edge.optString("role")) {
+                        "MAIN" -> "Principal"
+                        "SUPPORTING" -> "Secundário"
+                        else -> "Figurante"
+                    }
+                    val url = validReiAnixArtworkHttpUrl(
+                        character.optJSONObject("image")?.optString("medium")
+                    )
+                    add(ReiAnixAnimeCharacter(characterId, name, role, url))
+                }
+            }
+            AniListResult.Success(result)
+        }
+    }
+
+    /** Bounded batch lookup of recent airings for the opt-in release notifier only. */
+    suspend fun getRecentAirings(
+        ids: List<Int>, fromEpoch: Int, toEpoch: Int, page: Int = 1,
+    ): AniListResult<ReiAnixAiringPage> {
+        if (ids.isEmpty() || ids.size > 100 || ids.any { it <= 0 } ||
+            fromEpoch < 0 || toEpoch < fromEpoch || page !in 1..4
+        ) return AniListResult.Failure(AniListError.InvalidRequest("Invalid airing request"))
+        val gql = """
+            query ReiAnixRecentAirings(${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                airingSchedules(
+                  mediaId_in: ${'$'}ids,
+                  airingAt_greater: ${'$'}from,
+                  airingAt_lesser: ${'$'}to,
+                  sort: TIME_DESC
+                ) {
+                  id mediaId episode airingAt
+                  media {
+                    isAdult
+                    siteUrl
+                    externalLinks { site url type }
+                    streamingEpisodes { site url }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject()
+            .put("ids", JSONArray(ids))
+            .put("from", fromEpoch)
+            .put("to", toEpoch)
+            .put("page", page)) { data ->
+            val container = data.optJSONObject("Page")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No Page"))
+            val array = container.optJSONArray("airingSchedules")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No airings"))
+            val results = buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.optJSONObject(i) ?: continue
+                    val mediaId = entry.optInt("mediaId")
+                    val episode = entry.optInt("episode")
+                    val airedAt = entry.optInt("airingAt")
+                    if (mediaId !in ids || episode <= 0 || airedAt !in fromEpoch..toEpoch) continue
+                    val media = entry.optJSONObject("media")
+                    if (media?.optBoolean("isAdult", false) == true) continue
+                    val links = buildList {
+                        listOf("streamingEpisodes", "externalLinks").forEach { key ->
+                            val raw = media?.optJSONArray(key)
+                            if (raw != null) for (index in 0 until raw.length()) {
+                                val item = raw.optJSONObject(index) ?: continue
+                                val site = item.optString("site")
+                                val url = item.optString("url")
+                                if (site.isNotBlank() && url.isNotBlank()) {
+                                    add(ReiAnixOfficialLink(site, url))
+                                }
+                            }
+                        }
+                    }.distinctBy { it.url }
+                    add(ReiAnixAiringRecord(mediaId, episode, airedAt, links))
+                }
+            }
+            AniListResult.Success(ReiAnixAiringPage(
+                results,
+                container.optJSONObject("pageInfo")?.optBoolean("hasNextPage") == true,
+            ))
+        }
+    }
+
+    private suspend fun <T> execute(
+        query: String,
+        variables: JSONObject,
+        decode: (JSONObject) -> AniListResult<T>,
+    ): AniListResult<T> {
+        val response = try {
+            requestMutex.withLock {
+                val now = System.currentTimeMillis()
+                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
+                if (wait > 0L) delay(wait)
+                lastRequestAtMs = System.currentTimeMillis()
+                // Keep the lock through the HTTP call so concurrent callers cannot
+                // start together after sharing the same rate-limit delay.
+                withContext(Dispatchers.IO) {
+                    transport.post(ENDPOINT, JSONObject()
+                        .put("query", query)
+                        .put("variables", variables))
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: IOException) {
+            return AniListResult.Failure(AniListError.Network(error.message ?: "Network request failed"))
+        } catch (error: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse(error.message ?: "Request failed"))
+        }
+
+        if (response.statusCode == 429) {
+            return AniListResult.Failure(AniListError.RateLimited(response.retryAfterSeconds))
+        }
+        if (response.statusCode !in 200..299) {
+            return AniListResult.Failure(AniListError.Http(response.statusCode))
+        }
+        val root = try {
+            JSONObject(response.body)
+        } catch (_: JSONException) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Malformed JSON response"))
+        }
+        val errors = try {
+            root.arrayOrNull("errors")
+        } catch (_: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL errors array"))
+        }
+        if (errors != null && errors.length() > 0) {
+            val messages = try {
+                buildList<String> {
+                    for (index in 0 until errors.length()) {
+                        val errorObject = errors.optJSONObject(index)
+                            ?: error("Malformed GraphQL error item at index=$index")
+                        val message = errorObject.stringOrNull("message").orEmpty().trim()
+                        if (message.isNotBlank()) add(message.take(160))
+                    }
+                }
+            } catch (_: Exception) {
+                return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
+            }
+            return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+        }
+        val data = try {
+            root.objectOrNull("data")
+        } catch (_: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Invalid data object"))
+        } ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
+        return try {
+            decode(data)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            AniListResult.Failure(AniListError.InvalidResponse("Unexpected AniList response shape"))
+        }
+    }
+
+    private fun parseAnime(media: JSONObject): AniListAnime? {
+        val id = media.intOrNull("id")?.takeIf { it > 0 } ?: return null
+        val title = media.objectOrNull("title")
+        val cover = media.objectOrNull("coverImage")
+        val studioObject = media.objectOrNull("studios")
+        val studios = studioObject?.arrayOrNull("nodes")
+        val studioNames = buildList {
+            if (studios != null) for (index in 0 until studios.length()) {
+                val studio = studios.optJSONObject(index)
+                    ?: error("Malformed AniList studio at index=$index")
+                studio.stringOrNull("name")?.takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+
+        val synonyms = media.arrayOrNull("synonyms")
+        val genresArray = media.arrayOrNull("genres")
+        val aliases = buildList {
+            synonyms?.stringValues("synonyms")?.forEach(::add)
+            listOfNotNull(
+                title?.stringOrNull("romaji"),
+                title?.stringOrNull("english"),
+                title?.stringOrNull("native"),
+            ).mapNotNull { it.nonBlankOrNull() }.forEach(::add)
+        }.distinctBy { it.lowercase(Locale.ROOT) }
+        val genres = genresArray?.stringValues("genres").orEmpty()
+
+        val episodes = media.nonNegativeIntOrNull("episodes")
+        val averageScore = media.intOrNull("averageScore")?.also {
+            require(it in 0..100) { "AniList averageScore must be between 0 and 100." }
+        }
+        val duration = media.nonNegativeIntOrNull("duration")
+        val seasonYear = media.intOrNull("seasonYear")?.also {
+            require(it >= 0) { "AniList seasonYear must be non-negative." }
+        }?.takeIf { it > 0 }
+
+        return AniListAnime(
+            id = id,
+            titleRomaji = title?.stringOrNull("romaji").nonBlankOrNull(),
+            titleEnglish = title?.stringOrNull("english").nonBlankOrNull(),
+            titleNative = title?.stringOrNull("native").nonBlankOrNull(),
+            synonyms = aliases,
+            description = media.stringOrNull("description").nonBlankOrNull(),
+            format = media.stringOrNull("format").nonBlankOrNull(),
+            episodes = episodes,
+            status = media.stringOrNull("status").nonBlankOrNull(),
+            averageScore = averageScore,
+            durationMinutes = duration,
+            season = media.stringOrNull("season").nonBlankOrNull(),
+            seasonYear = seasonYear,
+            genres = genres,
+            coverLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("large").nonBlankOrNull()),
+            coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
+            bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
+            studios = studioNames,
+            repairRelations = media.objectOrNull("relations")?.arrayOrNull("edges")?.let { edges ->
+                buildList {
+                    for (i in 0 until edges.length()) {
+                        val edge = edges.optJSONObject(i) ?: continue
+                        val node = edge.objectOrNull("node") ?: continue
+                        val relatedId = node.intOrNull("id")?.takeIf { it > 0 } ?: continue
+                        val kind = edge.stringOrNull("relationType") ?: continue
+                        if (kind !in setOf("PREQUEL", "SEQUEL") || node.optBoolean("isAdult", false)) continue
+                        val titles = node.objectOrNull("title")
+                        add(AniListRepairRelation(relatedId, kind, node.stringOrNull("format"),
+                            listOfNotNull(titles?.stringOrNull("romaji"), titles?.stringOrNull("english"), titles?.stringOrNull("native"))))
+                    }
+                }
+            },
+        )
+    }
+
+    private fun JSONObject.nonNegativeIntOrNull(key: String): Int? =
+        intOrNull(key)?.also { require(it >= 0) { "AniList field '$key' must be non-negative." } }
+
+    private fun JSONArray.stringValues(field: String): List<String> =
+        buildList {
+            for (index in 0 until length()) {
+                val value = opt(index) as? String
+                    ?: error("Malformed AniList field '$field[$index]': expected text.")
+                if (value.isNotBlank()) add(value)
+            }
+        }
+
+    private fun String?.nonBlankOrNull(): String? =
+        this?.takeIf { it.isNotBlank() && it != "null" }
+
+    companion object {
+        const val ENDPOINT = "https://graphql.anilist.co"
+        const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        private const val REPAIR_RELATIONS = """
+            relations { edges { relationType(version: 2) node { id isAdult format title { romaji english native } } } }
+        """
+        private const val MEDIA_FIELDS = """
+            id isAdult title { romaji english native } synonyms
+            description(asHtml: false) format episodes duration status averageScore season seasonYear
+            genres coverImage { large extraLarge } bannerImage
+            studios(isMain: true) { nodes { name } }
+        """
+    }
+}
+
+data class ReiAnixAnimeCharacter(
+    val id: Int,
+    val name: String,
+    val role: String,
+    val imageUrl: String?,
+)
+
+data class ReiAnixOfficialLink(val site: String, val url: String)
+data class ReiAnixAiringRecord(
+    val mediaId: Int,
+    val episode: Int,
+    val airedAt: Int,
+    val officialLinks: List<ReiAnixOfficialLink>,
+)
+data class ReiAnixAiringPage(
+    val items: List<ReiAnixAiringRecord>,
+    val hasNextPage: Boolean,
+)
+
+data class AniListRepairRelation(val id: Int, val kind: String, val format: String?, val titles: List<String>)
+
+data class AniListAnime(
+    val id: Int,
+    val titleRomaji: String?,
+    val titleEnglish: String?,
+    val titleNative: String?,
+    val synonyms: List<String>,
+    val description: String?,
+    val format: String?,
+    val episodes: Int?,
+    val status: String?,
+    val averageScore: Int?,
+    val durationMinutes: Int?,
+    val season: String?,
+    val seasonYear: Int?,
+    val genres: List<String>,
+    val coverLargeUrl: String?,
+    val coverExtraLargeUrl: String?,
+    val bannerUrl: String?,
+    val studios: List<String>,
+    // Null means relations were not requested; an empty list is a known result.
+    val repairRelations: List<AniListRepairRelation>? = null,
+) {
+    /** Secure, de-duplicated variants ordered by preferred image quality. */
+    internal val coverCandidates: List<ReiAnixAniListCoverCandidate>
+        get() = resolveAniListCoverCandidates(coverExtraLargeUrl, coverLargeUrl)
+
+    val preferredTitle: String
+        get() = titleEnglish ?: titleRomaji ?: titleNative ?: synonyms.firstOrNull().orEmpty()
+}
+
+sealed interface AniListResult<out T> {
+    data class Success<T>(val value: T) : AniListResult<T>
+    data class Failure(val error: AniListError) : AniListResult<Nothing>
+}
+
+sealed interface AniListError {
+    data class Network(val message: String) : AniListError
+    data class Http(val statusCode: Int) : AniListError
+    data class RateLimited(val retryAfterSeconds: Long?) : AniListError
+    data class GraphQl(val messages: List<String>) : AniListError
+    data class InvalidRequest(val message: String) : AniListError
+    data class InvalidResponse(val message: String) : AniListError
+}
+
+data class AniListHttpResponse(
+    val statusCode: Int,
+    val body: String,
+    val retryAfterSeconds: Long? = null,
+)
+
+fun interface AniListTransport {
+    suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse
+}
+
+/** Blocking platform transport isolated on Dispatchers.IO by the client. */
+class HttpUrlConnectionAniListTransport(
+    private val connectTimeoutMs: Int = 8_000,
+    private val readTimeoutMs: Int = 12_000,
+) : AniListTransport {
+    init {
+        require(connectTimeoutMs > 0 && readTimeoutMs > 0)
+    }
+
+    override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse =
+        withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                val activeConnection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    instanceFollowRedirects = false
+                    connectTimeout = connectTimeoutMs
+                    readTimeout = readTimeoutMs
+                    doOutput = true
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    setRequestProperty("User-Agent", "ReiAnix-Android")
+                }
+                connection = activeConnection
+                coroutineContext.job.invokeOnCompletion { cause ->
+                    if (cause is CancellationException) activeConnection.disconnect()
+                }
+                activeConnection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = activeConnection.responseCode
+                val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
+                val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
+                AniListHttpResponse(code, responseBody, retryAfter)
+            } finally {
+                connection?.disconnect()
+            }
+        }
+}
+}ids: [Int]) {
+                Page(page: 1, perPage: 8) {
+                    media(id_in: $ids, type: ANIME, isAdult: false, format_not: MUSIC) {
+                        $MEDIA_FIELDS $REPAIR_RELATIONS
+                    }
+                }
+            }
+        """.trimIndent()
+        return execute(query, JSONObject().put("ids", JSONArray(selected))) { data ->
+            val media = data.objectOrNull("Page")?.arrayOrNull("media")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing related anime response"))
+            val results = mutableListOf<AniListAnime>()
+            for (i in 0 until media.length()) {
+                val item = media.optJSONObject(i)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime"))
+                if (item.optBoolean("isAdult", false)) continue
+                val anime = parseAnime(item)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime ID"))
+                if (anime.id in selected) results += anime
+            }
+            AniListResult.Success(results.distinctBy { it.id })
+        }
+    }
+
+    suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
+        if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
+        val gql = """
+            query AnimeById(${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) { $MEDIA_FIELDS }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id)) { data ->
+            if (!data.has("Media")) {
+                return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing Media field in AniList detail response"),
+                )
+            }
+            if (data.isNull("Media")) return@execute AniListResult.Success(null)
+            val media = data.objectOrNull("Media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
+                )
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(null)
+            val anime = parseAnime(media)
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
+                )
+            AniListResult.Success(anime)
+        }
+    }
+
+
+    /** Characters are requested only when the user opens the character section. */
+    suspend fun getCharacters(id: Int, limit: Int = 18): AniListResult<List<ReiAnixAnimeCharacter>> {
+        if (id <= 0 || limit !in 1..25) {
+            return AniListResult.Failure(AniListError.InvalidRequest("Invalid character request"))
+        }
+        val gql = """
+            query AnimeCharacters(${'$'}id: Int, ${'$'}limit: Int) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) {
+                isAdult
+                characters(perPage: ${'$'}limit, sort: [ROLE, FAVOURITES_DESC]) {
+                  edges { role node { id name { full } image { medium } } }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id).put("limit", limit)) { data ->
+            val media = data.optJSONObject("Media")
+                ?: return@execute AniListResult.Success(emptyList())
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(emptyList())
+            val edges = media.optJSONObject("characters")?.optJSONArray("edges")
+                ?: return@execute AniListResult.Success(emptyList())
+            val result = buildList {
+                for (i in 0 until edges.length()) {
+                    val edge = edges.optJSONObject(i) ?: continue
+                    val character = edge.optJSONObject("node") ?: continue
+                    val characterId = character.optInt("id").takeIf { it > 0 } ?: continue
+                    val name = character.optJSONObject("name")?.optString("full")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val role = when (edge.optString("role")) {
+                        "MAIN" -> "Principal"
+                        "SUPPORTING" -> "Secundário"
+                        else -> "Figurante"
+                    }
+                    val url = validReiAnixArtworkHttpUrl(
+                        character.optJSONObject("image")?.optString("medium")
+                    )
+                    add(ReiAnixAnimeCharacter(characterId, name, role, url))
+                }
+            }
+            AniListResult.Success(result)
+        }
+    }
+
+    /** Bounded batch lookup of recent airings for the opt-in release notifier only. */
+    suspend fun getRecentAirings(
+        ids: List<Int>, fromEpoch: Int, toEpoch: Int, page: Int = 1,
+    ): AniListResult<ReiAnixAiringPage> {
+        if (ids.isEmpty() || ids.size > 100 || ids.any { it <= 0 } ||
+            fromEpoch < 0 || toEpoch < fromEpoch || page !in 1..4
+        ) return AniListResult.Failure(AniListError.InvalidRequest("Invalid airing request"))
+        val gql = """
+            query ReiAnixRecentAirings(${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                airingSchedules(
+                  mediaId_in: ${'$'}ids,
+                  airingAt_greater: ${'$'}from,
+                  airingAt_lesser: ${'$'}to,
+                  sort: TIME_DESC
+                ) {
+                  id mediaId episode airingAt
+                  media {
+                    isAdult
+                    siteUrl
+                    externalLinks { site url type }
+                    streamingEpisodes { site url }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject()
+            .put("ids", JSONArray(ids))
+            .put("from", fromEpoch)
+            .put("to", toEpoch)
+            .put("page", page)) { data ->
+            val container = data.optJSONObject("Page")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No Page"))
+            val array = container.optJSONArray("airingSchedules")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No airings"))
+            val results = buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.optJSONObject(i) ?: continue
+                    val mediaId = entry.optInt("mediaId")
+                    val episode = entry.optInt("episode")
+                    val airedAt = entry.optInt("airingAt")
+                    if (mediaId !in ids || episode <= 0 || airedAt !in fromEpoch..toEpoch) continue
+                    val media = entry.optJSONObject("media")
+                    if (media?.optBoolean("isAdult", false) == true) continue
+                    val links = buildList {
+                        listOf("streamingEpisodes", "externalLinks").forEach { key ->
+                            val raw = media?.optJSONArray(key)
+                            if (raw != null) for (index in 0 until raw.length()) {
+                                val item = raw.optJSONObject(index) ?: continue
+                                val site = item.optString("site")
+                                val url = item.optString("url")
+                                if (site.isNotBlank() && url.isNotBlank()) {
+                                    add(ReiAnixOfficialLink(site, url))
+                                }
+                            }
+                        }
+                    }.distinctBy { it.url }
+                    add(ReiAnixAiringRecord(mediaId, episode, airedAt, links))
+                }
+            }
+            AniListResult.Success(ReiAnixAiringPage(
+                results,
+                container.optJSONObject("pageInfo")?.optBoolean("hasNextPage") == true,
+            ))
+        }
+    }
+
+    private suspend fun <T> execute(
+        query: String,
+        variables: JSONObject,
+        decode: (JSONObject) -> AniListResult<T>,
+    ): AniListResult<T> {
+        val response = try {
+            requestMutex.withLock {
+                val now = System.currentTimeMillis()
+                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
+                if (wait > 0L) delay(wait)
+                lastRequestAtMs = System.currentTimeMillis()
+                // Keep the lock through the HTTP call so concurrent callers cannot
+                // start together after sharing the same rate-limit delay.
+                withContext(Dispatchers.IO) {
+                    transport.post(ENDPOINT, JSONObject()
+                        .put("query", query)
+                        .put("variables", variables))
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: IOException) {
+            return AniListResult.Failure(AniListError.Network(error.message ?: "Network request failed"))
+        } catch (error: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse(error.message ?: "Request failed"))
+        }
+
+        if (response.statusCode == 429) {
+            return AniListResult.Failure(AniListError.RateLimited(response.retryAfterSeconds))
+        }
+        if (response.statusCode !in 200..299) {
+            return AniListResult.Failure(AniListError.Http(response.statusCode))
+        }
+        val root = try {
+            JSONObject(response.body)
+        } catch (_: JSONException) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Malformed JSON response"))
+        }
+        val errors = try {
+            root.arrayOrNull("errors")
+        } catch (_: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL errors array"))
+        }
+        if (errors != null && errors.length() > 0) {
+            val messages = try {
+                buildList<String> {
+                    for (index in 0 until errors.length()) {
+                        val errorObject = errors.optJSONObject(index)
+                            ?: error("Malformed GraphQL error item at index=$index")
+                        val message = errorObject.stringOrNull("message").orEmpty().trim()
+                        if (message.isNotBlank()) add(message.take(160))
+                    }
+                }
+            } catch (_: Exception) {
+                return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
+            }
+            return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+        }
+        val data = try {
+            root.objectOrNull("data")
+        } catch (_: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Invalid data object"))
+        } ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
+        return try {
+            decode(data)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            AniListResult.Failure(AniListError.InvalidResponse("Unexpected AniList response shape"))
+        }
+    }
+
+    private fun parseAnime(media: JSONObject): AniListAnime? {
+        val id = media.intOrNull("id")?.takeIf { it > 0 } ?: return null
+        val title = media.objectOrNull("title")
+        val cover = media.objectOrNull("coverImage")
+        val studioObject = media.objectOrNull("studios")
+        val studios = studioObject?.arrayOrNull("nodes")
+        val studioNames = buildList {
+            if (studios != null) for (index in 0 until studios.length()) {
+                val studio = studios.optJSONObject(index)
+                    ?: error("Malformed AniList studio at index=$index")
+                studio.stringOrNull("name")?.takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+
+        val synonyms = media.arrayOrNull("synonyms")
+        val genresArray = media.arrayOrNull("genres")
+        val aliases = buildList {
+            synonyms?.stringValues("synonyms")?.forEach(::add)
+            listOfNotNull(
+                title?.stringOrNull("romaji"),
+                title?.stringOrNull("english"),
+                title?.stringOrNull("native"),
+            ).mapNotNull { it.nonBlankOrNull() }.forEach(::add)
+        }.distinctBy { it.lowercase(Locale.ROOT) }
+        val genres = genresArray?.stringValues("genres").orEmpty()
+
+        val episodes = media.nonNegativeIntOrNull("episodes")
+        val averageScore = media.intOrNull("averageScore")?.also {
+            require(it in 0..100) { "AniList averageScore must be between 0 and 100." }
+        }
+        val duration = media.nonNegativeIntOrNull("duration")
+        val seasonYear = media.intOrNull("seasonYear")?.also {
+            require(it >= 0) { "AniList seasonYear must be non-negative." }
+        }?.takeIf { it > 0 }
+
+        return AniListAnime(
+            id = id,
+            titleRomaji = title?.stringOrNull("romaji").nonBlankOrNull(),
+            titleEnglish = title?.stringOrNull("english").nonBlankOrNull(),
+            titleNative = title?.stringOrNull("native").nonBlankOrNull(),
+            synonyms = aliases,
+            description = media.stringOrNull("description").nonBlankOrNull(),
+            format = media.stringOrNull("format").nonBlankOrNull(),
+            episodes = episodes,
+            status = media.stringOrNull("status").nonBlankOrNull(),
+            averageScore = averageScore,
+            durationMinutes = duration,
+            season = media.stringOrNull("season").nonBlankOrNull(),
+            seasonYear = seasonYear,
+            genres = genres,
+            coverLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("large").nonBlankOrNull()),
+            coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
+            bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
+            studios = studioNames,
+            repairRelations = media.objectOrNull("relations")?.arrayOrNull("edges")?.let { edges ->
+                buildList {
+                    for (i in 0 until edges.length()) {
+                        val edge = edges.optJSONObject(i) ?: continue
+                        val node = edge.objectOrNull("node") ?: continue
+                        val relatedId = node.intOrNull("id")?.takeIf { it > 0 } ?: continue
+                        val kind = edge.stringOrNull("relationType") ?: continue
+                        if (kind !in setOf("PREQUEL", "SEQUEL") || node.optBoolean("isAdult", false)) continue
+                        val titles = node.objectOrNull("title")
+                        add(AniListRepairRelation(relatedId, kind, node.stringOrNull("format"),
+                            listOfNotNull(titles?.stringOrNull("romaji"), titles?.stringOrNull("english"), titles?.stringOrNull("native"))))
+                    }
+                }
+            },
+        )
+    }
+
+    private fun JSONObject.nonNegativeIntOrNull(key: String): Int? =
+        intOrNull(key)?.also { require(it >= 0) { "AniList field '$key' must be non-negative." } }
+
+    private fun JSONArray.stringValues(field: String): List<String> =
+        buildList {
+            for (index in 0 until length()) {
+                val value = opt(index) as? String
+                    ?: error("Malformed AniList field '$field[$index]': expected text.")
+                if (value.isNotBlank()) add(value)
+            }
+        }
+
+    private fun String?.nonBlankOrNull(): String? =
+        this?.takeIf { it.isNotBlank() && it != "null" }
+
+    companion object {
+        const val ENDPOINT = "https://graphql.anilist.co"
+        const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        private const val REPAIR_RELATIONS = """
+            relations { edges { relationType(version: 2) node { id isAdult format title { romaji english native } } } }
+        """
+        private const val MEDIA_FIELDS = """
+            id isAdult title { romaji english native } synonyms
+            description(asHtml: false) format episodes duration status averageScore season seasonYear
+            genres coverImage { large extraLarge } bannerImage
+            studios(isMain: true) { nodes { name } }
+        """
+    }
+}
+
+data class ReiAnixAnimeCharacter(
+    val id: Int,
+    val name: String,
+    val role: String,
+    val imageUrl: String?,
+)
+
+data class ReiAnixOfficialLink(val site: String, val url: String)
+data class ReiAnixAiringRecord(
+    val mediaId: Int,
+    val episode: Int,
+    val airedAt: Int,
+    val officialLinks: List<ReiAnixOfficialLink>,
+)
+data class ReiAnixAiringPage(
+    val items: List<ReiAnixAiringRecord>,
+    val hasNextPage: Boolean,
+)
+
+data class AniListRepairRelation(val id: Int, val kind: String, val format: String?, val titles: List<String>)
+
+data class AniListAnime(
+    val id: Int,
+    val titleRomaji: String?,
+    val titleEnglish: String?,
+    val titleNative: String?,
+    val synonyms: List<String>,
+    val description: String?,
+    val format: String?,
+    val episodes: Int?,
+    val status: String?,
+    val averageScore: Int?,
+    val durationMinutes: Int?,
+    val season: String?,
+    val seasonYear: Int?,
+    val genres: List<String>,
+    val coverLargeUrl: String?,
+    val coverExtraLargeUrl: String?,
+    val bannerUrl: String?,
+    val studios: List<String>,
+    // Null means relations were not requested; an empty list is a known result.
+    val repairRelations: List<AniListRepairRelation>? = null,
+) {
+    /** Secure, de-duplicated variants ordered by preferred image quality. */
+    internal val coverCandidates: List<ReiAnixAniListCoverCandidate>
+        get() = resolveAniListCoverCandidates(coverExtraLargeUrl, coverLargeUrl)
+
+    val preferredTitle: String
+        get() = titleEnglish ?: titleRomaji ?: titleNative ?: synonyms.firstOrNull().orEmpty()
+}
+
+sealed interface AniListResult<out T> {
+    data class Success<T>(val value: T) : AniListResult<T>
+    data class Failure(val error: AniListError) : AniListResult<Nothing>
+}
+
+sealed interface AniListError {
+    data class Network(val message: String) : AniListError
+    data class Http(val statusCode: Int) : AniListError
+    data class RateLimited(val retryAfterSeconds: Long?) : AniListError
+    data class GraphQl(val messages: List<String>) : AniListError
+    data class InvalidRequest(val message: String) : AniListError
+    data class InvalidResponse(val message: String) : AniListError
+}
+
+data class AniListHttpResponse(
+    val statusCode: Int,
+    val body: String,
+    val retryAfterSeconds: Long? = null,
+)
+
+fun interface AniListTransport {
+    suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse
+}
+
+/** Blocking platform transport isolated on Dispatchers.IO by the client. */
+class HttpUrlConnectionAniListTransport(
+    private val connectTimeoutMs: Int = 8_000,
+    private val readTimeoutMs: Int = 12_000,
+) : AniListTransport {
+    init {
+        require(connectTimeoutMs > 0 && readTimeoutMs > 0)
+    }
+
+    override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse =
+        withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                val activeConnection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    instanceFollowRedirects = false
+                    connectTimeout = connectTimeoutMs
+                    readTimeout = readTimeoutMs
+                    doOutput = true
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    setRequestProperty("User-Agent", "ReiAnix-Android")
+                }
+                connection = activeConnection
+                coroutineContext.job.invokeOnCompletion { cause ->
+                    if (cause is CancellationException) activeConnection.disconnect()
+                }
+                activeConnection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = activeConnection.responseCode
+                val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
+                val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
+                AniListHttpResponse(code, responseBody, retryAfter)
+            } finally {
+                connection?.disconnect()
+            }
+        }
+}
+}ids, type: ANIME, isAdult: false, format_not: MUSIC) {
+                        $MEDIA_FIELDS $REPAIR_RELATIONS
+                    }
+                }
+            }
+        """.trimIndent()
+        return execute(query, JSONObject().put("ids", JSONArray(selected))) { data ->
+            val media = data.objectOrNull("Page")?.arrayOrNull("media")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing related anime response"))
+            val results = mutableListOf<AniListAnime>()
+            for (i in 0 until media.length()) {
+                val item = media.optJSONObject(i)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime"))
+                if (item.optBoolean("isAdult", false)) continue
+                val anime = parseAnime(item)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime ID"))
+                if (anime.id in selected) results += anime
+            }
+            AniListResult.Success(results.distinctBy { it.id })
+        }
+    }
+
+    suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
+        if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
+        val gql = """
+            query AnimeById(${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) { $MEDIA_FIELDS }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id)) { data ->
+            if (!data.has("Media")) {
+                return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Missing Media field in AniList detail response"),
+                )
+            }
+            if (data.isNull("Media")) return@execute AniListResult.Success(null)
+            val media = data.objectOrNull("Media")
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("Invalid Media object in AniList detail response"),
+                )
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(null)
+            val anime = parseAnime(media)
+                ?: return@execute AniListResult.Failure(
+                    AniListError.InvalidResponse("AniList detail is missing a valid media ID"),
+                )
+            AniListResult.Success(anime)
+        }
+    }
+
+
+    /** Characters are requested only when the user opens the character section. */
+    suspend fun getCharacters(id: Int, limit: Int = 18): AniListResult<List<ReiAnixAnimeCharacter>> {
+        if (id <= 0 || limit !in 1..25) {
+            return AniListResult.Failure(AniListError.InvalidRequest("Invalid character request"))
+        }
+        val gql = """
+            query AnimeCharacters(${'$'}id: Int, ${'$'}limit: Int) {
+              Media(id: ${'$'}id, type: ANIME, isAdult: false) {
+                isAdult
+                characters(perPage: ${'$'}limit, sort: [ROLE, FAVOURITES_DESC]) {
+                  edges { role node { id name { full } image { medium } } }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject().put("id", id).put("limit", limit)) { data ->
+            val media = data.optJSONObject("Media")
+                ?: return@execute AniListResult.Success(emptyList())
+            if (media.optBoolean("isAdult", false)) return@execute AniListResult.Success(emptyList())
+            val edges = media.optJSONObject("characters")?.optJSONArray("edges")
+                ?: return@execute AniListResult.Success(emptyList())
+            val result = buildList {
+                for (i in 0 until edges.length()) {
+                    val edge = edges.optJSONObject(i) ?: continue
+                    val character = edge.optJSONObject("node") ?: continue
+                    val characterId = character.optInt("id").takeIf { it > 0 } ?: continue
+                    val name = character.optJSONObject("name")?.optString("full")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val role = when (edge.optString("role")) {
+                        "MAIN" -> "Principal"
+                        "SUPPORTING" -> "Secundário"
+                        else -> "Figurante"
+                    }
+                    val url = validReiAnixArtworkHttpUrl(
+                        character.optJSONObject("image")?.optString("medium")
+                    )
+                    add(ReiAnixAnimeCharacter(characterId, name, role, url))
+                }
+            }
+            AniListResult.Success(result)
+        }
+    }
+
+    /** Bounded batch lookup of recent airings for the opt-in release notifier only. */
+    suspend fun getRecentAirings(
+        ids: List<Int>, fromEpoch: Int, toEpoch: Int, page: Int = 1,
+    ): AniListResult<ReiAnixAiringPage> {
+        if (ids.isEmpty() || ids.size > 100 || ids.any { it <= 0 } ||
+            fromEpoch < 0 || toEpoch < fromEpoch || page !in 1..4
+        ) return AniListResult.Failure(AniListError.InvalidRequest("Invalid airing request"))
+        val gql = """
+            query ReiAnixRecentAirings(${'$'}ids: [Int], ${'$'}from: Int, ${'$'}to: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                airingSchedules(
+                  mediaId_in: ${'$'}ids,
+                  airingAt_greater: ${'$'}from,
+                  airingAt_lesser: ${'$'}to,
+                  sort: TIME_DESC
+                ) {
+                  id mediaId episode airingAt
+                  media {
+                    isAdult
+                    siteUrl
+                    externalLinks { site url type }
+                    streamingEpisodes { site url }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+        return execute(gql, JSONObject()
+            .put("ids", JSONArray(ids))
+            .put("from", fromEpoch)
+            .put("to", toEpoch)
+            .put("page", page)) { data ->
+            val container = data.optJSONObject("Page")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No Page"))
+            val array = container.optJSONArray("airingSchedules")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("No airings"))
+            val results = buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.optJSONObject(i) ?: continue
+                    val mediaId = entry.optInt("mediaId")
+                    val episode = entry.optInt("episode")
+                    val airedAt = entry.optInt("airingAt")
+                    if (mediaId !in ids || episode <= 0 || airedAt !in fromEpoch..toEpoch) continue
+                    val media = entry.optJSONObject("media")
+                    if (media?.optBoolean("isAdult", false) == true) continue
+                    val links = buildList {
+                        listOf("streamingEpisodes", "externalLinks").forEach { key ->
+                            val raw = media?.optJSONArray(key)
+                            if (raw != null) for (index in 0 until raw.length()) {
+                                val item = raw.optJSONObject(index) ?: continue
+                                val site = item.optString("site")
+                                val url = item.optString("url")
+                                if (site.isNotBlank() && url.isNotBlank()) {
+                                    add(ReiAnixOfficialLink(site, url))
+                                }
+                            }
+                        }
+                    }.distinctBy { it.url }
+                    add(ReiAnixAiringRecord(mediaId, episode, airedAt, links))
+                }
+            }
+            AniListResult.Success(ReiAnixAiringPage(
+                results,
+                container.optJSONObject("pageInfo")?.optBoolean("hasNextPage") == true,
+            ))
+        }
+    }
+
+    private suspend fun <T> execute(
+        query: String,
+        variables: JSONObject,
+        decode: (JSONObject) -> AniListResult<T>,
+    ): AniListResult<T> {
+        val response = try {
+            requestMutex.withLock {
+                val now = System.currentTimeMillis()
+                val wait = (lastRequestAtMs + minimumRequestIntervalMs - now).coerceAtLeast(0L)
+                if (wait > 0L) delay(wait)
+                lastRequestAtMs = System.currentTimeMillis()
+                // Keep the lock through the HTTP call so concurrent callers cannot
+                // start together after sharing the same rate-limit delay.
+                withContext(Dispatchers.IO) {
+                    transport.post(ENDPOINT, JSONObject()
+                        .put("query", query)
+                        .put("variables", variables))
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: IOException) {
+            return AniListResult.Failure(AniListError.Network(error.message ?: "Network request failed"))
+        } catch (error: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse(error.message ?: "Request failed"))
+        }
+
+        if (response.statusCode == 429) {
+            return AniListResult.Failure(AniListError.RateLimited(response.retryAfterSeconds))
+        }
+        if (response.statusCode !in 200..299) {
+            return AniListResult.Failure(AniListError.Http(response.statusCode))
+        }
+        val root = try {
+            JSONObject(response.body)
+        } catch (_: JSONException) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Malformed JSON response"))
+        }
+        val errors = try {
+            root.arrayOrNull("errors")
+        } catch (_: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL errors array"))
+        }
+        if (errors != null && errors.length() > 0) {
+            val messages = try {
+                buildList<String> {
+                    for (index in 0 until errors.length()) {
+                        val errorObject = errors.optJSONObject(index)
+                            ?: error("Malformed GraphQL error item at index=$index")
+                        val message = errorObject.stringOrNull("message").orEmpty().trim()
+                        if (message.isNotBlank()) add(message.take(160))
+                    }
+                }
+            } catch (_: Exception) {
+                return AniListResult.Failure(AniListError.InvalidResponse("Malformed GraphQL error payload"))
+            }
+            return AniListResult.Failure(AniListError.GraphQl(messages.ifEmpty { listOf("GraphQL request failed") }))
+        }
+        val data = try {
+            root.objectOrNull("data")
+        } catch (_: Exception) {
+            return AniListResult.Failure(AniListError.InvalidResponse("Invalid data object"))
+        } ?: return AniListResult.Failure(AniListError.InvalidResponse("Missing data object"))
+        return try {
+            decode(data)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            AniListResult.Failure(AniListError.InvalidResponse("Unexpected AniList response shape"))
+        }
+    }
+
+    private fun parseAnime(media: JSONObject): AniListAnime? {
+        val id = media.intOrNull("id")?.takeIf { it > 0 } ?: return null
+        val title = media.objectOrNull("title")
+        val cover = media.objectOrNull("coverImage")
+        val studioObject = media.objectOrNull("studios")
+        val studios = studioObject?.arrayOrNull("nodes")
+        val studioNames = buildList {
+            if (studios != null) for (index in 0 until studios.length()) {
+                val studio = studios.optJSONObject(index)
+                    ?: error("Malformed AniList studio at index=$index")
+                studio.stringOrNull("name")?.takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+
+        val synonyms = media.arrayOrNull("synonyms")
+        val genresArray = media.arrayOrNull("genres")
+        val aliases = buildList {
+            synonyms?.stringValues("synonyms")?.forEach(::add)
+            listOfNotNull(
+                title?.stringOrNull("romaji"),
+                title?.stringOrNull("english"),
+                title?.stringOrNull("native"),
+            ).mapNotNull { it.nonBlankOrNull() }.forEach(::add)
+        }.distinctBy { it.lowercase(Locale.ROOT) }
+        val genres = genresArray?.stringValues("genres").orEmpty()
+
+        val episodes = media.nonNegativeIntOrNull("episodes")
+        val averageScore = media.intOrNull("averageScore")?.also {
+            require(it in 0..100) { "AniList averageScore must be between 0 and 100." }
+        }
+        val duration = media.nonNegativeIntOrNull("duration")
+        val seasonYear = media.intOrNull("seasonYear")?.also {
+            require(it >= 0) { "AniList seasonYear must be non-negative." }
+        }?.takeIf { it > 0 }
+
+        return AniListAnime(
+            id = id,
+            titleRomaji = title?.stringOrNull("romaji").nonBlankOrNull(),
+            titleEnglish = title?.stringOrNull("english").nonBlankOrNull(),
+            titleNative = title?.stringOrNull("native").nonBlankOrNull(),
+            synonyms = aliases,
+            description = media.stringOrNull("description").nonBlankOrNull(),
+            format = media.stringOrNull("format").nonBlankOrNull(),
+            episodes = episodes,
+            status = media.stringOrNull("status").nonBlankOrNull(),
+            averageScore = averageScore,
+            durationMinutes = duration,
+            season = media.stringOrNull("season").nonBlankOrNull(),
+            seasonYear = seasonYear,
+            genres = genres,
+            coverLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("large").nonBlankOrNull()),
+            coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
+            bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
+            studios = studioNames,
+            repairRelations = media.objectOrNull("relations")?.arrayOrNull("edges")?.let { edges ->
+                buildList {
+                    for (i in 0 until edges.length()) {
+                        val edge = edges.optJSONObject(i) ?: continue
+                        val node = edge.objectOrNull("node") ?: continue
+                        val relatedId = node.intOrNull("id")?.takeIf { it > 0 } ?: continue
+                        val kind = edge.stringOrNull("relationType") ?: continue
+                        if (kind !in setOf("PREQUEL", "SEQUEL") || node.optBoolean("isAdult", false)) continue
+                        val titles = node.objectOrNull("title")
+                        add(AniListRepairRelation(relatedId, kind, node.stringOrNull("format"),
+                            listOfNotNull(titles?.stringOrNull("romaji"), titles?.stringOrNull("english"), titles?.stringOrNull("native"))))
+                    }
+                }
+            },
+        )
+    }
+
+    private fun JSONObject.nonNegativeIntOrNull(key: String): Int? =
+        intOrNull(key)?.also { require(it >= 0) { "AniList field '$key' must be non-negative." } }
+
+    private fun JSONArray.stringValues(field: String): List<String> =
+        buildList {
+            for (index in 0 until length()) {
+                val value = opt(index) as? String
+                    ?: error("Malformed AniList field '$field[$index]': expected text.")
+                if (value.isNotBlank()) add(value)
+            }
+        }
+
+    private fun String?.nonBlankOrNull(): String? =
+        this?.takeIf { it.isNotBlank() && it != "null" }
+
+    companion object {
+        const val ENDPOINT = "https://graphql.anilist.co"
+        const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        private const val REPAIR_RELATIONS = """
+            relations { edges { relationType(version: 2) node { id isAdult format title { romaji english native } } } }
+        """
+        private const val MEDIA_FIELDS = """
+            id isAdult title { romaji english native } synonyms
+            description(asHtml: false) format episodes duration status averageScore season seasonYear
+            genres coverImage { large extraLarge } bannerImage
+            studios(isMain: true) { nodes { name } }
+        """
+    }
+}
+
+data class ReiAnixAnimeCharacter(
+    val id: Int,
+    val name: String,
+    val role: String,
+    val imageUrl: String?,
+)
+
+data class ReiAnixOfficialLink(val site: String, val url: String)
+data class ReiAnixAiringRecord(
+    val mediaId: Int,
+    val episode: Int,
+    val airedAt: Int,
+    val officialLinks: List<ReiAnixOfficialLink>,
+)
+data class ReiAnixAiringPage(
+    val items: List<ReiAnixAiringRecord>,
+    val hasNextPage: Boolean,
+)
+
+data class AniListRepairRelation(val id: Int, val kind: String, val format: String?, val titles: List<String>)
+
+data class AniListAnime(
+    val id: Int,
+    val titleRomaji: String?,
+    val titleEnglish: String?,
+    val titleNative: String?,
+    val synonyms: List<String>,
+    val description: String?,
+    val format: String?,
+    val episodes: Int?,
+    val status: String?,
+    val averageScore: Int?,
+    val durationMinutes: Int?,
+    val season: String?,
+    val seasonYear: Int?,
+    val genres: List<String>,
+    val coverLargeUrl: String?,
+    val coverExtraLargeUrl: String?,
+    val bannerUrl: String?,
+    val studios: List<String>,
+    // Null means relations were not requested; an empty list is a known result.
+    val repairRelations: List<AniListRepairRelation>? = null,
+) {
+    /** Secure, de-duplicated variants ordered by preferred image quality. */
+    internal val coverCandidates: List<ReiAnixAniListCoverCandidate>
+        get() = resolveAniListCoverCandidates(coverExtraLargeUrl, coverLargeUrl)
+
+    val preferredTitle: String
+        get() = titleEnglish ?: titleRomaji ?: titleNative ?: synonyms.firstOrNull().orEmpty()
+}
+
+sealed interface AniListResult<out T> {
+    data class Success<T>(val value: T) : AniListResult<T>
+    data class Failure(val error: AniListError) : AniListResult<Nothing>
+}
+
+sealed interface AniListError {
+    data class Network(val message: String) : AniListError
+    data class Http(val statusCode: Int) : AniListError
+    data class RateLimited(val retryAfterSeconds: Long?) : AniListError
+    data class GraphQl(val messages: List<String>) : AniListError
+    data class InvalidRequest(val message: String) : AniListError
+    data class InvalidResponse(val message: String) : AniListError
+}
+
+data class AniListHttpResponse(
+    val statusCode: Int,
+    val body: String,
+    val retryAfterSeconds: Long? = null,
+)
+
+fun interface AniListTransport {
+    suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse
+}
+
+/** Blocking platform transport isolated on Dispatchers.IO by the client. */
+class HttpUrlConnectionAniListTransport(
+    private val connectTimeoutMs: Int = 8_000,
+    private val readTimeoutMs: Int = 12_000,
+) : AniListTransport {
+    init {
+        require(connectTimeoutMs > 0 && readTimeoutMs > 0)
+    }
+
+    override suspend fun post(endpoint: String, body: JSONObject): AniListHttpResponse =
+        withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                val activeConnection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    instanceFollowRedirects = false
+                    connectTimeout = connectTimeoutMs
+                    readTimeout = readTimeoutMs
+                    doOutput = true
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    setRequestProperty("User-Agent", "ReiAnix-Android")
+                }
+                connection = activeConnection
+                coroutineContext.job.invokeOnCompletion { cause ->
+                    if (cause is CancellationException) activeConnection.disconnect()
+                }
+                activeConnection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = activeConnection.responseCode
+                val stream = if (code in 200..299) activeConnection.inputStream else activeConnection.errorStream
+                val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val retryAfter = activeConnection.getHeaderField("Retry-After")?.toLongOrNull()
+                AniListHttpResponse(code, responseBody, retryAfter)
+            } finally {
+                connection?.disconnect()
+            }
+        }
+}
+}ids: [Int]) {
+                Page(page: 1, perPage: 8) {
+                    media(id_in: $ids, type: ANIME, isAdult: false, format_not: MUSIC) {
+                        $MEDIA_FIELDS $REPAIR_RELATIONS
+                    }
+                }
+            }
+        """.trimIndent()
+        return execute(query, JSONObject().put("ids", JSONArray(selected))) { data ->
+            val media = data.objectOrNull("Page")?.arrayOrNull("media")
+                ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Missing related anime response"))
+            val results = mutableListOf<AniListAnime>()
+            for (i in 0 until media.length()) {
+                val item = media.optJSONObject(i)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime"))
+                if (item.optBoolean("isAdult", false)) continue
+                val anime = parseAnime(item)
+                    ?: return@execute AniListResult.Failure(AniListError.InvalidResponse("Invalid related anime ID"))
+                if (anime.id in selected) results += anime
+            }
+            AniListResult.Success(results.distinctBy { it.id })
+        }
+    }
+
     suspend fun getAnime(id: Int): AniListResult<AniListAnime?> {
         if (id <= 0) return AniListResult.Failure(AniListError.InvalidRequest("AniList ID must be positive"))
         val gql = """
