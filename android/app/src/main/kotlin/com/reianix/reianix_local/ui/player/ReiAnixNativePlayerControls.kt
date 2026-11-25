@@ -920,8 +920,8 @@ fun ReiAnixNativePlayerBottomControls(
                 // Only the shortcuts selected by the user are composed; the
                 // five-icon default keeps Options in the final position.
                 displayShortcuts.forEachIndexed { index, shortcut ->
-                    // Preserve the evenly spaced slot centers. Apply only a tiny optical
-                    // correction to the first portrait glyph, never to its hit target.
+                    // Move only the first portrait glyph to the requested visual
+                    // position. Keep the weighted slots, labels and other icons fixed.
                     val firstPortraitSlot = !landscape && index == 0 && displayShortcuts.size > 1
                     when (shortcut) {
                         PlayerShortcut.LOCK -> PlayerBottomAction(
@@ -1062,8 +1062,8 @@ private fun RowScope.PlayerBottomAction(
                         scaleX = iconVisualScale
                         scaleY = iconVisualScale
                         if (firstPortraitSlot) {
-                            translationX = 0.25.dp.toPx()
-                            translationY = 0.25.dp.toPx()
+                            translationX = 3.dp.toPx()
+                            translationY = 3.dp.toPx()
                         }
                     },
             )
