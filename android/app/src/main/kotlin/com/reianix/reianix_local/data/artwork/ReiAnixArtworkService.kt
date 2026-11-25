@@ -266,6 +266,18 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
     fun isOrdinaryArtworkIdle(): Boolean = !backfillRunning.get() && !missingPosterBackfillRunning.get() &&
         !cacheClearInProgress.get() && jobs.isEmpty() && candidateFollowUpRequests.isEmpty() && forceFollowUpIds.isEmpty()
 
+    // Read-only checks for the supplementary upgrade. Never reserve ordinary
+    // download permits or modify the initial artwork queue.
+    fun canRunEarlyArtworkUpgrade(): Boolean = !cacheClearInProgress.get() &&
+        Runtime.getRuntime().let { runtime ->
+            val heapHeadroom = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
+            runtime.maxMemory() >= 192L * 1024L * 1024L && heapHeadroom >= 48L * 1024L * 1024L
+        }
+
+    fun isAnimeArtworkIdle(animeId: Long): Boolean = !cacheClearInProgress.get() &&
+        !jobs.containsKey(animeId) && !candidateFollowUpRequests.containsKey(animeId) &&
+        animeId !in forceFollowUpIds
+
     private data class Anime(
         val anilistId: Long?,
         val kind: String?,
@@ -319,6 +331,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         remoteId: Long,
         posterUrls: List<String>,
         bannerUrl: String?,
+        serialDownloads: Boolean = false,
     ): ReiAnixPreparedRepairArtwork? = withContext(Dispatchers.IO) {
         if (cacheClearInProgress.get() || !remoteArtworkEnabled()) return@withContext null
         suspend fun prepare(type: String, url: String): ReiAnixPreparedRepairImage? {
@@ -356,6 +369,16 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 Log.w(TAG, "Explicit AniList repair could not prepare $type", failure)
                 null
             }
+        }
+        if (serialDownloads) {
+            // Early automatic repair uses at most one image transfer at a time.
+            // Keep the same validation and atomic poster/banner preparation.
+            val poster = posterUrls.distinct().firstNotNullOfOrNull { prepare("poster", it) }
+                ?: return@withContext null
+            if (!canRunEarlyArtworkUpgrade() || !remoteArtworkEnabled()) return@withContext null
+            val banner = bannerUrl?.let { prepare("backdrop", it) }
+            if ((bannerUrl != null && banner == null) || cacheClearInProgress.get()) return@withContext null
+            return@withContext ReiAnixPreparedRepairArtwork(poster, banner)
         }
         coroutineScope {
             val poster = async {
