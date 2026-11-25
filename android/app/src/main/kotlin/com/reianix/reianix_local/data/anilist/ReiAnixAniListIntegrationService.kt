@@ -2106,6 +2106,175 @@ internal fun explicitAniListRepairSearchTerms(titles: List<String>): List<String
         .distinctBy(::repairPlain).take(8)
 }
 
+
+/**
+ * Edition is an identity constraint, not a similarity bonus. Do not infer a
+ * season from the default local episode group (often always 1), release year,
+ * or a title previously copied from a remote association.
+ */
+internal data class RepairEdition(
+    val season: Int? = null,
+    val part: Int? = null,
+    val format: String? = null,
+    val conflict: Boolean = false,
+) {
+    val hasMarker: Boolean get() = season != null || part != null || format != null
+}
+
+private val repairRomanNumbers = listOf("i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx")
+private const val REPAIR_EDITION_NUMBER = "(\\d{1,2}|xviii|xvii|xvi|xv|xiv|xiii|xii|xi|xx|x|viii|vii|vi|iv|iii|ii|ix|v|i)"
+private val repairSeasonPrefix = Regex("\\b(?:season|temporada|temp|s)\\s*" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th|a|o)?(?=\\b|e\\d)")
+private val repairSeasonSuffix = Regex("\\b" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th|a|o)?\\s*(?:season|temporada|temp|ki)\\b")
+private val repairJapaneseSeason = Regex("第\\s*(\\d{1,2})\\s*期")
+private val repairPartPrefix = Regex("\\b(?:part|parte|cour|c)\\s*" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th)?\\b")
+private val repairPartSuffix = Regex("\\b" + REPAIR_EDITION_NUMBER + "(?:st|nd|rd|th)?\\s*(?:part|parte|cour)\\b")
+private val repairBareEdition = Regex("\\s+(\\d{1,2}|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)$")
+private val repairYearSuffix = Regex("\\s+(?:19\\d{2}|20\\d{2})$")
+private val repairMovieMarker = Regex("\\b(?:the movie|movie|filme|gekijouban|gekijoban)\\b")
+private val repairSpecialMarker = Regex("\\b(?:special|especia[li]|ova|oad)\\b")
+private val repairSeriesFormats = setOf("TV", "TV_SHORT", "ONA")
+
+private fun repairEditionNumber(raw: String): Int? =
+    (raw.toIntOrNull() ?: (repairRomanNumbers.indexOf(raw) + 1)).takeIf { it in 1..30 }
+
+private fun repairEditionFormat(value: String): String? = when {
+    repairMovieMarker.containsMatchIn(value) -> "MOVIE"
+    repairSpecialMarker.containsMatchIn(value) -> if (Regex("\\b(?:ova|oad)\\b").containsMatchIn(value)) "OVA" else "SPECIAL"
+    else -> null
+}
+
+/** Bare suffixes are accepted on titles/folders, never raw episode filenames. */
+internal fun repairEdition(value: String, allowBare: Boolean = true): RepairEdition {
+    val plain = repairPlain(value)
+    val seasons = listOf(repairSeasonPrefix, repairSeasonSuffix, repairJapaneseSeason)
+        .flatMap { regex -> regex.findAll(plain).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toList() }.toSet()
+    val parts = listOf(repairPartPrefix, repairPartSuffix)
+        .flatMap { regex -> regex.findAll(plain).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toList() }.toSet()
+    val withoutYear = plain.replace(repairYearSuffix, "")
+    val suffix = if (allowBare && seasons.isEmpty() && parts.isEmpty()) repairBareEdition.find(withoutYear) else null
+    val stem = suffix?.let { withoutYear.substring(0, it.range.first).trim() }.orEmpty()
+    // Numbers in literal names such as "Kaiju No. 8" are not season markers.
+    val bare = suffix?.takeIf { stem.any(Char::isLetter) &&
+        stem.substringAfterLast(' ') !in setOf("no", "number", "episode", "ep", "capitulo", "episodio", "volume", "vol") }
+        ?.let { repairEditionNumber(it.groupValues[1]) }
+    return RepairEdition(seasons.singleOrNull() ?: bare, parts.singleOrNull(),
+        repairEditionFormat(plain), seasons.size > 1 || parts.size > 1)
+}
+
+private fun combineRepairEditions(values: List<RepairEdition>): RepairEdition {
+    val seasons = values.mapNotNull { it.season }.toSet()
+    val parts = values.mapNotNull { it.part }.toSet()
+    val formats = values.mapNotNull { it.format }.toSet()
+    return RepairEdition(seasons.singleOrNull(), parts.singleOrNull(), formats.singleOrNull(),
+        values.any { it.conflict } || seasons.size > 1 || parts.size > 1 || formats.size > 1)
+}
+
+internal fun expectedRepairEdition(local: ReiAnixAnimeRecord, evidence: ExplicitAniListLocalEvidence): RepairEdition {
+    val lookup = repairEdition(local.lookupTitle)
+    val explicit = evidence.editionTitles.map { repairEdition(it, allowBare = !it.contains(Regex("(?i)\\bs\\d+e\\d+\\b"))) }
+    val independent = combineRepairEditions(listOf(lookup) + explicit)
+    if (independent.hasMarker || independent.conflict) return independent
+    // The parsed filenames/folders are secondary evidence; do not trust an
+    // automatically associated remote title or its potentially wrong aliases.
+    val parsed = combineRepairEditions(evidence.titles.map { repairEdition(it) })
+    if (parsed.hasMarker || parsed.conflict) return parsed
+    if (local.anilistId == null && local.metadataSource?.startsWith("kitsu", true) == true) {
+        return repairEdition(local.title)
+    }
+    return independent
+}
+
+private fun remoteRepairEdition(candidate: AniListAnime): RepairEdition {
+    val primary = combineRepairEditions(listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
+        .map { repairEdition(it) })
+    val aliases = combineRepairEditions(candidate.synonyms.map { repairEdition(it) })
+    // Canonical numbering outranks synonyms; an ambiguous alias cannot prove a season.
+    return RepairEdition(primary.season ?: aliases.season.takeUnless { aliases.conflict },
+        primary.part ?: aliases.part.takeUnless { aliases.conflict }, primary.format,
+        primary.conflict)
+}
+
+/**
+ * PREQUEL chains provide secondary evidence for sequels with a subtitle
+ * rather than a number. Only an unambiguous TV/ONA chain counts. A split
+ * cour is not an additional season, and movies/specials never count.
+ * Missing relation data fails closed rather than guessing a sequel's number.
+ */
+private fun inferredRepairSeason(
+    candidate: AniListAnime,
+    byId: Map<Int, AniListAnime>,
+    seen: Set<Int> = emptySet(),
+): Int? {
+    if (candidate.id in seen || seen.size >= 10 || candidate.format !in repairSeriesFormats) return null
+    val edition = remoteRepairEdition(candidate)
+    if (edition.conflict) return null
+    edition.season?.let { return it }
+    val relations = candidate.repairRelations ?: return null
+    val predecessors = relations.filter { it.kind == "PREQUEL" && it.format in repairSeriesFormats }.distinctBy { it.id }
+    if (predecessors.isEmpty()) {
+        // A node with only a movie/OVA prequel does not establish TV season 1.
+        return if (relations.any { it.kind == "PREQUEL" } || (edition.part ?: 1) > 1) null else 1
+    }
+    val previous = predecessors.singleOrNull() ?: return null
+    val previousEdition = combineRepairEditions(previous.titles.map { repairEdition(it) })
+    if (previousEdition.conflict) return null
+    val previousSeason = previousEdition.season ?: byId[previous.id]?.let {
+        inferredRepairSeason(it, byId, seen + candidate.id)
+    } ?: return null
+    return if ((edition.part ?: 1) > 1) previousSeason else (previousSeason + 1).takeIf { it <= 30 }
+}
+
+internal fun repairEditionCompatible(expected: RepairEdition, candidate: AniListAnime, candidates: List<AniListAnime>): Boolean {
+    if (expected.conflict) return false
+    val remote = remoteRepairEdition(candidate)
+    if (remote.conflict) return false
+    if (expected.format != null && candidate.format != expected.format) return false
+    if (expected.season != null && expected.format == null && candidate.format !in repairSeriesFormats) return false
+    if (expected.part != null && remote.part != expected.part) return false
+    if (expected.part == null && expected.season != null && (remote.part ?: 1) > 1) return false
+    if (expected.season != null) {
+        val season = remote.season ?: inferredRepairSeason(candidate, candidates.associateBy { it.id })
+        if (season != expected.season) return false
+    }
+    return true
+}
+
+internal fun editionAwareRepairSearchTerms(titles: List<String>, lookupTitle: String, edition: RepairEdition): List<String> {
+    val existing = explicitAniListRepairSearchTerms(titles)
+    if (edition.season == null && edition.part == null) return existing
+    val original = lookupTitle.trim().takeIf(::usefulRepairTitle) ?: titles.firstOrNull() ?: return existing
+    var base = repairPlain(original).replace(repairYearSuffix, "")
+    listOf(repairSeasonPrefix, repairSeasonSuffix, repairJapaneseSeason, repairPartPrefix, repairPartSuffix).forEach { regex ->
+        base = base.replace(regex, " ")
+    }
+    if (repairEdition(original).season != null) base = base.replace(repairBareEdition, "")
+    base = base.replace(repairWhitespace, " ").trim()
+    if (!usefulRepairTitle(base)) return existing
+    val numbered = edition.season?.let { season -> "$base Season $season" } ?: base
+    val full = edition.part?.let { "$numbered Part $it" } ?: numbered
+    val short = edition.season?.let { "$base $it" } ?: base
+    val shortPart = edition.part?.let { "$short Part $it" } ?: short
+    return (listOf(original, full, shortPart, numbered, short, base) + existing)
+        .filter(::usefulRepairTitle).distinctBy(::repairPlain).take(8)
+}
+
+/** Revisit previous automatic conversions if original local edition evidence disagrees. */
+internal fun needsLegacySeasonRepair(row: ReiAnixLibraryCatalogRow): Boolean {
+    val local = row.anime
+    if (local.anilistId == null || local.anilistMatchManual == true ||
+        local.metadataSource.equals("manual", true) || local.metadataStatus.equals("manual", true) ||
+        row.episodes.none { it.missing != true && (it.availabilityState.isNullOrBlank() || it.availabilityState.equals("available", true)) }
+    ) return false
+    val expected = expectedRepairEdition(local, explicitAniListLocalEvidence(row.episodes))
+    if (expected.conflict || !expected.hasMarker) return false
+    val stored = combineRepairEditions(listOfNotNull(local.title, local.romaji, local.english, local.nativeTitle)
+        .map { repairEdition(it) })
+    return stored.conflict || (expected.season != null && stored.season != expected.season) ||
+        (expected.part != null && stored.part != expected.part) ||
+        (expected.format != null && local.format != expected.format)
+}
+
 private fun repairEditSimilarity(left: String, right: String): Double {
     if (left == right) return 1.0
     if (left.isEmpty() || right.isEmpty()) return 0.0
