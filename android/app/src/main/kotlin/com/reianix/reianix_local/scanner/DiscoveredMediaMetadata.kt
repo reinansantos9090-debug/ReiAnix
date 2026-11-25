@@ -1,6 +1,7 @@
 package com.reianix.reianix_local.scanner
 
 import com.reianix.reianix_local.data.media.MediaFilenameParser
+import com.reianix.reianix_local.data.media.ParsedMediaKind
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -37,10 +38,27 @@ internal object DiscoveredMediaMetadata {
         val parseInput = relativePath.trim().takeIf { it.isNotEmpty() } ?: fileName
         val normalizedRelativePath = relativePath.trim().replace('\\', '/').trim('/')
         val isRootLevelSafVideo = source == "saf" && normalizedRelativePath.isNotEmpty() && '/' !in normalizedRelativePath
-        val parsed = MediaFilenameParser.parseVideoPath(
+        val parsedFromPath = MediaFilenameParser.parseVideoPath(
             parseInput,
             allowStandaloneMovie = isRootLevelSafVideo,
         )
+        // Selecting an ancestor must not hide a standalone video that is already
+        // accepted when its immediate folder is selected. Keep the full-path
+        // parser first so explicit episodes and season-folder evidence win.
+        // Reuse the exact existing standalone rule on the leaf name only when
+        // the full path did not identify a kind; never invent an episode number.
+        val parsed = if (
+            source == "saf" && !isRootLevelSafVideo && '/' in normalizedRelativePath &&
+            nameAvailable && fileName.isNotBlank() &&
+            parsedFromPath.kind == ParsedMediaKind.UNKNOWN &&
+            parsedFromPath.absoluteNumber == null && parsedFromPath.ambiguities.isEmpty()
+        ) {
+            MediaFilenameParser.parseVideoPath(fileName, allowStandaloneMovie = true)
+                .takeIf { it.kind == ParsedMediaKind.MOVIE && it.ambiguities.isEmpty() }
+                ?: parsedFromPath
+        } else {
+            parsedFromPath
+        }
         val fieldConfidence = JSONObject()
         parsed.fieldConfidence.forEach { (field, confidence) ->
             fieldConfidence.put(field.name.lowercase(), confidence.name.lowercase())
