@@ -3052,12 +3052,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onSource = { toggleMorePanel() },
                         onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
                         onCast = { showTvPicker() },
-                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Selecionar faixa de áudio") },
                         onAspect = ::toggleAspectMode,
                         onManualSkip = ::skipOpeningOrEndingManually,
-                        onNotes = ::showAddLocalNoteDialog,
-                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
-                        onSleepTimer = { showSleepTimerSelection() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
                                 requestEpisode("player_next_request")
