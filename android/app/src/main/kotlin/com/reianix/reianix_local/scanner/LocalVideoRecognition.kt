@@ -45,7 +45,7 @@ internal object LocalVideoRecognition {
     }
 
     private inline fun probe(setSource: (MediaMetadataRetriever) -> Unit): Boolean {
-        val retriever = MediaMetadataRetriever()
+        val retriever = runCatching { MediaMetadataRetriever() }.getOrNull() ?: return false
         return try {
             setSource(retriever)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)
