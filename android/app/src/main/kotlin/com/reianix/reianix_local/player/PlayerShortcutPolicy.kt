@@ -11,12 +11,8 @@ enum class PlayerShortcut(val key: String, val displayName: String) {
     OPTIONS("options", "Opções"),
     SPEED("speed", "Velocidade"),
     CAST("cast", "Transmitir"),
-    SUBTITLES("subtitles", "Legendas"),
-    TIMER("timer", "Temporizador"),
-    AUDIO("audio", "Áudio"),
     ASPECT("aspect", "Proporção"),
-    SKIP_OP_ED("skip_op_ed", "Pular OP/ED"),
-    NOTES("notes", "Anotações");
+    SKIP_OP_ED("skip_op_ed", "Pular OP/ED");
 }
 
 object PlayerShortcutPolicy {
@@ -63,10 +59,10 @@ object PlayerShortcutPolicy {
             keys.distinct().size == keys.size
         ) { "Only one to five unique player shortcuts are supported" }
 
-        // "capture" is a retired shortcut. Drop it from pre-upgrade SQLite
-        // preferences and imported backups without discarding other choices.
-        // It must never be part of the current enum or appear in the player.
-        val kept = keys.filterNot { it == "capture" }
+        // Retired shortcut IDs may still exist in SQLite preferences and
+        // imported backups. Drop only those IDs, preserving other choices/order.
+        val retired = setOf("capture", "subtitles", "timer", "audio", "notes")
+        val kept = keys.filterNot { it in retired }
         val options = kept.map { key ->
             PlayerShortcut.entries.firstOrNull { it.key == key }
                 ?: throw IllegalArgumentException("Unsupported player shortcut")
