@@ -52,7 +52,7 @@ class DiscoveredMediaMetadataTest {
         val examples = listOf(
             "Solo Leveling.mp4" to "reianix",
             "Assistir Dragon Ball Z.mkv" to "animes/anime/reivex",
-            "Another Film.webm" to "a/b/c/d/e/f/g",
+            "Another Story.webm" to "a/b/c/d/e/f/g",
         )
         for ((name, folder) in examples) {
             fun discover(relative: String): JSONObject = DiscoveredMediaMetadata.attach(
@@ -71,6 +71,7 @@ class DiscoveredMediaMetadataTest {
             val expected = direct.getJSONObject("parsedMedia")
             val actual = ancestor.getJSONObject("parsedMedia")
             assertEquals("movie", expected.getString("kind"))
+            assertEquals("standalone_root_movie", expected.getString("identificationSource"))
             assertEquals("movie", actual.getString("kind"))
             assertEquals("high", actual.getString("confidence"))
             assertEquals(expected.getString("animeTitle"), actual.getString("animeTitle"))
