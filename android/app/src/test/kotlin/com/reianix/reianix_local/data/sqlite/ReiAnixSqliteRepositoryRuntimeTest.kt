@@ -2074,6 +2074,10 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         SQLiteDatabase.openDatabase(databaseFile.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL("UPDATE anime SET genres=? WHERE id=1", arrayOf("""["Action","Drama"]"""))
             db.execSQL("UPDATE anime SET genres=? WHERE id=2", arrayOf("""["Ação","Music"]"""))
+            db.execSQL("""
+                INSERT INTO episodes (id, anime_id, path, file_name, season, number, duration, progress, watched, last_played_at)
+                VALUES (8, 2, '/media/second/episode-01.mkv', 'episode-01.mkv', 1, 1, 1200, 0, 0, NULL)
+            """.trimIndent())
         }
         val canonicalFirst = repository.searchAnimeIds("", "genre:action", false, false, false, null, 1, 0)
         val canonicalSecond = repository.searchAnimeIds("", "genre:action", false, false, false, null, 1, 1)
@@ -2089,6 +2093,11 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertEquals(listOf(2L), repository.searchAnimeIds("música", null, false, false, false, null, 36, 0).animeIds)
         assertEquals(listOf(2L, 1L), repository.searchAnimeIds("", null, false, false, false, null, 1, 0, allResults = true).animeIds)
         val catalog = com.reianix.reianix_local.data.library.ReiAnixNativeLibraryCatalogProjector.project(repository.loadLibraryCatalogRows())
+        assertEquals(setOf(1L, 2L), catalog.animes.map { it.id }.toSet())
+        val unfilteredLibrary = repository.searchAnimeIds("", null, false, false, false, null, 1, 0, libraryOnly = true, allResults = true)
+        val filteredLibrary = repository.searchAnimeIds("", "genre:action", false, false, false, null, 1, 0, libraryOnly = true, allResults = true)
+        assertEquals(listOf(2L, 1L), unfilteredLibrary.animeIds)
+        assertEquals(unfilteredLibrary.animeIds, filteredLibrary.animeIds)
         val genres = catalog.animes.first { it.id == 1L }.genres
         assertEquals(listOf("Action", "Drama"), genres.map { it.name })
         assertEquals(listOf("action-id", null), genres.map { it.id })
