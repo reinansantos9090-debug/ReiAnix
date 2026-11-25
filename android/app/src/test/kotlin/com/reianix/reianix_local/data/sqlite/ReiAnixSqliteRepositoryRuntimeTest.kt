@@ -1202,6 +1202,42 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             assertEquals(url, poster.externalUrl)
             assertEquals(file.absolutePath, poster.localPath)
             assertEquals("ready", poster.status)
+
+            // Ready Kitsu covers are stored as cache rows. Detect them by URL,
+            // even when metadata is already labelled AniList.
+            val kitsuUrl = "https://media.kitsu.app/anime/poster_images/123/large.jpg"
+            assertTrue(com.reianix.reianix_local.data.anilist.isKitsuArtworkUrl(kitsuUrl))
+            assertTrue(com.reianix.reianix_local.data.anilist.isKitsuArtworkUrl("https://media.kitsu.io/anime/poster_images/123/large.jpg"))
+            assertFalse(com.reianix.reianix_local.data.anilist.isKitsuArtworkUrl("https://kitsu.app.example.invalid/poster.jpg"))
+            database.transaction { db ->
+                db.execSQL("UPDATE anime SET metadata_source='anilist', description='Existing synopsis', banner_url='https://media.kitsu.app/banner.jpg', cover_url=? WHERE id=1", arrayOf(kitsuUrl))
+                db.execSQL("UPDATE artwork SET source='cache', external_url=?, source_ref=? WHERE entity_id='1' AND artwork_type='poster'", arrayOf(kitsuUrl, kitsuUrl))
+            }
+            val kitsuRow = repository.loadLibraryCatalogRows(setOf(1L)).single()
+            assertTrue(com.reianix.reianix_local.data.anilist.isKitsuUpgradeTarget(kitsuRow))
+            val lowScore = repository.updateAniListMetadataAndAssociation(
+                patch, 43L, false, 0.59, 0.0, explicitRepair = true,
+                expectedAssociationId = 42L, preparedArtwork = prepared, automaticKitsuUpgrade = true,
+            )
+            assertEquals(42L, lowScore.anilistId)
+            val auto = repository.updateAniListMetadataAndAssociation(
+                patch, 43L, false, 0.60, 0.0, explicitRepair = true,
+                expectedAssociationId = 42L, preparedArtwork = prepared, automaticKitsuUpgrade = true,
+            )
+            assertEquals(43L, auto.anilistId)
+            assertEquals("Existing synopsis", auto.description)
+            assertEquals("https://media.kitsu.app/banner.jpg", auto.bannerUrl)
+            assertEquals(file.absolutePath, auto.coverCache)
+            assertEquals(url, repository.artworkForAnime(1L).single { it.artworkType == "poster" }.externalUrl)
+            database.transaction { db ->
+                db.execSQL("UPDATE anime SET anilist_match_manual=1, metadata_source='kitsu' WHERE id=1")
+            }
+            assertFalse(com.reianix.reianix_local.data.anilist.isKitsuUpgradeTarget(repository.loadLibraryCatalogRows(setOf(1L)).single()))
+            val protected = repository.updateAniListMetadataAndAssociation(
+                patch, 44L, false, 0.99, 0.0, explicitRepair = true,
+                expectedAssociationId = 43L, preparedArtwork = prepared, automaticKitsuUpgrade = true,
+            )
+            assertEquals(43L, protected.anilistId)
         } finally {
             file.delete()
         }
