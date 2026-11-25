@@ -55,6 +55,8 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
 
 /**
  * Single native Compose root used during the incremental Flet -> Compose cutover.
@@ -341,9 +343,14 @@ class ReiAnixComposeLibraryHost(
                 merge(
                     ordinaryEnrichmentPasses.filter { it == 0 }.map { Unit },
                     dependencies.artworkService.publishedArtworks
-                        .filter { it.sourceKind.equals("kitsu", true) }.map { Unit },
+                        // Cached remote publications use the generic AniList label;
+                        // inspect the persisted provider URL in the upgrade pass instead.
+                        .filter { it.entityType in setOf("anime", "movie") &&
+                            it.artworkType in setOf("poster", "cover", "backdrop", "banner") }.map { Unit },
                     libraryViewModel.uiState.map { it.scanInProgress }.distinctUntilChanged()
                         .filter { !it }.map { Unit },
+                    // Retry transient failures even if no new cover is published.
+                    flow { while (true) { delay(15 * 60_000L); emit(Unit) } },
                 ).debounce(1_000L).conflate().collect {
                     try {
                         withContext(Dispatchers.IO) {
