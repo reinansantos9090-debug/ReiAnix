@@ -2,11 +2,9 @@ package com.reianix.reianix_local.data.anilist
 
 import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
 import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdResolver
-import com.reianix.reianix_local.data.catalog.ReiAnixCatalogIdentityMatcher
 import com.reianix.reianix_local.data.catalog.ReiAnixCatalogResult
 import com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogIds
 import com.reianix.reianix_local.data.sqlite.getExternalCatalogIds
-import com.reianix.reianix_local.data.sqlite.toExternalCatalogIdentity
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkCandidate
 import com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairArtwork
 import com.reianix.reianix_local.data.artwork.ReiAnixAniListCoverCandidate
@@ -399,12 +397,10 @@ class ReiAnixAniListIntegrationService(
      */
     private suspend fun resolveAutomaticRepairId(
         local: ReiAnixAnimeRecord,
-        evidence: ExplicitAniListLocalEvidence,
         mayUpgrade: suspend () -> Boolean,
     ): Int? {
-        // Provisional Kitsu metadata cannot satisfy the fast-path validation.
-        // Avoid adding an AniMap request for such items.
-        if (!local.metadataSource.equals("kitsu", true)) return null
+        // The persisted identifier, not the metadata source label, is proof
+        // of the Kitsu anchor. Never infer an ID from a poster URL.
         val ids = try {
             library.getExternalCatalogIds(local.id)
         } catch (cancelled: CancellationException) {
@@ -421,8 +417,7 @@ class ReiAnixAniListIntegrationService(
             ids.aniListId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.let { return it.toInt() }
         }
         val resolver = automaticIdResolver ?: return null
-        val titles = independentRepairTitles(local, evidence).toSet()
-        if (titles.isEmpty() || !mayUpgrade()) return null
+        if (!mayUpgrade()) return null
         val anchor = ReiAnixExternalCatalogIds(kitsuId = kitsuId)
         val result = try {
             resolver.resolveIds(anchor)
@@ -433,15 +428,10 @@ class ReiAnixAniListIntegrationService(
         }
         val mapping = (result as? ReiAnixCatalogResult.Success)?.value ?: return null
         if (mapping.ids.kitsuId != kitsuId) return null
-        // Use only independently observed titles, never remote aliases that
-        // may belong to a previously incorrect automatic association.
-        val identity = local.toExternalCatalogIdentity().copy(
-            titles = titles,
-            seasonNumber = expectedRepairEdition(local, evidence).season,
-        )
-        val verified = ReiAnixCatalogIdentityMatcher.evaluateMapping(local.id, identity, mapping, anchor).value
-            ?: return null
-        return verified.externalIds.aniListId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.toInt()
+        // The resolver validates the exact requested ID and rejects ambiguous
+        // or conflicting records. Judge the returned AniList record using the
+        // same repair ranking as title search, not a second identity threshold.
+        return mapping.ids.aniListId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.toInt()
     }
 
     // Called only within the automatic pass mutex. The normal AniList client
@@ -494,11 +484,11 @@ class ReiAnixAniListIntegrationService(
             // The original name is a preference, not a mandatory match.
             val repairClient = if (automaticKitsuUpgrade) automaticRepairClient else client
             // A single exact-ID response is much smaller than up to eight
-            // alias pages. Only accept it after the independent local evidence,
-            // season/part and the original repair ranking all agree.
+            // alias pages. Accept it under the existing intelligent-repair
+            // ranking and edition rules; otherwise use the full search.
             var direct: AniListAnime? = null
             if (automaticKitsuUpgrade) {
-                val verifiedId = resolveAutomaticRepairId(local, evidence, mayUpgrade)
+                val verifiedId = resolveAutomaticRepairId(local, mayUpgrade)
                 if (verifiedId != null) {
                     if (!mayUpgrade()) return AniListResult.Failure(
                         AniListError.InvalidRequest("Automatic upgrade deferred."),
@@ -2477,44 +2467,20 @@ private data class RepairTitle(val value: String, val compact: String = explicit
     val words: Set<String> = repairWords(value))
 
 /** Explicit repair only: genuine title evidence, then soft local metadata. */
-/**
- * Strict fast-path gate. An exact crosswalk is necessary but not sufficient:
- * independent canonical title, edition and compatible metadata must agree.
- * Any uncertainty goes through the unchanged multi-candidate repair.
- */
+/** Validate an exact-ID candidate with the existing intelligent-repair policy. */
 internal fun isSafeDirectAutomaticRepair(
     local: ReiAnixAnimeRecord,
     anchor: String,
     candidate: AniListAnime,
     evidence: ExplicitAniListLocalEvidence,
 ): Boolean {
-    if (local.anilistMatchManual == true || !local.metadataSource.equals("kitsu", true) ||
-        local.metadataStatus.equals("manual", true) || candidate.coverCandidates.isEmpty() ||
-        candidate.format.isNullOrBlank() || candidate.format.equals("MUSIC", true) ||
-        candidate.repairRelations == null) return false
-    val localKeys = independentRepairTitles(local, evidence).map(::explicitAniListCompactTitle).toSet()
-    val canonicalKeys = listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
-        .filter(::usefulRepairTitle).map(::explicitAniListCompactTitle)
-    if (localKeys.isEmpty() || canonicalKeys.none { it in localKeys }) return false
-    val expected = expectedRepairEdition(local, evidence)
-    val remoteEdition = remoteRepairEdition(candidate)
-    if (expected.conflict || remoteEdition.conflict || !repairEditionCompatible(expected, candidate, listOf(candidate))) return false
-    if (!expected.hasMarker && remoteEdition.hasMarker) return false
-    // Verified Kitsu metadata must not contradict the remote record. Require a
-    // matching known year, or independently proven explicit edition numbering.
-    if (local.year != null && candidate.seasonYear != null && local.year != candidate.seasonYear) return false
-    if (!local.format.isNullOrBlank() && !local.format.equals(candidate.format, true)) return false
-    if (!local.season.isNullOrBlank() && !candidate.season.isNullOrBlank() &&
-        !local.season.equals(candidate.season, true)) return false
-    val remoteEpisodes = candidate.episodes
-    if (remoteEpisodes != null && remoteEpisodes > 0 && evidence.episodeCount > remoteEpisodes) return false
-    val localDuration = evidence.durationMinutes
-    val remoteDuration = candidate.durationMinutes
-    if (localDuration != null && remoteDuration != null && localDuration >= 5 &&
-        kotlin.math.abs(localDuration - remoteDuration) > 10) return false
-    val matchingYear = local.year != null && local.year == candidate.seasonYear
-    if (!matchingYear && expected.season == null && expected.part == null) return false
-    return (rankExplicitAniListRepair(local, anchor, listOf(candidate), evidence).singleOrNull()?.score ?: 0.0) >= 0.94
+    if (local.anilistMatchManual == true || local.metadataSource.equals("manual", true) ||
+        local.metadataStatus.equals("manual", true)) return false
+    // Identical scoring, title matching and edition compatibility to the
+    // intelligent search. The crosswalk supplies the exact-ID candidate;
+    // it does not impose a higher confidence threshold.
+    return (rankExplicitAniListRepair(local, anchor, listOf(candidate), evidence)
+        .singleOrNull()?.score ?: 0.0) >= EXPLICIT_REPAIR_MIN_SCORE
 }
 
 internal fun rankExplicitAniListRepair(
