@@ -1383,14 +1383,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                             val savedPositionMs = savedProgress?.positionMs?.takeIf { it >= 0L }
                             val savedDurationMs = savedProgress?.durationMs?.takeIf { it > 0L }
-                            if (savedProgress?.isInProgress == true &&
-                                savedProgress.hasSavedPosition &&
-                                savedPositionMs != null
-                            ) {
-                                // Legacy rows may have escaped current position validation.
-                                // Bound only when duration is known; never invent unknown duration.
-                                startupPositionMs = savedDurationMs?.let(savedPositionMs::coerceAtMost)
-                                    ?: savedPositionMs
+                            val resumePosition = resolveNativePlaybackStartPosition(
+                                progressSeconds = savedPositionMs?.div(1_000.0),
+                                durationSeconds = savedDurationMs?.div(1_000.0),
+                                watched = savedProgress?.watched,
+                                resumeEnabled = true,
+                            )
+                            if (resumePosition.positionSeconds > 0.0 && savedPositionMs != null) {
+                                // Keep the canonical millisecond precision; the common policy
+                                // only decides whether the position is eligible for resume.
+                                startupPositionMs = savedPositionMs
                                 logPlayer(
                                     "RESUME_FROM_NATIVE_SQLITE episodeId=" + canonicalEpisodeId +
                                         " positionMs=" + startupPositionMs +
@@ -1969,6 +1971,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
+                if (favoriteClipSession == null && completionReported &&
+                    newPosition.positionMs < oldPosition.positionMs &&
+                    (player.duration <= 0L || newPosition.positionMs < player.duration)
+                ) {
+                    completionReported = false
+                }
                 logPlayer(
                     "PLAYER_SEEK requestId=" + requestId.ifEmpty { "-" } +
                         " positionMs=" + newPosition.positionMs,
@@ -3370,6 +3378,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         when {
             player.playbackState == Player.STATE_ENDED -> {
+                // Starting a new viewing session must not carry the previous
+                // completion event into its exit checkpoint.
+                completionReported = false
                 // The UI exposes a replay affordance for an ended item, so tapping
                 // it must explicitly rewind before playback.
                 player.seekTo(0L)
@@ -5238,14 +5249,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
                 val resumeEnabled = preferenceValue("player.resume")
                     .toBooleanStrictOrNull() ?: true
-                val targetProgress = target.progress
-                    ?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
-                val targetPositionMs: Long? = when {
-                    !resumeEnabled || target.watched == true -> 0L
-                    targetProgress > 0.0 ->
-                        (targetProgress * 1_000.0).toLong().coerceAtLeast(0L)
-                    else -> null
-                }
+                val targetPositionMs = resolveNativePlaybackStartPosition(
+                    progressSeconds = target.progress,
+                    durationSeconds = target.duration,
+                    watched = target.watched,
+                    resumeEnabled = resumeEnabled,
+                ).positionMsOverride
 
                 val rawTarget = target.path.trim()
                 val parsedTarget = Uri.parse(rawTarget)
