@@ -1641,7 +1641,7 @@ class ReiAnixSqliteLibraryRepository(
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { if (current.volumeId != it) patch.put("volume_id", it) }
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { if (current.volumeUuid != it) patch.put("volume_uuid", it) }
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { if (current.mediaIdentity != it) patch.put("media_identity", it) }
-                        if (current.manualOverride != true) {
+                        if (current.manualOverride != true && current.identificationSource != "local_unidentified") {
                             // A formerly standalone "One Piece.mkv" can be recognized
                             // as a serial episode when a numbered sibling proves it.
                             // Preserve its original path, progress, artwork and ID.
@@ -1674,33 +1674,50 @@ class ReiAnixSqliteLibraryRepository(
                     }
 
                     val title = item.normalizedAnimeTitle()
-                    if (!item.hasConfidentEpisodeIdentity || title.isBlank()) {
-                        ambiguous++
-                        continue
-                    }
-                    val isMovie = item.episodeType?.trim()?.equals("movie", ignoreCase = true) == true
+                    val confident = item.hasConfidentEpisodeIdentity && title.isNotBlank()
+                    val isMovie = confident && item.episodeType?.trim()?.equals("movie", ignoreCase = true) == true
                     val expectedMediaKind = if (isMovie) "movie" else "series"
-                    var incompatibleAnimeKindMatches = 0
-                    val animeIds = db.rawQuery("SELECT id, title, lookup_title, media_kind FROM anime", null).use { cursor ->
+                    // Identification is optional; discovery of a physical file is not.
+                    // Never merge uncertain titles with another anime or invent episode numbers.
+                    val animeIds = if (confident) db.rawQuery(
+                        "SELECT id, title, lookup_title, media_kind FROM anime", null
+                    ).use { cursor ->
                         buildList {
                             while (cursor.moveToNext()) {
+                                val lookupRaw = cursor.getString(2)
+                                // A fallback is intentionally isolated until explicit association.
+                                if (lookupRaw.startsWith("local-unidentified:")) continue
                                 val candidateTitle = MediaTitleNormalizer.normalizeTitle(cursor.getString(1))
-                                val lookup = MediaTitleNormalizer.normalizeTitle(cursor.getString(2))
+                                val lookup = MediaTitleNormalizer.normalizeTitle(lookupRaw)
                                 if (title == candidateTitle || title == lookup) {
                                     val existingKind = cursor.getString(3)?.trim()?.lowercase().orEmpty()
                                     val existingIsMovie = existingKind in setOf("movie", "film")
                                     val kindCompatible = existingKind.isBlank() || existingIsMovie == isMovie
-                                    if (kindCompatible) add(cursor.getLong(0)) else incompatibleAnimeKindMatches++
+                                    add(cursor.getLong(0) to kindCompatible)
                                 }
                             }
                         }
-                    }
-                    if (animeIds.size > 1 || incompatibleAnimeKindMatches > 0) {
-                        ambiguous++
-                        continue
-                    }
-                    val animeId = if (animeIds.size == 1) {
-                        val existingId = animeIds.single()
+                    } else emptyList()
+                    val existingLookup = if (confident) db.rawQuery(
+                        "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1", arrayOf(title),
+                    ).use { cursor -> cursor.moveToFirst() } else false
+                    val fallback = !confident || animeIds.size > 1 ||
+                        animeIds.any { !it.second } || (animeIds.isEmpty() && existingLookup)
+                    val animeId = if (fallback) {
+                        val key = "local-unidentified:" + java.util.UUID.nameUUIDFromBytes(
+                            stable.toByteArray(Charsets.UTF_8),
+                        ).toString()
+                        db.rawQuery("SELECT id FROM anime WHERE lookup_title = ?", arrayOf(key)).use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getLong(0) else null
+                        } ?: db.insertOrThrow("anime", null, ContentValues().apply {
+                            put("lookup_title", key)
+                            put("title", item.fileName.substringBeforeLast('.', item.fileName).trim().ifBlank { item.fileName })
+                            put("added_at", System.currentTimeMillis() / 1000.0)
+                            put("metadata_source", "local_index")
+                            put("media_kind", "series")
+                        })
+                    } else if (animeIds.size == 1) {
+                        val existingId = animeIds.single().first
                         if (isMovie) {
                             db.update(
                                 "anime",
@@ -1711,26 +1728,15 @@ class ReiAnixSqliteLibraryRepository(
                         }
                         existingId
                     } else {
-                        // A confidently parsed new local title can become a local-only
-                        // anime row. It is not auto-associated with any remote catalog ID.
-                        val existingLookup = db.rawQuery(
-                            "SELECT id FROM anime WHERE lookup_title = ? LIMIT 1",
-                            arrayOf(title),
-                        ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
-                        if (existingLookup != null) {
-                            ambiguous++
-                            continue
-                        }
-                        val localAnime = ContentValues().apply {
+                        db.insertOrThrow("anime", null, ContentValues().apply {
                             put("lookup_title", title)
                             put("title", item.animeTitle!!.trim())
                             put("added_at", System.currentTimeMillis() / 1000.0)
                             put("metadata_source", "local_index")
                             put("media_kind", expectedMediaKind)
-                        }
-                        db.insertOrThrow("anime", null, localAnime)
+                        })
                     }
-                    val season = item.season ?: 0
+                    val season = if (fallback) 0 else item.season ?: 0
                     // Every distinct physical file belongs in the library. Different
                     // releases (MP4/MKV) may legitimately share a season/episode number.
                     // Earlier identity/path checks already reject the same file twice.
@@ -1739,7 +1745,7 @@ class ReiAnixSqliteLibraryRepository(
                         put("path", item.location)
                         put("file_name", item.fileName)
                         put("season", season)
-                        item.episodeNumber?.let { put("number", it) }
+                        if (!fallback) item.episodeNumber?.let { put("number", it) }
                         item.mimeType?.takeIf { it.isNotBlank() }?.let { put("mime_type", it) }
                         item.sizeBytes?.let { put("file_size", it) }
                         item.modifiedAtEpochSeconds?.let { put("modified_at", it) }
@@ -1750,14 +1756,14 @@ class ReiAnixSqliteLibraryRepository(
                                 ?: snapshot.scopeRoot,
                         )
                         putNull("duration")
-                        item.absoluteNumber?.let { put("absolute_number", it) }
+                        if (!fallback) item.absoluteNumber?.let { put("absolute_number", it) }
                         item.relativePath?.takeIf { it.isNotBlank() }?.let { put("relative_path", it) }
                         item.volumeId?.takeIf { it.isNotBlank() }?.let { put("volume_id", it) }
                         item.volumeUuid?.takeIf { it.isNotBlank() }?.let { put("volume_uuid", it) }
-                        item.episodeType?.takeIf { it.isNotBlank() }?.let { put("episode_type", it) }
-                        item.episodeTitle?.takeIf { it.isNotBlank() }?.let { put("episode_title", it) }
-                        item.identificationSource?.takeIf { it.isNotBlank() }?.let { put("identification_source", it) }
-                        item.identificationConfidence?.takeIf { it.isNotBlank() }?.let { put("identification_confidence", it) }
+                        if (fallback) put("episode_type", "regular") else item.episodeType?.takeIf { it.isNotBlank() }?.let { put("episode_type", it) }
+                        if (fallback) put("episode_title", item.fileName) else item.episodeTitle?.takeIf { it.isNotBlank() }?.let { put("episode_title", it) }
+                        if (fallback) put("identification_source", "local_unidentified") else item.identificationSource?.takeIf { it.isNotBlank() }?.let { put("identification_source", it) }
+                        if (fallback) put("identification_confidence", "low") else item.identificationConfidence?.takeIf { it.isNotBlank() }?.let { put("identification_confidence", it) }
                         put("manual_override", 0)
                         put("missing", 0)
                         item.mediaIdentity?.takeIf { it.isNotBlank() }?.let { put("media_identity", it) }
