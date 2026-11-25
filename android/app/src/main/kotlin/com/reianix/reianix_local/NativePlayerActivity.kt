@@ -73,6 +73,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ScaleGestureDetector
 import android.view.TextureView
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.view.ViewConfiguration
 import android.view.WindowManager
@@ -147,6 +151,11 @@ class NativePlayerActivity : FragmentActivity() {
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
     private lateinit var playerView: PlayerView
+    private lateinit var playerControlScrim: View
+    private var playerControlsMotion: AnimatorSet? = null
+    private var playerControlsPresentation: ControlsPresentation? = null
+
+    private enum class ControlsPresentation { HIDDEN, FULL, LOCKED, LOCKED_HIDDEN, ERROR, PIP }
     private lateinit var root: FrameLayout
     private lateinit var controls: FrameLayout
     private lateinit var centerControls: LinearLayout
@@ -545,6 +554,7 @@ class NativePlayerActivity : FragmentActivity() {
                 centerControls.visibility = View.GONE
                 bottomBar.visibility = View.GONE
                 setMorePanelVisible(false)
+                syncComposePlayerUiState()
             }
         }
     }
@@ -2468,6 +2478,25 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         root.addView(playerView)
 
+        // CloudStream's phone player uses shadow_overlay = #66000000.
+        // Draw behind every control and feedback layer, never intercept gestures.
+        playerControlScrim = View(this).apply {
+            tag = "reianix_player_control_scrim"
+            setBackgroundColor(0x66000000)
+            alpha = 0f
+            visibility = View.INVISIBLE
+            isClickable = false
+            isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        root.addView(
+            playerControlScrim,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
         preparingIndicator = ProgressBar(this).apply {
             tag = "reianix_player_preparing"
             isIndeterminate = true
@@ -2513,7 +2542,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun installControls() {
-        controls = FrameLayout(this).apply {
+        controls = object : FrameLayout(this) {
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                // A fading-out overlay must not intercept video gestures.
+                if (!controlsVisible && !errorVisible) return false
+                return super.dispatchTouchEvent(event)
+            }
+        }.apply {
             tag = "reianix_controls_root"
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
@@ -3160,13 +3195,95 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
         if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.showCircle = !unlockedOverlaysVisible
-        val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
-        if (::composeTopView.isInitialized) composeTopView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
-        if (::composeCenterView.isInitialized) composeCenterView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
-        if (::composeBottomView.isInitialized) composeBottomView.visibility =
-            if (unlockedOverlaysVisible || lockedAffordanceVisible) View.VISIBLE else View.INVISIBLE
+        updatePlayerControlsPresentation()
         syncBufferingIndicatorVisibility()
         updateSmartSkipButton()
+    }
+
+    /**
+     * CloudStream FullScreenPlayer.animateLayoutChanges / PlayerGestureHelper:
+     * fade scrim and controls in 100 ms; move top/bottom by -/+50dp in 200 ms.
+     * Animate only real visibility transitions, not playback progress updates.
+     * Lock, error and PiP retain their immediate visibility policy.
+     */
+    private fun updatePlayerControlsPresentation() {
+        if (!::composeTopView.isInitialized || !::composeCenterView.isInitialized ||
+            !::composeBottomView.isInitialized || !::playerControlScrim.isInitialized
+        ) return
+        val target = when {
+            inPictureInPicture -> ControlsPresentation.PIP
+            errorVisible -> ControlsPresentation.ERROR
+            locked && controlsVisible -> ControlsPresentation.LOCKED
+            locked -> ControlsPresentation.LOCKED_HIDDEN
+            controlsVisible -> ControlsPresentation.FULL
+            else -> ControlsPresentation.HIDDEN
+        }
+        val previous = playerControlsPresentation
+        if (previous == target) return
+        playerControlsPresentation = target
+        val oldMotion = playerControlsMotion
+        playerControlsMotion = null
+        oldMotion?.cancel()
+
+        val full = target == ControlsPresentation.FULL
+        val lockedAffordance = target == ControlsPresentation.LOCKED
+        val normal = target == ControlsPresentation.FULL || target == ControlsPresentation.HIDDEN
+        val previousNormal = previous == ControlsPresentation.FULL ||
+            previous == ControlsPresentation.HIDDEN
+        val distance = dp(50).toFloat()
+        val targetAlpha = if (full) 1f else 0f
+        val topY = if (full) 0f else -distance
+        val bottomY = if (full) 0f else distance
+        val layers = listOf(playerControlScrim, composeTopView, composeCenterView, composeBottomView)
+
+        fun settle() {
+            playerControlScrim.alpha = targetAlpha
+            composeTopView.alpha = targetAlpha
+            composeCenterView.alpha = targetAlpha
+            composeBottomView.alpha = if (full || lockedAffordance) 1f else 0f
+            composeTopView.translationY = topY
+            composeBottomView.translationY = if (lockedAffordance) 0f else bottomY
+            playerControlScrim.visibility = if (full) View.VISIBLE else View.INVISIBLE
+            composeTopView.visibility = if (full) View.VISIBLE else View.INVISIBLE
+            composeCenterView.visibility = if (full) View.VISIBLE else View.INVISIBLE
+            composeBottomView.visibility = if (full || lockedAffordance) View.VISIBLE else View.INVISIBLE
+            controls.visibility = if (full || lockedAffordance || target == ControlsPresentation.ERROR) {
+                View.VISIBLE
+            } else View.INVISIBLE
+        }
+
+        if (!normal || !previousNormal) {
+            settle()
+            return
+        }
+
+        controls.visibility = View.VISIBLE
+        layers.forEach { it.visibility = View.VISIBLE }
+        val animations = layers.map { layer ->
+            ObjectAnimator.ofFloat(layer, View.ALPHA, targetAlpha).apply {
+                duration = 100L
+            }
+        } + listOf(
+            ObjectAnimator.ofFloat(composeTopView, View.TRANSLATION_Y, topY).apply {
+                duration = 200L
+            },
+            ObjectAnimator.ofFloat(composeBottomView, View.TRANSLATION_Y, bottomY).apply {
+                duration = 200L
+            },
+        )
+        val motion = AnimatorSet().apply {
+            playTogether(animations)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    // An interrupted fade must never hide newly shown controls.
+                    if (playerControlsMotion !== animation) return
+                    playerControlsMotion = null
+                    settle()
+                }
+            })
+        }
+        playerControlsMotion = motion
+        motion.start()
     }
 
     // One persistent native spinner; control visibility never swaps its animation.
@@ -4105,10 +4222,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             return
         }
 
-        controls.visibility = if (visible || errorVisible) View.VISIBLE else View.INVISIBLE
         if (composeControlsEnabled) {
+            // Keep the parent mounted during the 200ms exit animation.
             hideLegacyPrimaryControls()
         } else {
+            controls.visibility = if (visible || errorVisible) View.VISIBLE else View.INVISIBLE
             topBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
             bottomBar.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
             centerControls.visibility = if (visible || errorVisible) View.VISIBLE else View.GONE
@@ -5809,6 +5927,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onDestroy() {
+        val motion = playerControlsMotion
+        playerControlsMotion = null
+        motion?.cancel()
         handler.removeCallbacks(showRebufferingIndicator)
         tvPicker?.close()
         tvPicker = null
