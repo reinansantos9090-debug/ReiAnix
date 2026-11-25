@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -490,32 +491,109 @@ fun ReiAnixNativePlayerBottomControls(
     val topPadding = if (landscape) 8.dp else ReiAnixTokens.PlayerDimensions.bottomTopPadding
     val timelineSpacerHeight = if (landscape) 0.dp else ReiAnixTokens.Spacing.xs / 2
     if (state.locked) {
-        Box(
+        // Use the same top anchor, measured timeline and weighted shortcut slots
+        // as the unlocked bar. Only the unlock button is placed; the hidden
+        // timeline cannot draw, receive input or expose accessibility actions.
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    bottom = safeBottom + ReiAnixTokens.PlayerDimensions.lockAffordanceBottomPadding,
+                    start = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
+                    end = ReiAnixTokens.PlayerDimensions.bottomHorizontalPadding,
+                    top = topPadding,
+                    bottom = safeBottom + ReiAnixTokens.PlayerDimensions.bottomExtraPadding,
                 ),
-            contentAlignment = Alignment.BottomCenter,
         ) {
-            PlayerIconButton(
-                onClick = onToggleLock,
-                modifier = Modifier
-                    .size(ReiAnixTokens.PlayerDimensions.lockAffordanceSize)
-                    .background(
-                        ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.48f),
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                    )
-                    .semantics {
-                        contentDescription = "Desbloquear controles"
-                        role = Role.Button
-                    },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.LockOpen,
-                    contentDescription = null,
-                    tint = ReiAnixTokens.Colors.playerControl,
-                )
+            val duration = state.durationMs.takeIf { it > 0L } ?: 0L
+            Layout(
+                content = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = PlayerTimeFormatter.format(state.positionMs.coerceIn(0L, duration)),
+                            style = ReiAnixTokens.TypographyTokens.playerTime,
+                            modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
+                        )
+                        Box(
+                            modifier = Modifier.weight(1f).heightIn(min = timelineHeight),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Slider(
+                                value = 0f,
+                                onValueChange = {},
+                                enabled = false,
+                                modifier = Modifier.fillMaxWidth(),
+                                steps = 0,
+                            )
+                        }
+                        Text(
+                            text = if (duration > 0L) PlayerTimeFormatter.format(duration) else "--:--",
+                            style = ReiAnixTokens.TypographyTokens.playerTime,
+                            modifier = Modifier.widthIn(min = ReiAnixTokens.PlayerDimensions.timelineTimeWidth),
+                        )
+                    }
+                },
+            ) { measurables, constraints ->
+                val timeline = measurables.single().measure(constraints)
+                layout(timeline.width, timeline.height) {
+                    // Reserve exactly the timeline's measured height without placing it.
+                }
+            }
+            Spacer(modifier = Modifier.height(timelineSpacerHeight))
+
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val fiveShortcuts = state.shortcuts.size == PlayerShortcutPolicy.MAX_COUNT
+                val insetUnit = maxWidth * PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION
+                val rowStartInset = if (fiveShortcuts) insetUnit else 0.dp
+                val rowEndInset = if (fiveShortcuts) insetUnit * 3f else 0.dp
+                val displayShortcuts = state.shortcuts.filterNot { it == PlayerShortcut.OPTIONS } + PlayerShortcut.OPTIONS
+                // A restored locked session may have no Lock shortcut. Keep
+                // an accessible, centered unlock affordance in that case.
+                val slots = if (PlayerShortcut.LOCK in displayShortcuts) displayShortcuts
+                    else listOf(PlayerShortcut.LOCK)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = if (slots.size == 1) 0.dp else rowStartInset,
+                            end = if (slots.size == 1) 0.dp else rowEndInset,
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.none),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    slots.forEach { shortcut ->
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            if (shortcut == PlayerShortcut.LOCK) {
+                                PlayerIconButton(
+                                    onClick = onToggleLock,
+                                    modifier = Modifier
+                                        .size(ReiAnixTokens.PlayerDimensions.lockAffordanceSize)
+                                        .background(
+                                            ReiAnixTokens.Colors.playerScrim.copy(alpha = 0.48f),
+                                            shape = androidx.compose.foundation.shape.CircleShape,
+                                        )
+                                        .semantics {
+                                            contentDescription = "Desbloquear controles"
+                                            role = Role.Button
+                                        },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.LockOpen,
+                                        contentDescription = null,
+                                        tint = ReiAnixTokens.Colors.playerControl,
+                                    )
+                                }
+                            } else {
+                                Spacer(Modifier.size(ReiAnixTokens.PlayerDimensions.actionButtonSize))
+                            }
+                        }
+                    }
+                }
             }
         }
         return
