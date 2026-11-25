@@ -42,10 +42,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -69,6 +68,16 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** Reconstruct exactly one repair's ordered search results, never another item's candidates. */
+internal fun orderedUpgradeCandidates(
+    terms: List<String>,
+    byTerm: Map<String, List<AniListAnime>>,
+): List<AniListAnime>? {
+    val searches = terms.map(String::trim).filter(String::isNotBlank).distinct().take(8)
+    if (searches.any { it !in byTerm }) return null
+    return searches.flatMap { byTerm.getValue(it) }.distinctBy { it.id }
+}
 
 internal fun shouldAllowTraceMoeWithAutoMatchSetting(
     autoMatchEnabled: Boolean,
@@ -567,21 +576,27 @@ class ReiAnixAniListIntegrationService(
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<AniListAnime>>?): Boolean =
                 size > KITSU_UPGRADE_ALIAS_CACHE
         }
+        var aliasBatchCeiling = KITSU_UPGRADE_ALIAS_BATCH
         suspend fun fetchTerms(terms: List<String>): AniListResult<Map<String, List<AniListAnime>>> {
-            val result = requestUpgrade { automaticRepairClient.searchUpgradeAliasesByTerm(terms) }
-            val error = (result as? AniListResult.Failure)?.error
-            // Some API deployments reject large GraphQL documents. Fall back
-            // to the previous maximum of eight aliases without weakening matching.
-            if (terms.size > 8 && (error is AniListError.GraphQl ||
-                    (error is AniListError.Http && error.statusCode in setOf(400, 413, 422)))) {
+            if (terms.size > aliasBatchCeiling) {
                 val combined = linkedMapOf<String, List<AniListAnime>>()
-                for (chunk in terms.chunked(8)) {
-                    when (val smaller = requestUpgrade { automaticRepairClient.searchUpgradeAliasesByTerm(chunk) }) {
+                for (chunk in terms.chunked(aliasBatchCeiling)) {
+                    when (val smaller = fetchTerms(chunk)) {
                         is AniListResult.Success -> combined.putAll(smaller.value)
                         is AniListResult.Failure -> return smaller
                     }
                 }
                 return AniListResult.Success(combined)
+            }
+            val result = requestUpgrade { automaticRepairClient.searchUpgradeAliasesByTerm(terms) }
+            val error = (result as? AniListResult.Failure)?.error
+            // Some API deployments reject large GraphQL documents. Fall back
+            // to the previous maximum of eight aliases without weakening matching.
+            if (terms.size > 8 && (error is AniListError.GraphQl ||
+                    error is AniListError.InvalidResponse ||
+                    (error is AniListError.Http && error.statusCode in setOf(400, 413, 422)))) {
+                aliasBatchCeiling = 8
+                return fetchTerms(terms)
             }
             return result
         }
@@ -599,13 +614,18 @@ class ReiAnixAniListIntegrationService(
             }
             val snapshot = linkedMapOf<String, List<AniListAnime>>()
             for (term in terms) termCache[term]?.let { snapshot[term] = it }
-            for (chunk in terms.filterNot(snapshot::containsKey).chunked(KITSU_UPGRADE_ALIAS_BATCH)) {
+            for (chunk in terms.filterNot(snapshot::containsKey).chunked(aliasBatchCeiling)) {
                 when (val result = fetchTerms(chunk)) {
                     is AniListResult.Success -> {
                         snapshot.putAll(result.value)
                         termCache.putAll(result.value)
                     }
-                    is AniListResult.Failure -> return null
+                    is AniListResult.Failure -> {
+                        // A rejected alias group can fall back to the original per-anime lookup.
+                        // Do not hammer the API if it is unavailable or rate-limited.
+                        if (result.error is AniListError.GraphQl || result.error is AniListError.InvalidResponse) return snapshot
+                        return null
+                    }
                 }
             }
             return snapshot
@@ -653,8 +673,9 @@ class ReiAnixAniListIntegrationService(
                 val result = repairMetadataAndArtworkInternal(
                     animeId, automaticKitsuUpgrade = true,
                     searchOverride = { terms ->
-                        if (terms.all(aliases::containsKey)) {
-                            AniListResult.Success(terms.flatMap { aliases.getValue(it) }.distinctBy { it.id })
+                        val prefetched = orderedUpgradeCandidates(terms, aliases)
+                        if (prefetched != null) {
+                            AniListResult.Success(prefetched)
                         } else {
                             // Local titles changed after prefetch. Never rank stale or
                             // incomplete results; use the original full alias search.
@@ -691,12 +712,14 @@ class ReiAnixAniListIntegrationService(
 
         // Four independent repairs on normal devices; two on smaller heaps.
         // Each uses the existing two-image preparation and atomic commit.
-        // Prefetch the next wave while the current wave downloads, but never
-        // enqueue the entire library or wait to publish successful individual items.
+        // The producer can prefetch the next group while workers download.
+        // Refill an available slot immediately, rather than waiting for the
+        // slowest anime in a group. The completion buffer is bounded by slots.
         val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 4 else 2
         coroutineScope {
+            val completions = Channel<Int>(parallelism)
             var upgraded = 0
-            var pending = emptyList<Deferred<Int>>()
+            var outstanding = 0
             val candidates = (targets + previousUpgradeIds).distinct().filter { animeId ->
                 val previous = attempts[animeId]
                 previous == null || System.currentTimeMillis() / 1_000.0 - previous >= KITSU_UPGRADE_COOLDOWN_SECONDS
@@ -708,10 +731,14 @@ class ReiAnixAniListIntegrationService(
                 val ids = wave.filter { id -> id !in explicitRepairInFlight && eligible(id) }
                 if (ids.isEmpty()) continue
                 val aliases = preloadAliases(ids) ?: break
-                upgraded += pending.awaitAll().sum()
-                pending = ids.map { animeId ->
-                    async {
-                        try {
+                for (animeId in ids) {
+                    if (outstanding == parallelism) {
+                        upgraded += completions.receive()
+                        outstanding--
+                    }
+                    outstanding++
+                    launch {
+                        val count = try {
                             upgradeOne(animeId, aliases)
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -719,10 +746,13 @@ class ReiAnixAniListIntegrationService(
                             Log.w(TAG, "Automatic AniList upgrade failed for animeId=" + animeId, error)
                             0
                         }
+                        completions.send(count)
                     }
                 }
             }
-            upgraded + pending.awaitAll().sum()
+            repeat(outstanding) { upgraded += completions.receive() }
+            completions.close()
+            upgraded
         }
     }
 
