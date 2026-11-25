@@ -463,13 +463,16 @@ object BroadStorageScanner {
                     volumeStats.put("nomediaFiles", volumeStats.optInt("nomediaFiles", 0) + 1)
                     continue
                 }
-                if (!child.isFile || !LocalVideoRecognition.accepts(child.name, null)) continue
+                if (!child.isFile) continue
+                val knownVideo = LocalVideoRecognition.accepts(child.name, null)
+                if (!knownVideo && !LocalVideoRecognition.needsProbe(child.name, null)) continue
 
                 val file = runCatching { child.canonicalFile }.getOrNull() ?: continue
                 if (!isInside(file, root.file) || isRestricted(file)) {
                     if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, "SCAN_SOURCE_FILE_REJECTED reason=OUTSIDE_SOURCE path=" + file.path)
                     continue
                 }
+                if (!knownVideo && !LocalVideoRecognition.probe(file)) continue
                 val volumeName = root.volumeId
                 val relative = relativePath(file, root.file)
                 val mimeType = mimeFor(file.extension)
