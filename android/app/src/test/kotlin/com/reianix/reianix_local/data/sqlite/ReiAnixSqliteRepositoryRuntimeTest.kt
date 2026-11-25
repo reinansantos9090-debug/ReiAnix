@@ -1206,8 +1206,8 @@ class ReiAnixSqliteRepositoryRuntimeTest {
             polar, polar.lookupTitle, listOf(candidate(201, title2), sequel),
         ).map { it.anime.id })
 
-        // A verified-ID shortcut still requires independent canonical title,
-        // exact edition and compatible Kitsu metadata. Otherwise use full search.
+        // A verified-ID shortcut uses the same ranking and threshold as the
+        // existing intelligent repair, not additional metadata/title gates.
         val directLocal = anime.copy(
             lookupTitle = "Kusuriya no Hitorigoto 3rd Season",
             title = "Kusuriya no Hitorigoto 3rd Season",
@@ -1227,12 +1227,27 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         assertTrue(canUseDirect(directRemote))
         assertFalse(canUseDirect(first.copy(seasonYear = 2027)))
         assertFalse(canUseDirect(directRemote.copy(format = "MOVIE")))
-        assertFalse(canUseDirect(directRemote.copy(seasonYear = 2026)))
-        assertFalse(canUseDirect(directRemote.copy(repairRelations = null)))
-        assertFalse(canUseDirect(directRemote.copy(titleRomaji = "Different Anime",
-            synonyms = listOf(directLocal.lookupTitle))))
-        assertFalse(canUseDirect(directRemote, directLocal.copy(metadataSource = "kitsu_candidate")))
+        assertFalse(canUseDirect(otherPart.copy(seasonYear = 2027)))
         assertFalse(canUseDirect(directRemote, directLocal.copy(anilistMatchManual = true)))
+        val directCases = listOf(
+            directRemote,
+            directRemote.copy(seasonYear = 2026),
+            directRemote.copy(repairRelations = null),
+            directRemote.copy(titleRomaji = "Different Anime", synonyms = listOf(directLocal.lookupTitle)),
+            directRemote.copy(titleRomaji = "Completely Unrelated Anime"),
+            first,
+            movie,
+            otherPart,
+        )
+        for (local in listOf(directLocal, directLocal.copy(metadataSource = "kitsu_candidate"))) {
+            for (remote in directCases) {
+                val expected = (com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+                    local, local.lookupTitle, listOf(remote), directEvidence,
+                ).singleOrNull()?.score ?: 0.0) >=
+                    com.reianix.reianix_local.data.anilist.EXPLICIT_REPAIR_MIN_SCORE
+                assertEquals(expected, canUseDirect(remote, local))
+            }
+        }
 
         val marked = com.reianix.reianix_local.data.anilist.repairEdition("Example Season 3 Part 2")
         assertEquals(3, marked.season)
