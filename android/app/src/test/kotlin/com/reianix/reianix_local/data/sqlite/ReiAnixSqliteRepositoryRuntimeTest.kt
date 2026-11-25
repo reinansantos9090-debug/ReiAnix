@@ -2045,6 +2045,56 @@ class ReiAnixSqliteRepositoryRuntimeTest {
     }
 
     @Test
+    fun confirmedEpisodeDeletionRequiresTheExactPersistedPath() = runBlocking {
+        createCanonicalFixture()
+        val repository = ReiAnixSqliteLibraryRepository(context)
+        val original = requireNotNull(repository.getEpisode(7L))
+        assertFalse(repository.removeConfirmedDeletedEpisode(7L, original.path + ".other"))
+        assertEquals(original, repository.getEpisode(7L))
+        assertTrue(repository.removeConfirmedDeletedEpisode(7L, original.path))
+        assertNull(repository.getEpisode(7L))
+        assertTrue(repository.getAnime(original.animeId) != null)
+        assertTrue(repository.removeConfirmedDeletedEpisode(7L, original.path))
+    }
+
+    @Test
+    fun watchedEpisodeKeepsItsFlagAndPartialRewatchPositionAfterReopen() = runBlocking {
+        createCanonicalFixture()
+        val service = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
+        val watched = service.setWatched(7L, true, playedAtEpochSeconds = 2_000.0)
+        assertTrue(watched.watched)
+        val partial = service.saveProgress(
+            episodeId = 7L,
+            positionMs = 42_500L,
+            durationMs = 120_000L,
+            playedAtEpochSeconds = 3_000.0,
+        )
+        assertTrue(partial.watched)
+        val reopened = ReiAnixConsumptionService(ReiAnixSqliteLibraryRepository(context))
+        val saved = requireNotNull(reopened.getProgress(7L))
+        assertTrue(saved.watched)
+        assertTrue(saved.isCompleted)
+        assertFalse(saved.isInProgress)
+        assertEquals(42_500L, saved.positionMs)
+        val resume = com.reianix.reianix_local.resolveNativePlaybackStartPosition(
+            saved.positionMs?.div(1_000.0), saved.durationMs?.div(1_000.0), saved.watched, true,
+        )
+        assertEquals(42_500L, resume.positionMsOverride)
+
+        val finished = reopened.saveProgress(
+            episodeId = 7L,
+            positionMs = 120_000L,
+            durationMs = 120_000L,
+            playedAtEpochSeconds = 4_000.0,
+            completed = true,
+        )
+        assertTrue(finished.watched)
+        assertEquals(0L, com.reianix.reianix_local.resolveNativePlaybackStartPosition(
+            finished.positionMs?.div(1_000.0), finished.durationMs?.div(1_000.0), finished.watched, true,
+        ).positionMsOverride)
+    }
+
+    @Test
     fun consumptionServicePreservesUnknownDurationAndBoundsKnownDuration() = runBlocking {
         createCanonicalFixture()
         SQLiteDatabase.openDatabase(

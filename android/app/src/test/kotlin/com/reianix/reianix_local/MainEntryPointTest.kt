@@ -1,10 +1,40 @@
 package com.reianix.reianix_local
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainEntryPointTest {
+
+    @Test
+    fun watchedEpisodeResumesPartialRewatchEvenPastCompletionThreshold() {
+        for (position in listOf(35.25, 115.0)) {
+            val start = resolveNativePlaybackStartPosition(position, 120.0, true, true)
+            assertEquals(position, start.positionSeconds, 0.0)
+            assertEquals((position * 1_000).toLong(), start.positionMsOverride)
+            assertFalse(start.progressInvalid)
+        }
+        assertEquals(35_000L,
+            resolveNativePlaybackStartPosition(35.0, null, true, true).positionMsOverride)
+    }
+
+    @Test
+    fun completedEpisodeStartsAtZeroButOrdinaryProgressStillResumes() {
+        assertEquals(0L,
+            resolveNativePlaybackStartPosition(120.0, 120.0, true, true).positionMsOverride)
+        assertEquals(35_000L,
+            resolveNativePlaybackStartPosition(35.0, 120.0, false, true).positionMsOverride)
+        assertNull(resolveNativePlaybackStartPosition(0.0, 120.0, false, true).positionMsOverride)
+        assertEquals(0L,
+            resolveNativePlaybackStartPosition(35.0, 120.0, true, false).positionMsOverride)
+        for (invalid in listOf(-1.0, Double.NaN, Double.POSITIVE_INFINITY, 121.0)) {
+            val start = resolveNativePlaybackStartPosition(invalid, 120.0, true, true)
+            assertTrue(start.progressInvalid)
+            assertEquals(0L, start.positionMsOverride)
+        }
+    }
 
     @Test
     fun nativeOperationsStayBlockedUntilActivityDecisionIsComplete() {

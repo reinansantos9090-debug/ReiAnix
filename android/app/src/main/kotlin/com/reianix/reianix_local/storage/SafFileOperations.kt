@@ -362,13 +362,16 @@ class SafFileOperations(private val context: Context) {
         }
     }
 
-    suspend fun delete(uri: Uri): Result = withContext(Dispatchers.IO) {
+    suspend fun delete(uri: Uri, filesOnly: Boolean = false): Result = withContext(Dispatchers.IO) {
         synchronized(lockFor(uri)) {
             var mutationAttempted = false
             try {
                 if (isTreeRootUri(uri)) return@synchronized Result.Failure(FailureKind.UNSUPPORTED, "A raiz SAF selecionada não pode ser excluída.", uri)
                 val target = authorizedTarget(uri, requireWrite = true) ?: return@synchronized failureFor(uri, requireWrite = true)
                 val source = target.document
+                if (filesOnly && !source.isFile) return@synchronized Result.Failure(FailureKind.INVALID_ITEM, "Somente um arquivo de episódio pode ser excluído.", uri)
+                val originalName = source.name.orEmpty()
+                val originalDirectory = source.isDirectory
                 if (!source.canWrite()) return@synchronized Result.Failure(FailureKind.PERMISSION_DENIED, "O item não permite exclusão.", uri)
                 mutationAttempted = true
                 val deleteReportedSuccess = try {
@@ -391,8 +394,10 @@ class SafFileOperations(private val context: Context) {
                     } else {
                         Result.Failure(FailureKind.PARTIAL, "O provedor não confirmou a exclusão; o registro da biblioteca deve ser preservado.", uri, recoverable = true)
                     }
+                } else if (!deleteReportedSuccess) {
+                    Result.Failure(FailureKind.PARTIAL, "O provedor não confirmou a exclusão do arquivo.", uri, recoverable = true)
                 } else {
-                    Result.Success(uri, source.name.orEmpty(), source.isDirectory)
+                    Result.Success(uri, originalName, originalDirectory, treeUri = target.treeUri)
                 }
             } catch (e: SecurityException) {
                 if (mutationAttempted) Result.Failure(FailureKind.PARTIAL, "A exclusão pode ter ocorrido antes da falha de confirmação. Preserve o registro e verifique o item antes de repetir.", uri, recoverable = true)

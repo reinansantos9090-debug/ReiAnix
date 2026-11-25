@@ -449,7 +449,7 @@ class ReiAnixDetailsInstrumentedTest {
                         onRetry = {},
                         onWatch = {},
                         onToggleFavorite = {},
-                        onSetEpisodeWatched = { _, _ -> },
+                        onDeleteEpisode = { _, _ -> },
                     )
                 }
             }
@@ -480,10 +480,8 @@ class ReiAnixDetailsInstrumentedTest {
     }
 
     @Test
-    fun episodeMenuDispatchesPersistedEpisodeIdAndWatchedState() {
+    fun episodeMenuDispatchesDeletionOnlyAfterConfirmation() {
         var dispatchedEpisodeId: Long? = null
-        var dispatchedWatched: Boolean? = null
-
         composeRule.setContent {
             ReiAnixComposeRoot {
                 ReiAnixDetailsScreen(
@@ -492,19 +490,22 @@ class ReiAnixDetailsInstrumentedTest {
                     onRetry = {},
                     onWatch = {},
                     onToggleFavorite = {},
-                    onSetEpisodeWatched = { id, watched ->
-                        dispatchedEpisodeId = id
-                        dispatchedWatched = watched
-                    },
+                    onDeleteEpisode = { id, _ -> dispatchedEpisodeId = id },
                 )
             }
         }
 
         composeRule.onNodeWithContentDescription("Ações do episódio Episode 1").performClick()
-        composeRule.onNodeWithText("Marcar como visto").performClick()
-
+        composeRule.onNodeWithText("Corrigir").assertIsDisplayed()
+        composeRule.onNodeWithText("Excluir").performClick()
+        composeRule.onNodeWithText("Excluir episódio?").assertIsDisplayed()
+        assertEquals(null, dispatchedEpisodeId)
+        composeRule.onNodeWithText("Cancelar").performClick()
+        assertEquals(null, dispatchedEpisodeId)
+        composeRule.onNodeWithContentDescription("Ações do episódio Episode 1").performClick()
+        composeRule.onNodeWithText("Excluir").performClick()
+        composeRule.onNodeWithText("Excluir").performClick()
         assertEquals(1L, dispatchedEpisodeId)
-        assertEquals(true, dispatchedWatched)
     }
 
     @Test
@@ -519,14 +520,14 @@ class ReiAnixDetailsInstrumentedTest {
                     onRetry = {},
                     onWatch = {},
                     onToggleFavorite = {},
-                    onSetEpisodeWatched = { _, _ -> },
+                    onDeleteEpisode = { _, _ -> },
                 )
             }
         }
 
         composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Ações do episódio Episode 7").performClick()
-        composeRule.onNodeWithText("Marcar como visto").assertIsDisplayed()
+        composeRule.onNodeWithText("Excluir").assertIsDisplayed()
 
         val current = state.value
         val anime = current.anime!!
@@ -555,7 +556,7 @@ class ReiAnixDetailsInstrumentedTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("E07 • Episode 7").assertIsDisplayed()
         composeRule.onNodeWithText("18% assistido").assertIsDisplayed()
-        composeRule.onNodeWithText("Marcar como visto").assertIsDisplayed()
+        composeRule.onNodeWithText("Excluir").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Ações do episódio Episode 7").assertIsDisplayed()
     }
 

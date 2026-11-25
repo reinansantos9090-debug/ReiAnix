@@ -69,6 +69,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -253,6 +257,34 @@ fun ReiAnixDetailsRoute(
 
 
 
+    val deletionScope = rememberCoroutineScope()
+    var pendingDeleteId by rememberSaveable(canonicalId) { mutableStateOf<Long?>(null) }
+    var pendingDeletePath by rememberSaveable(canonicalId) { mutableStateOf<String?>(null) }
+    var deletionError by rememberSaveable(canonicalId) { mutableStateOf<String?>(null) }
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val id = pendingDeleteId
+        val path = pendingDeletePath
+        if (result.resultCode == android.app.Activity.RESULT_OK && id != null && path != null) {
+            deletionScope.launch {
+                try {
+                    viewModel.completeMediaStoreEpisodeDeletion(id, path)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    deletionError = error.message ?: "Não foi possível confirmar a exclusão."
+                } finally {
+                    pendingDeleteId = null
+                    pendingDeletePath = null
+                }
+            }
+        } else {
+            pendingDeleteId = null
+            pendingDeletePath = null
+        }
+    }
+
     ReiAnixDetailsScreen(
         state = state,
         associationRevision = aniListState.associationRevision,
@@ -269,7 +301,31 @@ fun ReiAnixDetailsRoute(
         onOpenRecommendedAnime = { recommendedId ->
             if (isForegroundDetails()) navController.navigateToDetails(recommendedId.toString(), origin)
         },
-        onSetEpisodeWatched = viewModel::setEpisodeWatched,
+        onDeleteEpisode = { id, path ->
+            if (isForegroundDetails() && pendingDeleteId == null) {
+                pendingDeleteId = id
+                pendingDeletePath = path
+                deletionScope.launch {
+                    var awaitingSystemConsent = false
+                    try {
+                        val request = viewModel.requestEpisodeDeletion(id, path)
+                        if (request != null) {
+                            deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                            awaitingSystemConsent = true
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        deletionError = error.message ?: "Não foi possível excluir o episódio."
+                    } finally {
+                        if (!awaitingSystemConsent) {
+                            pendingDeleteId = null
+                            pendingDeletePath = null
+                        }
+                    }
+                }
+            }
+        },
         onSelectSource = viewModel::selectSafTree,
         onManageAniList = { aniListViewModel.repairAniListMetadata(canonicalId) },
         onManualAniList = {
@@ -295,6 +351,14 @@ fun ReiAnixDetailsRoute(
         },
         onCancelTraceMoe = viewModel::cancelTraceMoeIdentification,
     )
+    deletionError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { deletionError = null },
+            title = { Text("Não foi possível excluir") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { deletionError = null }) { Text("OK") } },
+        )
+    }
     if (showTraceMoeConsent && isForegroundDetails()) {
         TraceMoeConsentDialog(
             onAuthorized = {
@@ -334,7 +398,7 @@ fun ReiAnixDetailsScreen(
     onToggleFavorite: (Long) -> Unit,
     recommendationLibraryState: StateFlow<ReiAnixLibraryUiState>? = null,
     onOpenRecommendedAnime: (Long) -> Unit = {},
-    onSetEpisodeWatched: (Long, Boolean) -> Unit = { _, _ -> },
+    onDeleteEpisode: (Long, String) -> Unit = { _, _ -> },
     onSelectSource: () -> Unit = onRetry,
     onManageAniList: () -> Unit = {},
     aniListRepairRunning: Boolean = false,
@@ -373,7 +437,7 @@ fun ReiAnixDetailsScreen(
                         onToggleFavorite = onToggleFavorite,
                         recommendationLibraryState = recommendationLibraryState,
                         onOpenRecommendedAnime = onOpenRecommendedAnime,
-                        onSetEpisodeWatched = onSetEpisodeWatched,
+                        onDeleteEpisode = onDeleteEpisode,
                         onManageAniList = onManageAniList,
                         onManualAniList = onManualAniList,
                         aniListRepairRunning = aniListRepairRunning,
@@ -538,7 +602,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
     onToggleFavorite: (Long) -> Unit,
     recommendationLibraryState: StateFlow<ReiAnixLibraryUiState>?,
     onOpenRecommendedAnime: (Long) -> Unit,
-    onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onDeleteEpisode: (Long, String) -> Unit,
     onManageAniList: () -> Unit,
     onManualAniList: (() -> Unit)?,
     aniListRepairRunning: Boolean,
@@ -713,7 +777,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isCurrent = episode.id == currentEpisode?.id,
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
-                    onSetEpisodeWatched = onSetEpisodeWatched,
+                    onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
                     allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
@@ -741,7 +805,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isCurrent = episode.id == currentEpisode?.id,
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
-                    onSetEpisodeWatched = onSetEpisodeWatched,
+                    onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
                     allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
@@ -769,7 +833,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     isCurrent = episode.id == currentEpisode?.id,
                     isNext = episode.id == nextEpisode?.id,
                     onWatch = onWatch,
-                    onSetEpisodeWatched = onSetEpisodeWatched,
+                    onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
                     allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
                 )
@@ -1647,11 +1711,13 @@ private fun DetailsEpisodeItem(
     isCurrent: Boolean,
     isNext: Boolean,
     onWatch: (Long) -> Unit,
-    onSetEpisodeWatched: (Long, Boolean) -> Unit,
+    onDeleteEpisode: (Long, String) -> Unit,
     onSetEpisodeIdentification: suspend (Long, Int?, Double?, String, String?) -> Unit = { _, _, _, _, _ -> },
     allowEpisodeIdentification: Boolean = true,
 ) {
     var menuExpanded by remember(episode.stableKey) { mutableStateOf(false) }
+    var deletePath by rememberSaveable(episode.stableKey) { mutableStateOf<String?>(null) }
+    val localPath = episode.media.reference ?: episode.media.uri ?: episode.media.path
     var showIdentificationEditor by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
     var seasonInput by rememberSaveable(episode.stableKey) { mutableStateOf(episode.seasonNumber?.toString().orEmpty()) }
     var numberInput by rememberSaveable(episode.stableKey) { mutableStateOf(episode.number?.toString().orEmpty()) }
@@ -1670,11 +1736,9 @@ private fun DetailsEpisodeItem(
                     Icon(imageVector = Icons.Filled.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    DropdownMenuItem(text = { Text(if (episode.isWatched) "Marcar como não visto" else "Marcar como visto") },
-                        onClick = { menuExpanded = false; onSetEpisodeWatched(episode.id, !episode.isWatched) })
                     if (allowEpisodeIdentification) {
                         DropdownMenuItem(
-                            text = { Text("Corrigir identificação") },
+                            text = { Text("Corrigir") },
                             onClick = {
                                 menuExpanded = false
                                 seasonInput = episode.seasonNumber?.toString().orEmpty()
@@ -1686,9 +1750,34 @@ private fun DetailsEpisodeItem(
                             },
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text("Excluir") },
+                        enabled = !localPath.isNullOrBlank() && episode.media.availability.name == "AVAILABLE",
+                        onClick = {
+                            menuExpanded = false
+                            deletePath = localPath
+                        },
+                    )
                 }
             }
         })
+    deletePath?.let { path ->
+        AlertDialog(
+            onDismissRequest = { deletePath = null },
+            title = { Text("Excluir episódio?") },
+            text = {
+                Text("O arquivo \""+episode.fileName+"\" será excluído permanentemente do dispositivo. O registro e o progresso deste episódio também serão removidos da biblioteca. Essa ação não pode ser desfeita.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletePath = null
+                    onDeleteEpisode(episode.id, path)
+                }) { Text("Excluir", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deletePath = null }) { Text("Cancelar") } },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
     if (showIdentificationEditor) {
         AlertDialog(
             onDismissRequest = { if (!identificationSaving) showIdentificationEditor = false },

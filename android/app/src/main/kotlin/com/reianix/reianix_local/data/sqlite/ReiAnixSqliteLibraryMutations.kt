@@ -735,3 +735,22 @@ private fun String.readJsonStringSet(field: String): MutableSet<String> = try {
 
 private fun Set<String>.toSortedJsonArray(): String =
     JSONArray().also { array -> sorted().forEach { value -> array.put(value) } }.toString()
+
+
+/** Commit only after the provider has confirmed removal of this exact media file. */
+internal suspend fun ReiAnixSqliteLibraryRepository.removeConfirmedDeletedEpisode(
+    episodeId: Long,
+    expectedPath: String,
+): Boolean = withContext(Dispatchers.IO) {
+    database.transaction { db ->
+        val path = db.rawQuery("SELECT path FROM episodes WHERE id=?", arrayOf(episodeId.toString()))
+            .use { if (it.moveToFirst()) it.getString(0) else null }
+            ?: return@transaction true
+        if (path != expectedPath) return@transaction false
+        val id = arrayOf(episodeId.toString())
+        db.delete("artwork", "entity_type='episode' AND entity_id=?", id)
+        db.delete("episode_observations", "episode_id=?", id)
+        check(db.delete("episodes", "id=? AND path=?", arrayOf(episodeId.toString(), expectedPath)) == 1)
+        true
+    }
+}
