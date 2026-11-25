@@ -7113,7 +7113,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         }
 
                         PlayerGesturePolicy.Side.CENTER -> {
-                            logPlayer("PLAYER_DOUBLE_TAP side=center_ignored requestId=" + requestId.ifEmpty { "-" })
+                            logPlayer("PLAYER_DOUBLE_TAP side=center requestId=" + requestId.ifEmpty { "-" })
+                            togglePlayPause()
                         }
                     }
                     return true

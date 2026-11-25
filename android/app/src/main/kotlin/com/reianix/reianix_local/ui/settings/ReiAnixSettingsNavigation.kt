@@ -99,12 +99,13 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:library.continue_watching_limit", "Limite de continuar assistindo"),
     )),
     SettingsDestination("player_playback", "Reprodução", "Player", listOf(
-        SettingsEntry("setting:player.default_player", "Reprodutor padrão", "player interno externo abrir com"),
         SettingsEntry("setting:player.aniskip_enabled", "Detectar abertura e encerramento", "AniSkip pular intro abertura ending encerramento"),
         SettingsEntry("setting:player.anime_preferences_enabled", "Configurações individuais por anime", "Salvar automaticamente áudio legendas velocidade cada anime"),
         SettingsEntry("setting:player.autoplay_next", "Reprodução automática do próximo episódio"),
         SettingsEntry("setting:player.resume", "Continuar reprodução"),
+        SettingsEntry("setting:player.smart_resume", "Retomada inteligente"),
         SettingsEntry("setting:player.default_speed", "Velocidade padrão"),
+        SettingsEntry("setting:player.default_player", "Reprodutor padrão", "player interno externo abrir com"),
     )),
     SettingsDestination("player_video", "Vídeo e qualidade", "Player", listOf(
         SettingsEntry("setting:player.aspect_ratio", "Modo de vídeo"),
@@ -114,9 +115,11 @@ internal val SettingsDestinations = listOf(
     SettingsDestination("player_controls", "Controles e gestos", "Player", listOf(
         SettingsEntry("setting:player.double_tap_seek_seconds", "Salto com toque duplo"),
         SettingsEntry("setting:player.long_press_speed", "Velocidade da pressão longa"),
-        SettingsEntry("setting:gestures.horizontal_seek", "Gestos horizontais"),
-        SettingsEntry("setting:gestures.double_tap", "Toque duplo para avançar ou retroceder"),
-        SettingsEntry("setting:gestures.long_press", "Ativar pressão longa"),
+        SettingsEntry("setting:gestures.horizontal_seek", "Deslize para avançar ou retroceder", "Gestos horizontais"),
+        SettingsEntry("setting:gestures.volume", "Deslize para ajustar brilho e volume", "Gestos verticais"),
+        SettingsEntry("setting:gestures.double_tap", "Toque duplo para controlar o vídeo", "Pausar continuar avançar retroceder"),
+        SettingsEntry("setting:gestures.long_press", "Pressione para acelerar o vídeo", "Pressão longa"),
+        SettingsEntry("setting:player.zoom_enabled", "Ajuste automático do vídeo", "Pinça ajustar preencher"),
     )),
     SettingsDestination("player_audio", "Áudio e legendas", "Player", listOf(
         SettingsEntry("setting:player.max_audio_channels", "Canais de áudio máximos"),
@@ -124,6 +127,8 @@ internal val SettingsDestinations = listOf(
         SettingsEntry("setting:audio.preferred_subtitle_language", "Idioma da legenda"),
         SettingsEntry("setting:audio.subtitle_scale", "Escala da legenda"),
         SettingsEntry("setting:audio.subtitle_bottom_padding", "Margem inferior da legenda"),
+        SettingsEntry("setting:audio.subtitle_color", "Cor das legendas"),
+        SettingsEntry("setting:audio.subtitle_font", "Fonte das legendas"),
         SettingsEntry("setting:audio.subtitle_embedded_style", "Estilo embutido da legenda"),
         SettingsEntry("setting:audio.subtitles", "Legendas"),
     )),
