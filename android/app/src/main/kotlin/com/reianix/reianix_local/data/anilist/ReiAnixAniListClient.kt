@@ -92,7 +92,7 @@ class ReiAnixAniListClient(
         val fields = searches.mapIndexed { i, term ->
             variables.put("term$i", term)
             "alias$i: Page(page: 1, perPage: $limit) { media(search: " +
-                "$" + "term" + i + ", type: ANIME, isAdult: false, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS } }"
+                "$" + "term" + i + ", type: ANIME, isAdult: false, format_not: MUSIC, sort: SEARCH_MATCH) { $MEDIA_FIELDS $REPAIR_RELATIONS } }"
         }.joinToString("\n")
         return execute("query RepairAnime($declarations) { $fields }", variables) { data ->
             val results = linkedMapOf<Int, AniListAnime>()
@@ -377,6 +377,20 @@ class ReiAnixAniListClient(
             coverExtraLargeUrl = validReiAnixArtworkHttpUrl(cover?.stringOrNull("extraLarge").nonBlankOrNull()),
             bannerUrl = media.stringOrNull("bannerImage").nonBlankOrNull(),
             studios = studioNames,
+            repairRelations = media.objectOrNull("relations")?.arrayOrNull("edges")?.let { edges ->
+                buildList {
+                    for (i in 0 until edges.length()) {
+                        val edge = edges.optJSONObject(i) ?: continue
+                        val node = edge.objectOrNull("node") ?: continue
+                        val relatedId = node.intOrNull("id")?.takeIf { it > 0 } ?: continue
+                        val kind = edge.stringOrNull("relationType") ?: continue
+                        if (kind !in setOf("PREQUEL", "SEQUEL") || node.optBoolean("isAdult", false)) continue
+                        val titles = node.objectOrNull("title")
+                        add(AniListRepairRelation(relatedId, kind, node.stringOrNull("format"),
+                            listOfNotNull(titles?.stringOrNull("romaji"), titles?.stringOrNull("english"), titles?.stringOrNull("native"))))
+                    }
+                }
+            },
         )
     }
 
@@ -398,6 +412,9 @@ class ReiAnixAniListClient(
     companion object {
         const val ENDPOINT = "https://graphql.anilist.co"
         const val DEFAULT_MINIMUM_REQUEST_INTERVAL_MS = 700L
+        private const val REPAIR_RELATIONS = """
+            relations { edges { relationType(version: 2) node { id isAdult format title { romaji english native } } } }
+        """
         private const val MEDIA_FIELDS = """
             id isAdult title { romaji english native } synonyms
             description(asHtml: false) format episodes duration status averageScore season seasonYear
@@ -426,6 +443,8 @@ data class ReiAnixAiringPage(
     val hasNextPage: Boolean,
 )
 
+data class AniListRepairRelation(val id: Int, val kind: String, val format: String?, val titles: List<String>)
+
 data class AniListAnime(
     val id: Int,
     val titleRomaji: String?,
@@ -445,6 +464,8 @@ data class AniListAnime(
     val coverExtraLargeUrl: String?,
     val bannerUrl: String?,
     val studios: List<String>,
+    // Null means relations were not requested; an empty list is a known result.
+    val repairRelations: List<AniListRepairRelation>? = null,
 ) {
     /** Secure, de-duplicated variants ordered by preferred image quality. */
     internal val coverCandidates: List<ReiAnixAniListCoverCandidate>
