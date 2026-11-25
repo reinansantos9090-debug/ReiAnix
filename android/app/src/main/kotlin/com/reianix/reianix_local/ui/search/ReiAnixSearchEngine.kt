@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.search
 
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import java.text.Normalizer
 import java.util.Locale
@@ -118,7 +120,9 @@ class ReiAnixSearchIndex private constructor(
                         anime.englishTitle?.let { add(normalizeSearchText(it)) }
                         anime.nativeTitle?.let { add(normalizeSearchText(it)) }
                     }.filter(String::isNotBlank).distinct()
-                    val normalizedGenres = anime.genres.map { normalizeSearchText(it.name) }
+                    val normalizedGenres = anime.genres.flatMap { genre ->
+                        listOf(normalizeSearchText(genre.name), normalizeSearchText(ReiAnixGenreNames.label(genre.name)))
+                    }.distinct()
                     val normalizedStudio = normalizeSearchText(anime.studio.orEmpty())
                     val contentTerms = buildList {
                         addAll(normalizedAliases)

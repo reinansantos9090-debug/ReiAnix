@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.data.library
 
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+import com.reianix.reianix_local.data.organize.parseReiAnixGenreNames
+import com.reianix.reianix_local.ui.model.ReiAnixGenreUiModel
 
 import com.reianix.reianix_local.data.sqlite.ReiAnixEpisodeRecord
 import com.reianix.reianix_local.data.sqlite.ReiAnixLibraryCatalogRow
@@ -98,8 +101,12 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val regularEpisodes = orderedEpisodes.filter {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
-        val legacyGenres = parseStringArray(anime.genresJson)
-        val genreNames = if (row.genres.isNotEmpty()) row.genres.map { it.name } else legacyGenres
+        val legacyGenres = parseReiAnixGenreNames(anime.genresJson)
+        val preservedGenres = ReiAnixGenreNames.preserveMetadataGenres(
+            row.genres.map { ReiAnixGenreUiModel(it.id, it.name) },
+            legacyGenres,
+        )
+        val genreNames = preservedGenres.map { it.name }
         val adultArtwork = ReiAnixAdultArtworkPolicy.blocked(genreNames) ||
             ReiAnixAdultArtworkPolicy.blocked(legacyGenres) || ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson)
         val animeArtwork = if (adultArtwork) emptyList() else row.animeArtwork
@@ -124,7 +131,6 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val primaryExternalArtwork = selectedPoster?.externalUrl
             ?: anime.coverUrl?.takeUnless { adultArtwork }?.takeIf(String::isNotBlank)
             ?: posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
-        val genreIds = if (row.genres.isNotEmpty()) row.genres.map { it.id } else emptyList()
         val meta = linkedMapOf<String, Any?>(
             "title" to anime.title,
             "romaji" to anime.romaji,
@@ -174,7 +180,6 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "user_tags" to parseStringArray(anime.userTagsJson),
             "personal_note" to anime.personalNote,
             "genres" to genreNames,
-            "genre_ids" to genreIds,
             "seasons" to seasonGroups,
             "specials" to if (specialEpisodes.isEmpty()) emptyList<Any>() else listOf(
                 mapOf(
@@ -202,7 +207,8 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "metadata_status" to anime.metadataStatus,
             "presentation_state" to null,
         )
-        return LibraryUiMappers.anime(projection)
+        // Do not zip a shortened ID list against mixed legacy/registered names.
+        return LibraryUiMappers.anime(projection).copy(genres = preservedGenres)
     }
 
     private fun episodeMap(

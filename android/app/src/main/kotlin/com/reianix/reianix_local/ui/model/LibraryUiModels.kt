@@ -403,6 +403,7 @@ data class ReiAnixHomeAnimeUiModel(
     val status: String? = null,
     val format: String? = null,
     val studio: String? = null,
+    val latestUnwatchedEpisodeAt: Double? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id

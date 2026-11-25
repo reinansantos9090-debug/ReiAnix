@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.viewmodel
 
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+
 import android.content.Context
 import android.content.Intent
 import com.reianix.reianix_local.security.ReiAnixPrivateLog as Log
@@ -773,10 +775,7 @@ class ReiAnixLibraryViewModel(
 
     val libraryGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
         .map { animes ->
-            animes
-                .flatMap { anime -> anime.genres }
-                .distinctBy(ReiAnixGenreUiModel::stableKey)
-                .sortedBy { it.name.lowercase() }
+            ReiAnixGenreNames.options(animes.flatMap { it.genres })
         }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
@@ -1063,13 +1062,7 @@ class ReiAnixLibraryViewModel(
      */
     val searchGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
         .map { animes ->
-            animes
-                .asSequence()
-                .flatMap { anime -> anime.genres.asSequence() }
-                .filter { it.name.isNotBlank() }
-                .distinctBy(ReiAnixGenreUiModel::stableKey)
-                .sortedBy { it.name.trim().lowercase() }
-                .toList()
+            ReiAnixGenreNames.options(animes.flatMap { it.genres })
         }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
@@ -1085,10 +1078,7 @@ class ReiAnixLibraryViewModel(
 
     val organizeGenres: StateFlow<List<ReiAnixGenreUiModel>> = canonicalCatalog
         .map { animes ->
-            animes
-                .flatMap { anime -> anime.genres }
-                .distinctBy(ReiAnixGenreUiModel::stableKey)
-                .sortedBy { it.name.lowercase() }
+            ReiAnixGenreNames.options(animes.flatMap { it.genres })
         }
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()

@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
+
 import com.reianix.reianix_local.ui.model.ReiAnixAnimeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixEpisodeUiModel
 import com.reianix.reianix_local.ui.model.ReiAnixMediaAvailability
@@ -77,9 +79,9 @@ object ReiAnixLibraryFilterEngine {
         val query = filters.query.trim()
         val matchesQuery = query.isBlank() ||
             anime.title.contains(query, ignoreCase = true) ||
-            anime.genres.any { it.name.contains(query, ignoreCase = true) }
+            anime.genres.any { it.name.contains(query, ignoreCase = true) || ReiAnixGenreNames.label(it.name).contains(query, ignoreCase = true) }
         val matchesGenre = filters.selectedGenreKey == null ||
-            anime.genres.any { it.stableKey == filters.selectedGenreKey }
+            anime.genres.any { ReiAnixGenreNames.matches(it, filters.selectedGenreKey!!) }
         val matchesFavorite = !filters.favoritesOnly || anime.favorite
         val matchesWatching = !filters.watchingOnly || anime.isWatching
         val matchesCompleted = !filters.completedOnly || anime.isCompleted
