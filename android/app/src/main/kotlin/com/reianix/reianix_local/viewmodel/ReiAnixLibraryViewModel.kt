@@ -32,6 +32,7 @@ import com.reianix.reianix_local.data.sqlite.toggleAnimePinned
 import com.reianix.reianix_local.data.sqlite.setAnimePersonalNote
 import com.reianix.reianix_local.data.sqlite.setAnimeUserTags
 import com.reianix.reianix_local.data.sqlite.setEpisodeManualIdentification
+import com.reianix.reianix_local.data.sqlite.removeConfirmedDeletedEpisode
 import com.reianix.reianix_local.storage.SafFileOperations
 import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeClient
 import com.reianix.reianix_local.data.tracemoe.TraceMoeApiException
@@ -565,6 +566,63 @@ class ReiAnixLibraryViewModel(
 
     suspend fun deleteSafItem(uri: Uri): SafFileOperations.Result =
         nativeFileOperations.delete(uri)
+
+    /** A null request means SAF has already confirmed and reconciled the deletion. */
+    suspend fun requestEpisodeDeletion(episodeId: Long, expectedPath: String): android.app.PendingIntent? {
+        val episode = nativeLibraryRepository.getEpisode(episodeId)
+            ?: error("O episódio não está mais na biblioteca.")
+        check(episode.path == expectedPath && episode.missing != true &&
+            episode.availabilityState.orEmpty().let { it.isBlank() || it == "available" }) {
+            "O arquivo mudou ou não está mais disponível. Atualize a biblioteca."
+        }
+        val uri = Uri.parse(expectedPath)
+        if (android.provider.DocumentsContract.isDocumentUri(appContext, uri)) {
+            withContext(kotlinx.coroutines.NonCancellable) {
+                when (val result = nativeFileOperations.delete(uri, filesOnly = true)) {
+                    is SafFileOperations.Result.Success -> finishConfirmedEpisodeDeletion(episodeId, expectedPath)
+                    is SafFileOperations.Result.Failure -> error(result.message)
+                }
+            }
+            return null
+        }
+        check(uri.scheme == "content" && uri.authority == "media" &&
+            uri.pathSegments.lastOrNull()?.toLongOrNull()?.let { it > 0 } == true) {
+            "Este arquivo não possui uma URI de exclusão autorizada. Selecione sua pasta novamente."
+        }
+        check(android.os.Build.VERSION.SDK_INT >= 30) {
+            "Nesta versão do Android, selecione a pasta do episódio para autorizar a exclusão."
+        }
+        return withContext(Dispatchers.IO) {
+            val mime = appContext.contentResolver.getType(uri)
+            check(mime?.startsWith("video/") == true) { "O item não é um vídeo disponível." }
+            android.provider.MediaStore.createDeleteRequest(appContext.contentResolver, listOf(uri))
+        }
+    }
+
+    /** RESULT_OK from the system delete request is the storage confirmation. */
+    suspend fun completeMediaStoreEpisodeDeletion(episodeId: Long, expectedPath: String) {
+        val uri = Uri.parse(expectedPath)
+        check(uri.scheme == "content" && uri.authority == "media")
+        withContext(kotlinx.coroutines.NonCancellable) {
+            // Do not remove a catalog row if the provider still reports the file.
+            val stillPresent = withContext(Dispatchers.IO) {
+                appContext.contentResolver.query(uri, arrayOf("_id"), null, null, null)
+                    ?.use { it.moveToFirst() }
+            }
+            check(stillPresent == false) {
+                "Não foi possível confirmar a exclusão no armazenamento. Atualize a biblioteca."
+            }
+            finishConfirmedEpisodeDeletion(episodeId, expectedPath)
+        }
+    }
+
+    private suspend fun finishConfirmedEpisodeDeletion(episodeId: Long, expectedPath: String) {
+        check(nativeLibraryRepository.removeConfirmedDeletedEpisode(episodeId, expectedPath)) {
+            "O arquivo foi excluído, mas o registro mudou. Atualize a biblioteca."
+        }
+        refreshNativeCatalog()
+    }
+
 
     /** Native replacement for legacy local release timeline calculations. */
     suspend fun queryNativeTimelineGroups() = nativeLibraryDiscovery.timelineGroups()
