@@ -313,7 +313,7 @@ class ReiAnixAniListIntegrationService(
     private val traceMoeIdentificationInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val explicitRepairInFlight = ConcurrentHashMap.newKeySet<Long>()
     private val kitsuUpgradeMutex = Mutex()
-    // Only concurrent automatic repairs of the same remote artwork key serialize.
+    // Striped locks prevent concurrent automatic repairs of the same remote artwork key.
     private val kitsuUpgradeArtworkLocks = List(32) { Mutex() }
     private var kitsuUpgradeNotBeforeMs = 0L
 
@@ -623,7 +623,9 @@ class ReiAnixAniListIntegrationService(
                     is AniListResult.Failure -> {
                         // A rejected alias group can fall back to the original per-anime lookup.
                         // Do not hammer the API if it is unavailable or rate-limited.
-                        if (result.error is AniListError.GraphQl || result.error is AniListError.InvalidResponse) return snapshot
+                        val error = result.error
+                        if (error is AniListError.GraphQl || error is AniListError.InvalidResponse ||
+                            (error is AniListError.Http && error.statusCode in setOf(400, 413, 422))) return snapshot
                         return null
                     }
                 }
@@ -738,15 +740,18 @@ class ReiAnixAniListIntegrationService(
                     }
                     outstanding++
                     launch {
-                        val count = try {
-                            upgradeOne(animeId, aliases)
+                        var count = 0
+                        try {
+                            count = upgradeOne(animeId, aliases)
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
                             Log.w(TAG, "Automatic AniList upgrade failed for animeId=" + animeId, error)
-                            0
+                        } finally {
+                            // A slot is returned even if this worker is cancelled.
+                            // At most parallelism completions can be outstanding.
+                            completions.trySend(count)
                         }
-                        completions.send(count)
                     }
                 }
             }
