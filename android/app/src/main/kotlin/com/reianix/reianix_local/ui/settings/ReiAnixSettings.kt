@@ -73,8 +73,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reianix.reianix_local.BuildConfig
-import com.reianix.reianix_local.ui.ReiAnixBadge
-import com.reianix.reianix_local.ui.ReiAnixBadgeTone
 import com.reianix.reianix_local.ui.ReiAnixLoadingState
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
@@ -855,9 +853,10 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                ReiAnixBadge(
+                                Text(
                                     text = "Versão ${BuildConfig.VERSION_NAME}",
-                                    tone = ReiAnixBadgeTone.Neutral,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
                                     text = "Player: Media3 / NativePlayer existente.",
