@@ -517,21 +517,61 @@ class ReiAnixAniListIntegrationService(
         if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
             !settingEnabled("artwork.enabled", true)) return@withLock 0
 
+        suspend fun enabled(): Boolean = isAniListEnabled() &&
+            settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true)
+
         suspend fun awaitIdle() {
-            while (true) {
+            while (!ordinaryWorkIdle()) {
                 currentCoroutineContext().ensureActive()
-                val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-                if (pause > 0) {
-                    delay(pause)
-                    continue
-                }
-                if (ordinaryWorkIdle()) {
-                    delay(750L)
-                    if (ordinaryWorkIdle()) return
-                } else delay(500L)
+                delay(500L)
             }
         }
 
+        // Pace only the original individual API requests, not ranking,
+        // downloading, validating or committing images in other workers.
+        val requestGate = Mutex()
+        val stopRequests = AtomicBoolean(false)
+        var rateLimit: AniListError.RateLimited? = null
+        suspend fun <T> requestUpgrade(
+            mayRequest: suspend () -> Boolean,
+            action: suspend () -> AniListResult<T>,
+        ): AniListResult<T> = requestGate.withLock gate@{
+            if (stopRequests.get()) return@gate AniListResult.Failure(
+                rateLimit ?: AniListError.InvalidRequest("Automatic upgrade deferred."),
+            )
+            suspend fun send(): AniListResult<T> {
+                val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                if (pause > 0L) delay(pause)
+                awaitIdle()
+                if (!mayRequest()) return AniListResult.Failure(
+                    AniListError.InvalidRequest("Automatic upgrade deferred."),
+                )
+                kitsuUpgradeNotBeforeMs = android.os.SystemClock.elapsedRealtime() + KITSU_UPGRADE_INTERVAL_MS
+                val result = action()
+                val error = (result as? AniListResult.Failure)?.error
+                if (error is AniListError.RateLimited) {
+                    val seconds = error.retryAfterSeconds?.coerceIn(1L, 21_600L) ?: 60L
+                    kitsuUpgradeNotBeforeMs = android.os.SystemClock.elapsedRealtime() +
+                        maxOf(KITSU_UPGRADE_INTERVAL_MS, seconds * 1_000L)
+                }
+                return result
+            }
+
+            val first = send()
+            if ((first as? AniListResult.Failure)?.error !is AniListError.RateLimited) return@gate first
+            // Preserve the existing automatic-only retry policy.
+            val second = send()
+            val error = (second as? AniListResult.Failure)?.error
+            if (error is AniListError.RateLimited) {
+                rateLimit = error
+                stopRequests.set(true)
+            }
+            second
+        }
+
+        // Preserve the initial quiet period once, not for every anime.
+        awaitIdle()
+        delay(750L)
         awaitIdle()
         val attempts = readPersistedArtworkDiscoveryAttemptTimes(library.database, KITSU_UPGRADE_ATTEMPT_PREFIX)
         val previousUpgradeIds = readPersistedArtworkDiscoveryAttemptTimes(library.database, LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX).keys
@@ -558,57 +598,82 @@ class ReiAnixAniListIntegrationService(
                 """.trimIndent(), null,
             ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
         }
-        var upgraded = 0
-        for (animeId in (targets + previousUpgradeIds).distinct()) {
-            currentCoroutineContext().ensureActive()
-            val previous = attempts[animeId]
-            if (previous != null && System.currentTimeMillis() / 1_000.0 - previous < KITSU_UPGRADE_COOLDOWN_SECONDS) continue
-            awaitIdle()
-            if (!isAniListEnabled() || !settingEnabled("metadata.auto_match", true) ||
-                !settingEnabled("artwork.enabled", true)) break
-            if (library.loadLibraryCatalogRows(setOf(animeId)).none { isKitsuUpgradeTarget(it) ||
-                    (animeId in previousUpgradeIds && needsLegacySeasonRepair(it)) }) continue
+        suspend fun eligible(animeId: Long): Boolean =
+            library.loadLibraryCatalogRows(setOf(animeId)).any {
+                isKitsuUpgradeTarget(it) || (animeId in previousUpgradeIds && needsLegacySeasonRepair(it))
+            }
+
+        suspend fun upgradeOne(animeId: Long): Int {
             for (retry in 0..1) {
                 awaitIdle()
-                if (animeId in explicitRepairInFlight) break
+                if (stopRequests.get() || !enabled() || animeId in explicitRepairInFlight || !eligible(animeId)) return 0
                 var deferred = false
-                val result = repairMetadataAndArtworkInternal(animeId, automaticKitsuUpgrade = true) {
-                    val ready = animeId !in explicitRepairInFlight && ordinaryWorkIdle() && isAniListEnabled() &&
-                        settingEnabled("metadata.auto_match", true) && settingEnabled("artwork.enabled", true) &&
-                        library.loadLibraryCatalogRows(setOf(animeId)).any { isKitsuUpgradeTarget(it) ||
-                            (animeId in previousUpgradeIds && needsLegacySeasonRepair(it)) }
+                suspend fun mayUpgrade(): Boolean {
+                    val ready = animeId !in explicitRepairInFlight && ordinaryWorkIdle() && enabled() && eligible(animeId)
                     val stillIdle = ready && ordinaryWorkIdle() && animeId !in explicitRepairInFlight
                     if (!stillIdle) deferred = true
-                    stillIdle
+                    return stillIdle
                 }
-                val now = android.os.SystemClock.elapsedRealtime()
-                kitsuUpgradeNotBeforeMs = now + KITSU_UPGRADE_INTERVAL_MS
-                if (result is AniListResult.Failure && result.error is AniListError.RateLimited) {
-                    val seconds = (result.error as AniListError.RateLimited).retryAfterSeconds
-                        ?.coerceIn(1L, 21_600L) ?: 60L
-                    kitsuUpgradeNotBeforeMs = now + maxOf(KITSU_UPGRADE_INTERVAL_MS, seconds * 1_000L)
-                    if (retry == 0) continue
-                    return@withLock upgraded
-                }
+                val result = repairMetadataAndArtworkInternal(
+                    animeId, automaticKitsuUpgrade = true,
+                    searchOverride = { terms ->
+                        requestUpgrade(::mayUpgrade) { automaticRepairClient.searchAnimeAliases(terms) }
+                    },
+                    relatedOverride = { ids ->
+                        requestUpgrade(::mayUpgrade) { automaticRepairClient.lookupRepairRelatedAnime(ids) }
+                    },
+                    mayUpgrade = ::mayUpgrade,
+                )
                 if (deferred) {
                     if (retry == 0) continue
-                    break
+                    return 0
                 }
-                if (result is AniListResult.Success) {
-                    upgraded++
-                    if (animeId in previousUpgradeIds) library.database.transaction { db ->
+                val error = (result as? AniListResult.Failure)?.error
+                if (error is AniListError.Network || error is AniListError.Http ||
+                    error is AniListError.RateLimited) return 0
+                if (result is AniListResult.Success && animeId in previousUpgradeIds) {
+                    library.database.transaction { db ->
                         db.delete("preferences", "key=?", arrayOf(LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX + animeId))
                     }
                 }
-                if (result is AniListResult.Failure &&
-                    (result.error is AniListError.Network || result.error is AniListError.Http)) break
                 writePersistedArtworkDiscoveryAttemptAt(
                     library.database, animeId, System.currentTimeMillis() / 1_000.0, KITSU_UPGRADE_ATTEMPT_PREFIX,
                 )
-                break
+                return if (result is AniListResult.Success) 1 else 0
             }
+            return 0
         }
-        upgraded
+
+        val candidates = (targets + previousUpgradeIds).distinct().filter { animeId ->
+            val previous = attempts[animeId]
+            previous == null || System.currentTimeMillis() / 1_000.0 - previous >= KITSU_UPGRADE_COOLDOWN_SECONDS
+        }
+        // Eight independent slots; retain the earlier small-heap safeguard.
+        // No prefetch groups or group barriers. Each worker takes another anime
+        // immediately after its own repair has finished.
+        val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 8 else 2
+        val nextIndex = AtomicInteger(0)
+        coroutineScope {
+            List(minOf(parallelism, candidates.size)) {
+                async {
+                    var upgraded = 0
+                    while (!stopRequests.get() && enabled()) {
+                        currentCoroutineContext().ensureActive()
+                        val index = nextIndex.getAndIncrement()
+                        if (index >= candidates.size) break
+                        val animeId = candidates[index]
+                        try {
+                            upgraded += upgradeOne(animeId)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w(TAG, "Automatic AniList upgrade failed for animeId=" + animeId, error)
+                        }
+                    }
+                    upgraded
+                }
+            }.awaitAll().sum()
+        }
     }
 
     suspend fun refreshMetadata(animeId: Long): AniListResult<ReiAnixAnimeRecord> {
