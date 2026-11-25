@@ -935,9 +935,13 @@ fun ReiAnixNativePlayerBottomControls(
             ) {
                 // Only the shortcuts selected by the user are composed; the
                 // five-icon default keeps Options in the final position.
-                displayShortcuts.forEach { shortcut ->
+                displayShortcuts.forEachIndexed { index, shortcut ->
+                    // Move only the first portrait glyph to the requested visual
+                    // position. Keep the weighted slots, labels and other icons fixed.
+                    val firstPortraitSlot = !landscape && index == 0 && displayShortcuts.size > 1
                     when (shortcut) {
                         PlayerShortcut.LOCK -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Lock,
                             label = "Bloquear",
                             showLabel = !landscape,
@@ -947,6 +951,7 @@ fun ReiAnixNativePlayerBottomControls(
                             iconVisualScale = 0.75f,
                         )
                         PlayerShortcut.EPISODES -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.PlaylistPlay,
                             label = "Episódios",
                             showLabel = !landscape,
@@ -955,6 +960,7 @@ fun ReiAnixNativePlayerBottomControls(
                             enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.NEXT -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.SkipNext,
                             label = "Próximo episódio",
                             showLabel = !landscape,
@@ -963,6 +969,7 @@ fun ReiAnixNativePlayerBottomControls(
                             enabled = state.canNext && !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.OPTIONS -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.MoreVert,
                             label = "Opções",
                             showLabel = !landscape,
@@ -981,6 +988,7 @@ fun ReiAnixNativePlayerBottomControls(
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.CAST -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Cast,
                             label = "Transmitir",
                             showLabel = !landscape,
@@ -990,6 +998,7 @@ fun ReiAnixNativePlayerBottomControls(
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.SPEED -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Speed,
                             label = "Velocidade",
                             showLabel = !landscape,
@@ -999,6 +1008,7 @@ fun ReiAnixNativePlayerBottomControls(
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.SUBTITLES -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Subtitles,
                             label = "Legendas",
                             showLabel = !landscape,
@@ -1008,6 +1018,7 @@ fun ReiAnixNativePlayerBottomControls(
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.TIMER -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Timer,
                             label = "Temporizador",
                             showLabel = !landscape,
@@ -1072,6 +1083,7 @@ private fun RowScope.PlayerBottomAction(
     showLabel: Boolean = true,
     active: Boolean = false,
     iconVisualScale: Float = 1f,
+    firstPortraitSlot: Boolean = false,
 ) {
     Column(
         modifier = Modifier.weight(1f),
@@ -1104,6 +1116,10 @@ private fun RowScope.PlayerBottomAction(
                     .graphicsLayer {
                         scaleX = iconVisualScale
                         scaleY = iconVisualScale
+                        if (firstPortraitSlot) {
+                            translationX = 3.dp.toPx()
+                            translationY = 3.dp.toPx()
+                        }
                     },
             )
         }
