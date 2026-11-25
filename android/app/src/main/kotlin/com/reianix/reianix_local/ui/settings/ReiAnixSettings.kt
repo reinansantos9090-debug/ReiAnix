@@ -929,20 +929,6 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     }
                 }
                 "player_playback" -> {
-                    item(key = "setting:player.default_player") {
-                        ChoiceSettingRow(
-                            keyName = "player.default_player",
-                            title = "Reprodutor padrão",
-                            description = "Escolha como os episódios serão abertos.",
-                            selectedValue = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
-                                .defaultPlayerMode(state.settings["player.default_player"]),
-                            choices = listOf(
-                                SettingChoice("internal", "Reprodutor interno"),
-                                SettingChoice("external", "Reprodutor externo"),
-                            ),
-                            onSelected = { onUpdateSetting("player.default_player", it) },
-                        )
-                    }
                     item(key = "setting:player.aniskip_enabled") {
                         BooleanSettingRow(
                             keyName = "player.aniskip_enabled",
@@ -996,6 +982,20 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             selectedValue = state.settings["player.default_speed"],
                             choices = defaultSpeedChoices,
                             onSelected = { onUpdateSetting("player.default_speed", it) },
+                        )
+                    }
+                    item(key = "setting:player.default_player") {
+                        ChoiceSettingRow(
+                            keyName = "player.default_player",
+                            title = "Reprodutor padrão",
+                            description = "Escolha como os episódios serão abertos.",
+                            selectedValue = com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
+                                .defaultPlayerMode(state.settings["player.default_player"]),
+                            choices = listOf(
+                                SettingChoice("internal", "Reprodutor interno"),
+                                SettingChoice("external", "Reprodutor externo"),
+                            ),
+                            onSelected = { onUpdateSetting("player.default_player", it) },
                         )
                     }
                 }
@@ -1055,17 +1055,30 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     item(key = "setting:gestures.horizontal_seek") {
                         BooleanSettingRow(
                             keyName = "gestures.horizontal_seek",
-                            title = "Gestos horizontais",
-                            description = "Permite avançar ou retroceder no vídeo deslizando horizontalmente.",
+                            title = "Deslize para avançar ou retroceder",
+                            description = "Deslize para os lados para avançar ou voltar o vídeo.",
                             checked = state.settings["gestures.horizontal_seek"] == "true",
                             onCheckedChange = { onUpdateSetting("gestures.horizontal_seek", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:gestures.volume") {
+                        BooleanSettingRow(
+                            keyName = "gestures.volume",
+                            title = "Deslize para ajustar brilho e volume",
+                            description = "Deslize verticalmente à esquerda para ajustar o brilho e à direita para ajustar o volume.",
+                            checked = state.settings["gestures.volume"] == "true" ||
+                                state.settings["gestures.brightness"] == "true",
+                            onCheckedChange = {
+                                onUpdateSetting("gestures.volume", it.toString())
+                                onUpdateSetting("gestures.brightness", it.toString())
+                            },
                         )
                     }
                     item(key = "setting:gestures.double_tap") {
                         BooleanSettingRow(
                             keyName = "gestures.double_tap",
-                            title = "Toque duplo para avançar ou retroceder",
-                            description = "Controla o double tap existente.",
+                            title = "Toque duplo para controlar o vídeo",
+                            description = "Toque duas vezes nas laterais para avançar ou retroceder, ou no centro para pausar ou continuar.",
                             checked = state.settings["gestures.double_tap"]?.toBooleanStrictOrNull() ?: true,
                             onCheckedChange = { onUpdateSetting("gestures.double_tap", it.toString()) },
                         )
@@ -1073,10 +1086,19 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     item(key = "setting:gestures.long_press") {
                         BooleanSettingRow(
                             keyName = "gestures.long_press",
-                            title = "Ativar pressão longa",
-                            description = "Controla a ação de long press existente.",
+                            title = "Pressione para acelerar o vídeo",
+                            description = "Mantenha o dedo pressionado para aumentar temporariamente a velocidade.",
                             checked = state.settings["gestures.long_press"] == "true",
                             onCheckedChange = { onUpdateSetting("gestures.long_press", it.toString()) },
+                        )
+                    }
+                    item(key = "setting:player.zoom_enabled") {
+                        BooleanSettingRow(
+                            keyName = "player.zoom_enabled",
+                            title = "Ajuste automático do vídeo",
+                            description = "Faça o gesto de pinça para alternar entre ajustar e preencher.",
+                            checked = state.settings["player.zoom_enabled"] != "false",
+                            onCheckedChange = { onUpdateSetting("player.zoom_enabled", it.toString()) },
                         )
                     }
                 }
