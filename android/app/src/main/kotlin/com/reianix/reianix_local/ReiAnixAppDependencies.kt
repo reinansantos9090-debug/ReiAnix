@@ -204,6 +204,12 @@ class ReiAnixAppDependencies(context: Context) {
                     animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl,
                 )
             },
+            prepareEarlyRepairArtwork = { animeId, remote ->
+                artworkService.prepareExplicitRepairArtwork(
+                    animeId, remote.id.toLong(), remote.coverCandidates.map { it.url }, remote.bannerUrl,
+                    serialDownloads = true,
+                )
+            },
             explicitArtworkPublisher = { animeId ->
                 artworkService.requestAnimeArtwork(animeId, force = true)
                 Unit
