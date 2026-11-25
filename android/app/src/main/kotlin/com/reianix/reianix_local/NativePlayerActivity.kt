@@ -147,6 +147,7 @@ class NativePlayerActivity : FragmentActivity() {
     private var composeControlsEnabled = false
     private lateinit var uri: Uri
     private lateinit var playerView: PlayerView
+    private lateinit var playerControlScrim: View
     private lateinit var root: FrameLayout
     private lateinit var controls: FrameLayout
     private lateinit var centerControls: LinearLayout
@@ -2468,6 +2469,24 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         root.addView(playerView)
 
+        // Match CloudStream's shadow_overlay (#66000000): dim the video, not
+        // the controls. Keep the layer below gestures, feedback and all icons.
+        playerControlScrim = View(this).apply {
+            tag = "reianix_player_control_scrim"
+            setBackgroundColor(0x66000000)
+            visibility = View.INVISIBLE
+            isClickable = false
+            isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        root.addView(
+            playerControlScrim,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
         preparingIndicator = ProgressBar(this).apply {
             tag = "reianix_player_preparing"
             isIndeterminate = true
@@ -3161,6 +3180,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val unlockedOverlaysVisible = controlsVisible && !locked && !errorVisible && !inPictureInPicture
         if (::relativeSeekOverlay.isInitialized) relativeSeekOverlay.showCircle = !unlockedOverlaysVisible
         val lockedAffordanceVisible = controlsVisible && locked && !errorVisible && !inPictureInPicture
+        if (::playerControlScrim.isInitialized) {
+            playerControlScrim.visibility =
+                if (unlockedOverlaysVisible || lockedAffordanceVisible) View.VISIBLE else View.INVISIBLE
+        }
         if (::composeTopView.isInitialized) composeTopView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
         if (::composeCenterView.isInitialized) composeCenterView.visibility = if (unlockedOverlaysVisible) View.VISIBLE else View.INVISIBLE
         if (::composeBottomView.isInitialized) composeBottomView.visibility =
