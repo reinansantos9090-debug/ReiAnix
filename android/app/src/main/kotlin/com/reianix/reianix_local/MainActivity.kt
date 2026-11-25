@@ -2158,6 +2158,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        libraryViewModel.setEpisodeThumbnailForeground(true)
 
         // Apply notification permission changes made in Android Settings without reopening onboarding.
         com.reianix.reianix_local.data.releases.ReiAnixReleaseMonitor.reconcilePermission(this)
@@ -2470,6 +2471,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         activityResumed = false
+        libraryViewModel.setEpisodeThumbnailForeground(false)
         if (safPickerPending) {
             // Keep the watchdog polling while DocumentsUI owns the foreground.
             // Its foreground gate prevents a timeout while the user is choosing.
