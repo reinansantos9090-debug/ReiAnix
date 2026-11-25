@@ -1170,6 +1170,63 @@ class ReiAnixSqliteRepositoryRuntimeTest {
         val fragments = com.reianix.reianix_local.data.anilist.explicitAniListRepairSearchTerms(listOf(pairs.first().first))
         assertTrue(fragments.any { it.contains("shite mo", true) })
         assertTrue(fragments.any { it.equals("saigo ni hitotsu dake", true) })
+
+        // Generic edition constraints: these cases represent the reported regression,
+        // not special cases hardcoded in the implementation.
+        val anime = original.copy(
+            lookupTitle = "Kusuriya no Hitorigoto 3", title = "The Apothecary Diaries",
+            romaji = "Kusuriya no Hitorigoto", english = "The Apothecary Diaries",
+            nativeTitle = null, anilistId = 99L, anilistMatchManual = false,
+            metadataSource = "anilist", metadataStatus = "available", format = "TV",
+        )
+        val first = candidate(99, "Kusuriya no Hitorigoto").copy(repairRelations = emptyList())
+        val second = candidate(101, "Kusuriya no Hitorigoto II")
+        val third = candidate(102, "Kusuriya no Hitorigoto 3rd Season")
+        val movie = candidate(103, "Kusuriya no Hitorigoto 3", "MOVIE")
+        val otherPart = candidate(104, "Kusuriya no Hitorigoto Season 3 Part 2")
+        val repaired = com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            anime, anime.lookupTitle, listOf(first, second, third, movie, otherPart),
+        )
+        assertEquals(listOf(102), repaired.map { it.anime.id })
+        assertTrue(repaired.first().score >= 0.60)
+        assertTrue(com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            anime, anime.lookupTitle, listOf(first, second, movie, otherPart),
+        ).isEmpty())
+        val localRow = repository.loadLibraryCatalogRows(setOf(1L)).single()
+        assertTrue(com.reianix.reianix_local.data.anilist.needsLegacySeasonRepair(localRow.copy(
+            anime = anime, episodes = listOf(ep.copy(fileName = "Kusuriya no Hitorigoto S03E01.mp4",
+                path = "/Anime/Kusuriya no Hitorigoto 3/Kusuriya no Hitorigoto S03E01.mp4",
+                relativePath = "Kusuriya no Hitorigoto 3", sourceFolder = "Anime")),
+        )))
+        val title2 = "Seihantai na Kimi to Boku"
+        val sequel = candidate(202, "$title2 2nd Season")
+        val polar = anime.copy(lookupTitle = "$title2 2", title = "You and I Are Polar Opposites",
+            romaji = title2, english = "You and I Are Polar Opposites")
+        assertEquals(listOf(202), com.reianix.reianix_local.data.anilist.rankExplicitAniListRepair(
+            polar, polar.lookupTitle, listOf(candidate(201, title2), sequel),
+        ).map { it.anime.id })
+
+        val marked = com.reianix.reianix_local.data.anilist.repairEdition("Example Season 3 Part 2")
+        assertEquals(3, marked.season)
+        assertEquals(2, marked.part)
+        assertFalse(marked.conflict)
+        val ordinals = com.reianix.reianix_local.data.anilist.repairEdition("Example 3rd Season 2nd Part")
+        assertEquals(3, ordinals.season)
+        assertEquals(2, ordinals.part)
+        assertFalse(ordinals.conflict)
+        assertEquals(2, com.reianix.reianix_local.data.anilist.repairEdition("Example S02E01", false).season)
+        assertEquals(null, com.reianix.reianix_local.data.anilist.repairEdition("Kaiju No. 8").season)
+        assertEquals(null, com.reianix.reianix_local.data.anilist.repairEdition("Episode 12", false).season)
+        val inferred = candidate(105, "Kusuriya no Hitorigoto: New Chapter").copy(
+            repairRelations = listOf(com.reianix.reianix_local.data.anilist.AniListRepairRelation(
+                101, "PREQUEL", "TV", listOf("Kusuriya no Hitorigoto II"),
+            )),
+        )
+        val edition = com.reianix.reianix_local.data.anilist.RepairEdition(season = 3)
+        assertTrue(com.reianix.reianix_local.data.anilist.repairEditionCompatible(edition, inferred, listOf(second, inferred)))
+        assertFalse(com.reianix.reianix_local.data.anilist.repairEditionCompatible(edition, inferred.copy(repairRelations = null), listOf(inferred)))
+        assertFalse(com.reianix.reianix_local.data.anilist.repairEditionCompatible(edition,
+            inferred.copy(repairRelations = inferred.repairRelations?.map { it.copy(format = "MOVIE") }), listOf(inferred)))
     }
 
     @Test
