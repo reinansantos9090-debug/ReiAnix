@@ -45,8 +45,7 @@ internal object ReiAnixGenreNames {
         "vampire" to "Vampiros",
         "police" to "Policial",
         "samurai" to "Samurai",
-        "suspense" to "Suspense",
-    ).minus("suspense")
+    )
     private val aliases = buildMap {
         labels.forEach { (key, label) ->
             put(normalizeReiAnixGenre(key), key)
@@ -82,6 +81,29 @@ internal object ReiAnixGenreNames {
             .sortedWith(compareBy({ normalizeReiAnixGenre(it.name) }, { it.stableKey }))
             .toList()
 
+    /**
+     * An association table can be partially backfilled while the original
+     * metadata still holds the complete list. Do not discard either source.
+     * Keep real IDs; legacy-only names have no fabricated database ID.
+     */
+    fun preserveMetadataGenres(
+        registered: List<ReiAnixGenreUiModel>,
+        metadata: List<String>,
+    ): List<ReiAnixGenreUiModel> {
+        val result = registered.filter { it.name.isNotBlank() }.toMutableList()
+        val keys = result.mapTo(hashSetOf()) { key(it.name) }
+        metadata.forEach { raw ->
+            val name = raw.trim()
+            if (name.isNotBlank() && keys.add(key(name))) {
+                result.add(ReiAnixGenreUiModel(null, name))
+            }
+        }
+        return result
+    }
+
+    // Only terms that actually match a translated label need to bypass the
+    // original SQL candidate narrowing; a random one-character substring
+    // should not disable its fast path for all ordinary searches.
     fun mayMatchTranslatedTerm(term: String): Boolean =
-        labels.values.any { normalizeReiAnixGenre(it).contains(term) }
+        labels.values.any { normalizeReiAnixGenre(it).split(' ').any { word -> word.startsWith(term) } }
 }
