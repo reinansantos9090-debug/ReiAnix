@@ -107,6 +107,8 @@ object SafScanner {
             } ?: continue
 
             if (isPotentialVideoDocument(metadata.second, metadata.third)) return true
+            if (LocalVideoRecognition.needsProbe(metadata.second, metadata.third) &&
+                LocalVideoRecognition.probe(context, documentUri)) return true
             if (!metadata.third.equals(DocumentsContract.Document.MIME_TYPE_DIR, ignoreCase = true)) continue
 
             val childrenUri = runCatching {
@@ -137,6 +139,11 @@ object SafScanner {
                         val name = if (nameIndex >= 0) cursor.getString(nameIndex).orEmpty() else ""
                         val mime = cursor.getString(mimeIndex).orEmpty()
                         if (isPotentialVideoDocument(name, mime)) return true
+                        if (LocalVideoRecognition.needsProbe(name, mime) &&
+                            isDocumentWithinTree(context, treeUri, childId)) {
+                            val candidate = runCatching { DocumentsContract.buildDocumentUriUsingTree(treeUri, childId) }.getOrNull()
+                            if (candidate != null && LocalVideoRecognition.probe(context, candidate)) return true
+                        }
                         if (mime.equals(DocumentsContract.Document.MIME_TYPE_DIR, ignoreCase = true)) {
                             pending.addLast(childId)
                         }
