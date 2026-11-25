@@ -251,8 +251,19 @@ internal class EpisodeThumbnailQueue {
     }
 
     fun contains(animeId: Long): Boolean = animeId in explicit || animeId in automatic
+    fun isExplicit(animeId: Long): Boolean = animeId in explicit
     fun hasPriorityOtherThan(animeId: Long): Boolean = explicit.any { it != animeId }
 }
+
+/** New media or a removed thumbnail association is work; our own publications are not. */
+internal fun <K> shouldScheduleAutomaticThumbnailBatch(
+    previous: Map<K, String?>?,
+    current: Map<K, String?>,
+): Boolean = current.isNotEmpty() && (previous == null ||
+    current.keys != previous.keys ||
+    current.any { (key, path) ->
+        path.isNullOrBlank() && !previous[key].isNullOrBlank()
+    })
 
 @Keep
 class ReiAnixLibraryViewModel(
@@ -1828,7 +1839,7 @@ class ReiAnixLibraryViewModel(
                     if (com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
                             .blocked(anime.genres.map { it.name })) continue
                     val old = previous[anime.id]
-                    if (old?.anime === anime) {
+                    if (old != null && old.anime === anime) {
                         next[anime.id] = old
                         continue
                     }
@@ -1838,11 +1849,7 @@ class ReiAnixLibraryViewModel(
                     next[anime.id] = ThumbnailCatalogRevision(anime, episodes)
                     // Our own thumbnail publications are not new work. Only newly
                     // available/changed media or a removed association needs a batch.
-                    if (episodes.isNotEmpty() && (old == null ||
-                            episodes.keys != old.episodes.keys ||
-                            episodes.any { (key, path) ->
-                                path.isNullOrBlank() && !old.episodes[key].isNullOrBlank()
-                            })) {
+                    if (shouldScheduleAutomaticThumbnailBatch(old?.episodes, episodes)) {
                         requests.add(anime.id)
                     }
                 }
@@ -2029,10 +2036,13 @@ class ReiAnixLibraryViewModel(
                     if (outputIsUsable) {
                         enqueueTraceMoeSample(animeId, episode.id, File(result.path))
                     }
-                    if (result.canonicalArtworkRegistered) {
-                        // Do not rely only on the artwork event bus: reload the
-                        // committed SQLite projection as soon as this thumbnail
-                        // is registered, so Details never needs a manual refresh.
+                    if (result.canonicalArtworkRegistered &&
+                        (priority || episodeThumbnailQueue.isExplicit(animeId) ||
+                            traceMoeSampleSessions.containsKey(animeId))
+                    ) {
+                        // Keep immediate Details publication exactly as before.
+                        // Automatic work elsewhere uses the existing debounced
+                        // artwork signal instead of duplicating catalog reloads.
                         viewModelScope.launch { refreshNativeCatalog(setOf(animeId)) }
                     }
 
