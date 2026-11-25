@@ -1155,10 +1155,12 @@ private fun discoveredMediaFromSnapshot(
                         val parsed = document.optJSONObject("parsedMedia") ?: JSONObject()
                         val documentId = document.optString("documentId").takeIf { it.isNotBlank() }
                         val uri = document.optString("uri").takeIf { it.isNotBlank() } ?: continue
-                        val name = document.optString("name").takeIf { it.isNotBlank() } ?: continue
+                        val name = document.optString("name").takeIf { it.isNotBlank() && it != "null" }
+                            ?: documentId?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                            ?: "video-" + java.util.UUID.nameUUIDFromBytes(uri.toByteArray(Charsets.UTF_8))
                         val season = if (parsed.has("season") && !parsed.isNull("season")) parsed.optInt("season") else null
-                        val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber") else null
-                        val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber") else null
+                        val episodeNumber = if (parsed.has("episodeNumber") && !parsed.isNull("episodeNumber")) parsed.optDouble("episodeNumber").takeIf { it.isFinite() && it > 0.0 } else null
+                        val absoluteNumber = if (parsed.has("absoluteNumber") && !parsed.isNull("absoluteNumber")) parsed.optDouble("absoluteNumber").takeIf { it.isFinite() && it > 0.0 } else null
                         val size = if (document.has("size") && !document.isNull("size")) document.optLong("size").takeIf { it >= 0L } else null
                         val modifiedMillis = if (document.has("modifiedAt") && !document.isNull("modifiedAt")) document.optLong("modifiedAt").takeIf { it >= 0L } else null
                         val ambiguities = parsed.optJSONArray("ambiguities")
