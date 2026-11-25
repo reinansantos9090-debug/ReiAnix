@@ -434,6 +434,10 @@ class ReiAnixAniListIntegrationService(
                 AniListError.InvalidRequest("Nenhuma correspondência confiável no AniList. Dados atuais preservados."),
             )
             val margin = best.score - (ranked.getOrNull(1)?.score ?: 0.0)
+            if ((expectedEdition.season != null || expectedEdition.part != null) &&
+                ranked.size > 1 && margin < 0.03) return AniListResult.Failure(
+                AniListError.InvalidRequest("Mais de uma edição compatível. Capa e metadados preservados."),
+            )
             if (best.score < EXPLICIT_REPAIR_MIN_SCORE) return AniListResult.Failure(
                 AniListError.InvalidRequest("Identificação inconclusiva. Capa e metadados atuais preservados."),
             )
@@ -2152,10 +2156,27 @@ private fun repairEditionFormat(value: String): String? = when {
 /** Bare suffixes are accepted on titles/folders, never raw episode filenames. */
 internal fun repairEdition(value: String, allowBare: Boolean = true): RepairEdition {
     val plain = repairPlain(value)
-    val seasons = listOf(repairSeasonPrefix, repairSeasonSuffix, repairJapaneseSeason)
-        .flatMap { regex -> regex.findAll(plain).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toList() }.toSet()
-    val parts = listOf(repairPartPrefix, repairPartSuffix)
-        .flatMap { regex -> regex.findAll(plain).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toList() }.toSet()
+    // In "Season 2 Part 1", the 2 belongs to Season, not to Part.
+    // In "3rd Season 2nd Part", both ordinals belong to the suffix markers.
+    val seasonSuffixes = repairSeasonSuffix.findAll(plain).toList()
+    val partSuffixes = repairPartSuffix.findAll(plain).toList()
+    fun sameNumber(a: MatchResult, b: MatchResult): Boolean = a.groups[1]?.range == b.groups[1]?.range
+    fun ordinal(m: MatchResult): Boolean {
+        val number = m.groups[1] ?: return false
+        return Regex("^(?:st|nd|rd|th|a|o)\\b").containsMatchIn(plain.substring(number.range.last + 1))
+    }
+    val seasonPrefixes = repairSeasonPrefix.findAll(plain).filterNot { p ->
+        partSuffixes.any { ordinal(it) && sameNumber(p, it) }
+    }.toList()
+    val partPrefixes = repairPartPrefix.findAll(plain).filterNot { p ->
+        seasonSuffixes.any { ordinal(it) && sameNumber(p, it) }
+    }.toList()
+    val seasons = (seasonPrefixes + seasonSuffixes.filterNot { suffix ->
+        partPrefixes.any { sameNumber(suffix, it) }
+    } + repairJapaneseSeason.findAll(plain).toList()).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toSet()
+    val parts = (partPrefixes + partSuffixes.filterNot { suffix ->
+        seasonPrefixes.any { sameNumber(suffix, it) }
+    }).mapNotNull { repairEditionNumber(it.groupValues[1]) }.toSet()
     val withoutYear = plain.replace(repairYearSuffix, "")
     val suffix = if (allowBare && seasons.isEmpty() && parts.isEmpty()) repairBareEdition.find(withoutYear) else null
     val stem = suffix?.let { withoutYear.substring(0, it.range.first).trim() }.orEmpty()
