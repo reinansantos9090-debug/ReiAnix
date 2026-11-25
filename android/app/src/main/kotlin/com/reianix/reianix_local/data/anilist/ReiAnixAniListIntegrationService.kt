@@ -2211,9 +2211,12 @@ internal fun expectedRepairEdition(local: ReiAnixAnimeRecord, evidence: Explicit
     return independent
 }
 
-private fun remoteRepairEdition(candidate: AniListAnime): RepairEdition {
-    val primary = combineRepairEditions(listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
+private fun canonicalRepairEdition(candidate: AniListAnime): RepairEdition =
+    combineRepairEditions(listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
         .map { repairEdition(it) })
+
+private fun remoteRepairEdition(candidate: AniListAnime): RepairEdition {
+    val primary = canonicalRepairEdition(candidate)
     val aliases = combineRepairEditions(candidate.synonyms.map { repairEdition(it) })
     // Canonical numbering outranks synonyms; an ambiguous alias cannot prove a season.
     return RepairEdition(primary.season ?: aliases.season.takeUnless { aliases.conflict },
@@ -2235,12 +2238,15 @@ private fun inferredRepairSeason(
     if (candidate.id in seen || seen.size >= 10 || candidate.format !in repairSeriesFormats) return null
     val edition = remoteRepairEdition(candidate)
     if (edition.conflict) return null
-    edition.season?.let { return it }
-    val relations = candidate.repairRelations ?: return null
+    val canonical = canonicalRepairEdition(candidate)
+    canonical.season?.let { return it }
+    val aliasSeason = edition.season
+    val relations = candidate.repairRelations ?: return aliasSeason
     val predecessors = relations.filter { it.kind == "PREQUEL" && it.format in repairSeriesFormats }.distinctBy { it.id }
     if (predecessors.isEmpty()) {
         // A node with only a movie/OVA prequel does not establish TV season 1.
-        return if (relations.any { it.kind == "PREQUEL" } || (edition.part ?: 1) > 1) null else 1
+        return if (relations.any { it.kind == "PREQUEL" } || (edition.part ?: 1) > 1 ||
+            (aliasSeason != null && aliasSeason != 1)) null else 1
     }
     val previous = predecessors.singleOrNull() ?: return null
     val previousEdition = combineRepairEditions(previous.titles.map { repairEdition(it) })
@@ -2248,7 +2254,8 @@ private fun inferredRepairSeason(
     val previousSeason = previousEdition.season ?: byId[previous.id]?.let {
         inferredRepairSeason(it, byId, seen + candidate.id)
     } ?: return null
-    return if ((edition.part ?: 1) > 1) previousSeason else (previousSeason + 1).takeIf { it <= 30 }
+    val inferred = if ((edition.part ?: 1) > 1) previousSeason else previousSeason + 1
+    return inferred.takeIf { it <= 30 && (aliasSeason == null || aliasSeason == it) }
 }
 
 internal fun repairEditionCompatible(expected: RepairEdition, candidate: AniListAnime, candidates: List<AniListAnime>): Boolean {
@@ -2261,7 +2268,9 @@ internal fun repairEditionCompatible(expected: RepairEdition, candidate: AniList
     if (expected.part != null && remote.part != expected.part) return false
     if (expected.part == null && expected.season != null && (remote.part ?: 1) > 1) return false
     if (expected.season != null) {
-        val season = remote.season ?: inferredRepairSeason(candidate, candidates.associateBy { it.id })
+        val season = if (candidate.format in repairSeriesFormats) {
+            inferredRepairSeason(candidate, candidates.associateBy { it.id })
+        } else remote.season
         if (season != expected.season) return false
     }
     return true
@@ -2341,11 +2350,26 @@ internal fun rankExplicitAniListRepair(
     val localSynopsis = repairWords(local.descriptionOriginal ?: local.description.orEmpty())
     val edition = expectedRepairEdition(local, evidence)
     if (edition.conflict) return emptyList()
-    val eligible = candidates.distinctBy { it.id }.filter {
+    val compatible = candidates.distinctBy { it.id }.filter {
         !it.format.equals("MUSIC", true) && it.coverCandidates.isNotEmpty() &&
             repairEditionCompatible(edition, it, candidates)
     }
-        .map { candidate ->
+    // An unnumbered, exact local title must not be replaced with a numbered
+    // sequel merely because that sequel carries the base franchise as an alias.
+    // Do not impose this when an independently sourced canonical sequel title
+    // matches (some subsequent seasons have a subtitle rather than a number).
+    val localKeys = primary.map(::explicitAniListCompactTitle).toSet()
+    fun exactCanonical(candidate: AniListAnime): Boolean =
+        listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative)
+            .any { explicitAniListCompactTitle(it) in localKeys }
+    val hasExactUnnumbered = !edition.hasMarker && compatible.any {
+        exactCanonical(it) && !canonicalRepairEdition(it).hasMarker
+    }
+    val eligible = compatible.filter { candidate ->
+        !hasExactUnnumbered || exactCanonical(candidate) ||
+            (!remoteRepairEdition(candidate).hasMarker &&
+                inferredRepairSeason(candidate, candidates.associateBy { it.id })?.let { it <= 1 } != false)
+    }.map { candidate ->
             candidate to (listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) + candidate.synonyms)
                 .filter(::usefulRepairTitle).distinctBy(::explicitAniListCompactTitle).map { RepairTitle(it) }
         }
