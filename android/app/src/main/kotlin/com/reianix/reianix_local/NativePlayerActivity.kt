@@ -160,6 +160,9 @@ class NativePlayerActivity : FragmentActivity() {
     private lateinit var relativeSeekOverlay: RelativeSeekOverlay
     private lateinit var errorPanel: LinearLayout
     private lateinit var preparingIndicator: ProgressBar
+    private var bufferingStartedAt = -1L
+    private var loadingFinished = false
+    private val showRebufferingIndicator = Runnable { syncBufferingIndicatorVisibility() }
     private lateinit var lockButton: TextView
     private lateinit var systemUiController: SystemUiController
     private lateinit var localMetadataStore: PlayerLocalMetadataStore
@@ -853,7 +856,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (sleepTimerDeadlineMs > 0L) handler.post(sleepTimerTick)
             prepareCurrentMedia("initial", savedInstanceState?.takeIf { it.containsKey("play_when_ready") }?.getBoolean("play_when_ready"))
         } catch (exception: Exception) {
-            if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
+            finishLoadingIndicator()
             logPlayer(
                 "PLAYER_ACTIVITY_FAILED requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -1141,7 +1144,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             newIntent.getStringExtra("title") ?: "Episódio"
         updateEpisodeNavigationButtons()
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
-        if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
+        startLoadingIndicator()
         setMorePanelVisible(false)
         setControlsVisible(true)
 
@@ -1294,7 +1297,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         pendingPreparation?.cancel(true)
 
-        if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
+        startLoadingIndicator()
 
         episodeTapAtMs = commandCreatedAtMs.takeIf { it > 0L }
             ?: activityStartedAtMs.takeIf { it > 0L }
@@ -1601,7 +1604,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     playerView.setKeepContentOnPlayerReset(true)
                 }
 
-                if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
+                finishLoadingIndicator()
                 syncComposePlayerUiState()
                 firstFrameRenderedAtMs = System.currentTimeMillis()
 
@@ -1708,6 +1711,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onRenderedFirstFrame() {
             if (!isCurrent()) return
+            finishLoadingIndicator()
             logPlayer(
                 "FIRST_FRAME_CALLBACK requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -1744,6 +1748,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
+            if (state == Player.STATE_READY || state == Player.STATE_ENDED) {
+                finishLoadingIndicator()
+            } else if (state == Player.STATE_BUFFERING) {
+                syncBufferingIndicatorVisibility()
+            }
             val clipSession = favoriteClipSession
             val restoredEpisode = (state == Player.STATE_READY || state == Player.STATE_ENDED) &&
                 clipSession?.restoring == true &&
@@ -1779,12 +1788,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     val firstReadyForGeneration = playerReadyAtMs == 0L
                     if (firstReadyForGeneration) {
                         playerReadyAtMs = readyAtMs
-                    }
-                    val waitingForInitialVideoFrame = !firstFrameRenderedForTesting &&
-                        !audioOnly && player.playWhenReady &&
-                        player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
-                    if (::preparingIndicator.isInitialized && !waitingForInitialVideoFrame) {
-                        preparingIndicator.visibility = View.GONE
                     }
                     if (firstReadyForGeneration) {
                         logPlayer(
@@ -3166,29 +3169,58 @@ override fun onCreate(savedInstanceState: Bundle?) {
         updateSmartSkipButton()
     }
 
-    /**
-     * Show exactly one spinner for the active buffering state. Compose owns it
-     * while its center controls are visible; the native preparation indicator
-     * takes over when those controls are hidden, locked, or in PiP.
-     */
+    // One persistent native spinner; control visibility never swaps its animation.
+    private fun startLoadingIndicator() {
+        handler.removeCallbacks(showRebufferingIndicator)
+        bufferingStartedAt = -1L
+        loadingFinished = false
+        if (::preparingIndicator.isInitialized && preparingIndicator.visibility != View.VISIBLE) {
+            preparingIndicator.visibility = View.VISIBLE
+        }
+    }
+
+    private fun finishLoadingIndicator() {
+        handler.removeCallbacks(showRebufferingIndicator)
+        bufferingStartedAt = -1L
+        loadingFinished = true
+        if (::preparingIndicator.isInitialized && preparingIndicator.visibility != View.GONE) {
+            preparingIndicator.visibility = View.GONE
+            preparingIndicator.clearAnimation()
+            (preparingIndicator.indeterminateDrawable as? android.graphics.drawable.Animatable)?.stop()
+        }
+    }
+
     private fun syncBufferingIndicatorVisibility() {
         if (!::preparingIndicator.isInitialized) return
-        if (errorVisible) {
-            preparingIndicator.visibility = View.GONE
+        if (errorVisible || sessionState != SessionState.ACTIVE) {
+            finishLoadingIndicator()
             return
         }
-        if (!::player.isInitialized || player.playbackState != Player.STATE_BUFFERING) return
-
-        val composeIndicatorVisible =
-            firstFrameRenderedForTesting &&
-                ::composeCenterView.isInitialized &&
-                composeCenterView.visibility == View.VISIBLE &&
-                controlsVisible &&
-                !locked &&
-                !inPictureInPicture
-        val hiddenSeekFeedbackVisible = !controlsVisible && accumulatedSeekSeconds.value != 0L
-        preparingIndicator.visibility =
-            if (composeIndicatorVisible || hiddenSeekFeedbackVisible) View.GONE else View.VISIBLE
+        if (!::player.isInitialized) return
+        val state = player.playbackState
+        if (state == Player.STATE_READY || state == Player.STATE_ENDED || player.isPlaying) {
+            // During episode preflight the old item can still be READY.
+            // The listener handles READY for the newly prepared item.
+            if (loadingFinished || firstFrameRenderedForTesting) finishLoadingIndicator()
+            return
+        }
+        if (state != Player.STATE_BUFFERING) return
+        if (preparingIndicator.visibility == View.VISIBLE) return
+        if (!loadingFinished) {
+            preparingIndicator.visibility = View.VISIBLE
+            return
+        }
+        // Filter brief READY -> BUFFERING -> READY oscillations so a completed
+        // animation cannot flash back on screen. Sustained buffering still shows.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (bufferingStartedAt < 0L) bufferingStartedAt = now
+        val remaining = 250L - (now - bufferingStartedAt)
+        handler.removeCallbacks(showRebufferingIndicator)
+        if (remaining > 0L) {
+            handler.postDelayed(showRebufferingIndicator, remaining)
+        } else {
+            preparingIndicator.visibility = View.VISIBLE
+        }
     }
 
     private fun showTvPicker() {
@@ -4532,7 +4564,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         playbackErrorForGeneration = false
         setMorePanelVisible(false)
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
-        if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
+        startLoadingIndicator()
         logPlayer(
             "PLAYER_RETRY requestId=" + requestId.ifEmpty { "-" } +
                 " attempt=" + retryCount +
@@ -4624,7 +4656,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         setMorePanelVisible(false)
         setLocked(false, persist = true)
         errorVisible = true
-        if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
+        finishLoadingIndicator()
         if (::player.isInitialized) player.pause()
         setControlsVisible(true)
         findViewByTag<View>("reianix_error_text")?.let { (it as TextView).text = userMessageForFailure(resolvedFailureKind, fallback = message) }
@@ -5777,6 +5809,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(showRebufferingIndicator)
         tvPicker?.close()
         tvPicker = null
         dismissFavoriteSceneUi()
@@ -6278,7 +6311,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         errorVisible = false
         findViewByTag<View>("reianix_error_panel")?.visibility = View.GONE
         player.pause()
-        if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.VISIBLE
+        startLoadingIndicator()
         playerView.setKeepContentOnPlayerReset(false)
         player.trackSelectionParameters = tracks
         player.setMediaItem(item, position)
