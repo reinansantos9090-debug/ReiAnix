@@ -360,7 +360,7 @@ object SafScanner {
                             continue
                         }
                         stats.put("files",stats.getInt("files")+1)
-                        if (!isPotentialVideoDocument(name, mime)) continue
+                        if (!isPotentialVideoDocument(name, mime) && !LocalVideoRecognition.needsProbe(name, mime)) continue
                         videoChildren.add(Child(id,name,providerName != null,mime,providerMime != null,size,modified))
                     }
                     val parentUri = runCatching {
@@ -409,6 +409,7 @@ object SafScanner {
                             continue
                         }
                         val childUri=runCatching{DocumentsContract.buildDocumentUriUsingTree(treeUri,child.id)}.getOrElse{stats.put("failedQueries",stats.getInt("failedQueries")+1);errors.put("Não foi possível acessar: "+relative);continue}
+                        if (!isPotentialVideoDocument(child.name, child.mime) && !LocalVideoRecognition.probe(context, childUri)) continue
                         if(!child.mime.startsWith("video/"))stats.put("mimeFallbacks",stats.getInt("mimeFallbacks")+1)
                         if(child.size==null)stats.put("metadataMissingSize",stats.getInt("metadataMissingSize")+1)
                         if(child.modified==null)stats.put("metadataMissingModified",stats.getInt("metadataMissingModified")+1)
