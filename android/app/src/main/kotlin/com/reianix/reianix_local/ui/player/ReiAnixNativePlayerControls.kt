@@ -41,6 +41,10 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -163,6 +167,10 @@ fun ReiAnixNativePlayerControls(
     onSource: () -> Unit,
     onNext: () -> Unit,
     onCast: () -> Unit = {},
+    onAudioTracks: () -> Unit = {},
+    onAspect: () -> Unit = {},
+    onManualSkip: () -> Unit = {},
+    onNotes: () -> Unit = {},
 ) {
     if (!state.controlsVisible || state.errorVisible) return
 
@@ -186,6 +194,10 @@ fun ReiAnixNativePlayerControls(
             onSource = onSource,
             onNext = onNext,
             onCast = onCast,
+            onAudioTracks = onAudioTracks,
+            onAspect = onAspect,
+            onManualSkip = onManualSkip,
+            onNotes = onNotes,
         )
     }
 }
@@ -483,6 +495,10 @@ fun ReiAnixNativePlayerBottomControls(
     onCast: () -> Unit = {},
     onSubtitles: () -> Unit = {},
     onSleepTimer: () -> Unit = {},
+    onAudioTracks: () -> Unit = {},
+    onAspect: () -> Unit = {},
+    onManualSkip: () -> Unit = {},
+    onNotes: () -> Unit = {},
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
@@ -921,6 +937,42 @@ fun ReiAnixNativePlayerBottomControls(
                             iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onSleepTimer,
                             enabled = !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.AUDIO -> PlayerBottomAction(
+                            icon = Icons.Filled.Headphones,
+                            label = "Áudio",
+                            showLabel = !landscape,
+                            contentDescription = "Selecionar faixa de áudio",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            onClick = onAudioTracks,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
+                        PlayerShortcut.ASPECT -> PlayerBottomAction(
+                            icon = Icons.Filled.AspectRatio,
+                            label = "Proporção",
+                            showLabel = !landscape,
+                            contentDescription = "Alternar entre ajustar e preencher o vídeo",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            onClick = onAspect,
+                            enabled = !state.episodeTransitionInProgress && !state.audioOnly,
+                        )
+                        PlayerShortcut.SKIP_OP_ED -> PlayerBottomAction(
+                            icon = Icons.Filled.FastForward,
+                            label = "Pular OP/ED",
+                            showLabel = !landscape,
+                            contentDescription = "Avançar 85 segundos",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            onClick = onManualSkip,
+                            enabled = !state.episodeTransitionInProgress && state.durationMs > 0L,
+                        )
+                        PlayerShortcut.NOTES -> PlayerBottomAction(
+                            icon = Icons.Filled.EditNote,
+                            label = "Anotações",
+                            showLabel = !landscape,
+                            contentDescription = "Criar anotação no tempo atual do episódio",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            onClick = onNotes,
+                            enabled = !state.episodeTransitionInProgress && !state.favoriteClipMode && state.hasRenderedFirstFrame,
                         )
                     }
                 }
