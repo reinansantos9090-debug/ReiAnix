@@ -12,7 +12,11 @@ enum class PlayerShortcut(val key: String, val displayName: String) {
     SPEED("speed", "Velocidade"),
     CAST("cast", "Transmitir"),
     SUBTITLES("subtitles", "Legendas"),
-    TIMER("timer", "Temporizador");
+    TIMER("timer", "Temporizador"),
+    AUDIO("audio", "Áudio"),
+    ASPECT("aspect", "Proporção"),
+    SKIP_OP_ED("skip_op_ed", "Pular OP/ED"),
+    NOTES("notes", "Anotações");
 }
 
 object PlayerShortcutPolicy {
@@ -27,6 +31,7 @@ object PlayerShortcutPolicy {
     val defaultValue = default.joinToString(",") { it.key }
 
     const val MAX_COUNT = 5
+    const val MANUAL_OP_ED_SKIP_MS = 85_000L
 
     // The five-slot bottom row uses 1/64 of screen width as its left inset
     // and 3/64 as its right inset. Its middle column is 1/64 to the left
