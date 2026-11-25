@@ -1,5 +1,11 @@
 package com.reianix.reianix_local.ui.home
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.heading
@@ -135,7 +141,7 @@ fun ReiAnixHomeRoute(
     val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
     val personalListMutationError by viewModel.personalListMutationError.collectAsStateWithLifecycle()
     val visibleContinueWatching = if (continueWatchingEnabled) {
-        continueWatching.take(continueWatchingLimit.coerceAtLeast(0))
+        continueWatching
     } else {
         emptyList()
     }
@@ -143,6 +149,7 @@ fun ReiAnixHomeRoute(
     ReiAnixHomeObservedScreen(
         state = state,
         continueWatching = visibleContinueWatching,
+        continueWatchingLimit = continueWatchingLimit.coerceAtLeast(0),
         personalListMutationError = personalListMutationError,
         onDismissMutationError = viewModel::clearPersonalListMutationError,
         cardSize = cardSize,
@@ -172,6 +179,7 @@ fun ReiAnixHomeRoute(
 private fun ReiAnixHomeObservedScreen(
     state: ReiAnixHomeLibraryUiState,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    continueWatchingLimit: Int = Int.MAX_VALUE,
     personalListMutationError: String?,
     onDismissMutationError: () -> Unit,
     cardSize: String = "medium",
@@ -248,6 +256,7 @@ private fun ReiAnixHomeObservedScreen(
                         scrollHeaderState = if (overlayHeader) null else scrollHeaderState,
                         heroHeader = if (overlayHeader) header else null,
                         continueWatching = continueWatching,
+                        continueWatchingLimit = continueWatchingLimit,
                         cardSize = cardSize,
                         showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
@@ -268,6 +277,7 @@ private fun ReiAnixHomeObservedScreen(
                         scrollHeaderState = if (overlayHeader) null else scrollHeaderState,
                         heroHeader = if (overlayHeader) header else null,
                         continueWatching = continueWatching,
+                        continueWatchingLimit = continueWatchingLimit,
                         cardSize = cardSize,
                         showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
@@ -292,6 +302,7 @@ private fun ReiAnixHomeObservedScreen(
                         scrollHeaderState = if (overlayHeader) null else scrollHeaderState,
                         heroHeader = if (overlayHeader) header else null,
                         continueWatching = continueWatching,
+                        continueWatchingLimit = continueWatchingLimit,
                         cardSize = cardSize,
                         showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
@@ -334,6 +345,7 @@ private fun ReiAnixHomeObservedScreen(
                 scrollHeaderState = if (overlayHeader) null else scrollHeaderState,
                 heroHeader = if (overlayHeader) header else null,
                 continueWatching = continueWatching,
+                continueWatchingLimit = continueWatchingLimit,
                 cardSize = cardSize,
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
@@ -354,6 +366,7 @@ private fun ColumnScope.HomeObservedContent(
     scrollHeaderState: ReiAnixScrollAwareHeaderState?,
     heroHeader: (@Composable () -> Unit)?,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    continueWatchingLimit: Int = Int.MAX_VALUE,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
@@ -367,6 +380,7 @@ private fun ColumnScope.HomeObservedContent(
         scrollHeaderState = scrollHeaderState,
         heroHeader = heroHeader,
         continueWatching = continueWatching,
+        continueWatchingLimit = continueWatchingLimit,
         cardSize = cardSize,
                     showThumbnails = showThumbnails,
                     onOpenDetails = onOpenDetails,
@@ -645,6 +659,7 @@ private fun ColumnScope.HomeContent(
 private fun ColumnScope.HomeReadyContent(
     animes: List<ReiAnixHomeAnimeUiModel>,
     continueWatching: List<ReiAnixContinueWatchingUiModel>,
+    continueWatchingLimit: Int = Int.MAX_VALUE,
     cardSize: String = "medium",
     showThumbnails: Boolean = true,
     onOpenDetails: (Long) -> Unit,
@@ -681,11 +696,68 @@ private fun ColumnScope.HomeReadyContent(
         )
     }
     val genreSections = remember(animes) { buildHomeGenreSections(animes) }
+    val newEpisodes = remember(animes) {
+        val now = System.currentTimeMillis() / 1000.0
+        animes.filter {
+            val timestamp = it.latestUnwatchedEpisodeAt
+            timestamp != null && timestamp in (now - 30 * 86400.0)..now
+        }.distinctBy { it.id }.sortedByDescending { it.latestUnwatchedEpisodeAt }
+    }
+    val airing = remember(animes) {
+        animes.filter { it.status?.trim()?.uppercase(Locale.ROOT)?.replace(' ', '_') in
+            setOf("RELEASING", "CURRENT", "AIRING", "CURRENTLY_AIRING", "EM_LANÇAMENTO", "EM_EXIBIÇÃO") }
+            .distinctBy { it.id }
+    }
+    val topRated = remember(animes) {
+        topHomeItems(animes.asSequence().filter { (it.score ?: 0.0) > 0.0 }.distinctBy { it.id },
+            compareByDescending<ReiAnixHomeAnimeUiModel> { it.score ?: 0.0 })
+    }
+    val recommended = remember(animes) { buildHomeRecommendations(animes) }
+    val visibleContinue = remember(continueWatching, continueWatchingLimit) {
+        continueWatching.take(continueWatchingLimit.coerceAtLeast(0))
+    }
+    var expandedSection by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = expandedSection != null) { expandedSection = null }
     val movies = remember(animes) {
         animes.asSequence()
             .filter { it.mediaKind == ReiAnixMediaKind.MOVIE }
             .distinctBy { it.id }
             .toList()
+    }
+
+    if (expandedSection != null) {
+        val isContinue = expandedSection == "continue"
+        ReiAnixTopBar(
+            title = if (isContinue) "Continuar assistindo" else "Novos episódios",
+            navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+            onNavigationClick = { expandedSection = null },
+        )
+        if (isContinue) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(responsive.homeContinueCardWidth),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(responsive.horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(continueWatching, key = { it.stableKey }) { episode ->
+                    HomeContinueCard(episode, showThumbnails, onWatch)
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(posterCardWidth),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(responsive.horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(newEpisodes, key = { it.stableKey }) { anime ->
+                    HomeMediaCard(anime, posterCardWidth) { onOpenDetails(anime.id) }
+                }
+            }
+        }
+        return
     }
 
     LazyColumn(
@@ -695,7 +767,7 @@ private fun ColumnScope.HomeReadyContent(
             .fillMaxWidth(),
         state = listState,
         contentPadding = PaddingValues(bottom = ReiAnixTokens.Spacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.section),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         if (animes.isNotEmpty()) {
             item(key = "home-hero") {
@@ -708,13 +780,25 @@ private fun ColumnScope.HomeReadyContent(
                 )
             }
         }
-        if (continueWatching.isNotEmpty()) {
+        if (visibleContinue.isNotEmpty()) {
             item(key = "home-section-continue") {
                 HomeContinueSection(
-                    items = continueWatching,
+                    items = visibleContinue,
                     showThumbnails = showThumbnails,
                     onWatch = onWatch,
-                    onSeeAll = onOpenLibrary,
+                    onSeeAll = { expandedSection = "continue" },
+                )
+            }
+        }
+        if (newEpisodes.isNotEmpty()) {
+            item(key = "home-section-new-episodes") {
+                HomeMediaSection(
+                    title = "Novos episódios",
+                    items = newEpisodes.take(12),
+                    cardWidth = posterCardWidth,
+                    onOpenDetails = onOpenDetails,
+                    contentDescription = "Home Novos episódios",
+                    onSeeAll = { expandedSection = "new" },
                 )
             }
         }
@@ -726,7 +810,6 @@ private fun ColumnScope.HomeReadyContent(
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Adicionados recentemente",
-                    onSeeAll = onOpenLibrary,
                 )
             }
         }
@@ -738,7 +821,6 @@ private fun ColumnScope.HomeReadyContent(
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Conteúdo disponível",
-                    onSeeAll = onOpenLibrary,
                 )
             }
         }
@@ -751,7 +833,6 @@ private fun ColumnScope.HomeReadyContent(
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = "Home Recentemente assistidos",
-                    onSeeAll = onOpenLibrary,
                 )
             }
         }
@@ -763,8 +844,18 @@ private fun ColumnScope.HomeReadyContent(
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
                     contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
-                    onSeeAll = onOpenMyList,
                 )
+            }
+        }
+        listOf(
+            Triple("airing", "Animes em lançamento", airing),
+            Triple("rated", "Mais bem avaliados", topRated),
+            Triple("recommended", "Recomendações para você", recommended),
+        ).forEach { (key, title, cards) ->
+            if (cards.isNotEmpty()) {
+                item(key = "home-section-" + key) {
+                    HomeMediaSection(title, cards, posterCardWidth, onOpenDetails, "Home " + title)
+                }
             }
         }
         genreSections.forEach { section ->
@@ -1251,11 +1342,11 @@ private fun buildHomeGenreSections(
         anime.genres.forEach { genre ->
             val title = genre.name.trim()
             if (title.isNotEmpty()) {
-                val key = genre.stableKey
+                val key = ReiAnixGenreNames.key(title)
                 val section = sections.getOrPut(key) {
                     MutableSection(
                         key = key,
-                        title = title,
+                        title = ReiAnixGenreNames.label(title),
                         items = mutableListOf(),
                         seenIds = hashSetOf(),
                     )
@@ -1268,10 +1359,29 @@ private fun buildHomeGenreSections(
     }
 
     return sections.values
-        .filter { it.items.size >= 2 }
-        .sortedBy { it.title.lowercase() }
-        .take(4)
+        .filter { it.items.isNotEmpty() }
+        .sortedBy { com.reianix.reianix_local.data.organize.normalizeReiAnixGenre(it.title) }
         .map { HomeGenreSection(it.key, it.title, it.items.toList()) }
+}
+
+private fun buildHomeRecommendations(items: List<ReiAnixHomeAnimeUiModel>): List<ReiAnixHomeAnimeUiModel> {
+    val liked = items.filter { it.favorite || it.isWatching || (it.lastPlayedAt ?: 0.0) > 0.0 }
+    val likedIds = liked.mapTo(hashSetOf()) { it.id }
+    val genreWeights = mutableMapOf<String, Int>()
+    liked.forEach { anime ->
+        anime.genres.map { ReiAnixGenreNames.key(it.name) }.distinct().forEach { key ->
+            genreWeights[key] = (genreWeights[key] ?: 0) + if (anime.favorite) 2 else 1
+        }
+    }
+    if (genreWeights.isEmpty()) return emptyList()
+    val candidates = items.asSequence().filter { it.id !in likedIds && it.availableContentCount > 0 }
+        .distinctBy { it.id }
+        .map { anime ->
+            anime to anime.genres.map { ReiAnixGenreNames.key(it.name) }.distinct().sumOf { genreWeights[it] ?: 0 }
+        }.filter { it.second > 0 }
+    return candidates.sortedWith(compareByDescending<Pair<ReiAnixHomeAnimeUiModel, Int>> { it.second }
+        .thenByDescending { it.first.score ?: 0.0 }.thenBy { it.first.id })
+        .take(12).map { it.first }.toList()
 }
 
 private data class HomeGenreSection(
