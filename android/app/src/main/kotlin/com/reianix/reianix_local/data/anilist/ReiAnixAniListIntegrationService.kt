@@ -420,12 +420,37 @@ class ReiAnixAniListIntegrationService(
             // All returned candidates are evaluated against every stored title.
             // The original name is a preference, not a mandatory match.
             val repairClient = if (automaticKitsuUpgrade) automaticRepairClient else client
-            val candidates = when (val result = repairClient.searchAnimeAliases(terms)) {
+            var candidates = when (val result = repairClient.searchAnimeAliases(terms)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
-            val ranked = withContext(Dispatchers.Default) {
+            var ranked = withContext(Dispatchers.Default) {
                 rankExplicitAniListRepair(local, anchor, candidates, evidence)
+            }
+            // If the expected edition is absent, follow only explicit AniList
+            // relations. Never substitute the first season as a fallback.
+            if ((expectedEdition.season != null || expectedEdition.part != null) &&
+                (ranked.firstOrNull()?.score ?: 0.0) < EXPLICIT_REPAIR_MIN_SCORE) {
+                for (followUp in 0 until 2) {
+                    val relatedIds = repairRelatedEditionIds(candidates, titles, expectedEdition)
+                    if (relatedIds.isEmpty()) break
+                    if (automaticKitsuUpgrade) {
+                        delay(KITSU_UPGRADE_INTERVAL_MS)
+                        if (!mayUpgrade()) return AniListResult.Failure(
+                            AniListError.InvalidRequest("Automatic upgrade deferred."),
+                        )
+                    }
+                    val additional = when (val result = repairClient.lookupRepairRelatedAnime(relatedIds)) {
+                        is AniListResult.Success -> result.value
+                        is AniListResult.Failure -> return result
+                    }
+                    if (additional.isEmpty()) break
+                    candidates = (candidates + additional).distinctBy { it.id }
+                    ranked = withContext(Dispatchers.Default) {
+                        rankExplicitAniListRepair(local, anchor, candidates, evidence)
+                    }
+                    if ((ranked.firstOrNull()?.score ?: 0.0) >= EXPLICIT_REPAIR_MIN_SCORE) break
+                }
             }
             Log.d(TAG, "Explicit AniList repair animeId=$animeId queries=${terms.size} returned=${candidates.size} " +
                 "music=${candidates.count { it.format.equals("MUSIC", true) }} ranked=${ranked.size} " +
@@ -2155,7 +2180,9 @@ private fun repairEditionFormat(value: String): String? = when {
 
 /** Bare suffixes are accepted on titles/folders, never raw episode filenames. */
 internal fun repairEdition(value: String, allowBare: Boolean = true): RepairEdition {
-    val plain = repairPlain(value)
+    // NFKD turns ½ into 1⁄2: the fraction belongs to the franchise name.
+    val plain = repairPlain(java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKD)
+        .replace(Regex("\\d+\\s*[/⁄]\\s*\\d+"), " fraction "))
     // In "Season 2 Part 1", the 2 belongs to Season, not to Part.
     // In "3rd Season 2nd Part", both ordinals belong to the suffix markers.
     val seasonSuffixes = repairSeasonSuffix.findAll(plain).toList()
@@ -2293,6 +2320,34 @@ internal fun editionAwareRepairSearchTerms(titles: List<String>, lookupTitle: St
     val shortPart = edition.part?.let { "$short Part $it" } ?: short
     return (listOf(original, full, shortPart, numbered, short, base) + existing)
         .filter(::usefulRepairTitle).distinctBy(::repairPlain).take(8)
+}
+
+/** Follow only related candidates connected to plausible franchise names. */
+internal fun repairRelatedEditionIds(
+    candidates: List<AniListAnime>,
+    localTitles: List<String>,
+    expected: RepairEdition,
+): List<Int> {
+    val known = candidates.map { it.id }.toSet()
+    val words = localTitles.flatMap { repairWords(it) }.toSet()
+    if (words.isEmpty()) return emptyList()
+    fun overlap(names: List<String>): Int = names.maxOfOrNull { name ->
+        repairWords(name).intersect(words).size
+    } ?: 0
+    return candidates.filter { candidate ->
+        overlap(listOfNotNull(candidate.titleRomaji, candidate.titleEnglish, candidate.titleNative) +
+            candidate.synonyms) > 0
+    }.flatMap { it.repairRelations.orEmpty() }
+        .filter { it.id !in known && it.format in repairSeriesFormats }
+        .distinctBy { it.id }
+        .sortedWith(compareByDescending<AniListRepairRelation> { relation ->
+            relation.titles.any { title ->
+                val edition = repairEdition(title)
+                (expected.season == null || edition.season == expected.season) &&
+                    (expected.part == null || edition.part == expected.part)
+            }
+        }.thenByDescending { overlap(it.titles) })
+        .take(8).map { it.id }
 }
 
 /** Revisit previous automatic conversions if original local edition evidence disagrees. */
