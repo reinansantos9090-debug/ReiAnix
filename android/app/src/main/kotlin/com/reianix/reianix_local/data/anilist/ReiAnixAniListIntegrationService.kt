@@ -402,6 +402,9 @@ class ReiAnixAniListIntegrationService(
         evidence: ExplicitAniListLocalEvidence,
         mayUpgrade: suspend () -> Boolean,
     ): Int? {
+        // Provisional Kitsu metadata cannot satisfy the fast-path validation.
+        // Avoid adding an AniMap request for such items.
+        if (!local.metadataSource.equals("kitsu", true)) return null
         val ids = try {
             library.getExternalCatalogIds(local.id)
         } catch (cancelled: CancellationException) {
@@ -439,6 +442,20 @@ class ReiAnixAniListIntegrationService(
         val verified = ReiAnixCatalogIdentityMatcher.evaluateMapping(local.id, identity, mapping, anchor).value
             ?: return null
         return verified.externalIds.aniListId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.toInt()
+    }
+
+    // Called only within the automatic pass mutex. The normal AniList client
+    // and its timing are not changed. Count the interval from request start
+    // rather than adding it after ranking, downloading and publishing artwork.
+    private suspend fun <T> automaticRepairRequest(
+        mayUpgrade: suspend () -> Boolean,
+        request: suspend () -> AniListResult<T>,
+    ): AniListResult<T> {
+        val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        if (pause > 0L) delay(pause)
+        if (!mayUpgrade()) return AniListResult.Failure(AniListError.InvalidRequest("Automatic upgrade deferred."))
+        kitsuUpgradeNotBeforeMs = android.os.SystemClock.elapsedRealtime() + KITSU_UPGRADE_INTERVAL_MS
+        return request()
     }
 
     private suspend fun repairMetadataAndArtworkInternal(
@@ -486,7 +503,7 @@ class ReiAnixAniListIntegrationService(
                     if (!mayUpgrade()) return AniListResult.Failure(
                         AniListError.InvalidRequest("Automatic upgrade deferred."),
                     )
-                    when (val lookup = repairClient.lookupRepairRelatedAnime(listOf(verifiedId))) {
+                    when (val lookup = automaticRepairRequest(mayUpgrade) { repairClient.lookupRepairRelatedAnime(listOf(verifiedId)) }) {
                         is AniListResult.Success -> {
                             val remote = lookup.value.singleOrNull { it.id == verifiedId }
                             if (remote != null && withContext(Dispatchers.Default) {
@@ -499,15 +516,11 @@ class ReiAnixAniListIntegrationService(
                                 (lookup.error is AniListError.Http && lookup.error.statusCode >= 500)) return lookup
                         }
                     }
-                    if (direct == null) {
-                        delay(KITSU_UPGRADE_INTERVAL_MS)
-                        if (!mayUpgrade()) return AniListResult.Failure(
-                            AniListError.InvalidRequest("Automatic upgrade deferred."),
-                        )
-                    }
                 }
             }
-            var candidates = direct?.let { listOf(it) } ?: when (val result = repairClient.searchAnimeAliases(terms)) {
+            var candidates = direct?.let { listOf(it) } ?: when (val result =
+                if (automaticKitsuUpgrade) automaticRepairRequest(mayUpgrade) { repairClient.searchAnimeAliases(terms) }
+                else repairClient.searchAnimeAliases(terms)) {
                 is AniListResult.Success -> result.value
                 is AniListResult.Failure -> return result
             }
@@ -522,13 +535,9 @@ class ReiAnixAniListIntegrationService(
                 for (followUp in 0 until 2) {
                     val relatedIds = repairRelatedEditionIds(candidates, titles, expectedEdition)
                     if (relatedIds.isEmpty()) break
-                    if (automaticKitsuUpgrade) {
-                        delay(KITSU_UPGRADE_INTERVAL_MS)
-                        if (!mayUpgrade()) return AniListResult.Failure(
-                            AniListError.InvalidRequest("Automatic upgrade deferred."),
-                        )
-                    }
-                    val additional = when (val result = repairClient.lookupRepairRelatedAnime(relatedIds)) {
+                    val additional = when (val result =
+                        if (automaticKitsuUpgrade) automaticRepairRequest(mayUpgrade) { repairClient.lookupRepairRelatedAnime(relatedIds) }
+                        else repairClient.lookupRepairRelatedAnime(relatedIds)) {
                         is AniListResult.Success -> result.value
                         is AniListResult.Failure -> return result
                     }
@@ -595,18 +604,14 @@ class ReiAnixAniListIntegrationService(
         suspend fun awaitIdle() {
             while (true) {
                 currentCoroutineContext().ensureActive()
-                val pause = (kitsuUpgradeNotBeforeMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-                if (pause > 0) {
-                    delay(pause)
-                    continue
-                }
-                if (ordinaryWorkIdle()) {
-                    delay(750L)
-                    if (ordinaryWorkIdle()) return
-                } else delay(500L)
+                if (ordinaryWorkIdle()) return
+                delay(500L)
             }
         }
 
+        // Retain the startup quiet period, but do not repeat it twice per anime.
+        awaitIdle()
+        delay(750L)
         awaitIdle()
         val attempts = readPersistedArtworkDiscoveryAttemptTimes(library.database, KITSU_UPGRADE_ATTEMPT_PREFIX)
         val previousUpgradeIds = readPersistedArtworkDiscoveryAttemptTimes(library.database, LEGACY_KITSU_UPGRADE_ATTEMPT_PREFIX).keys
@@ -657,7 +662,6 @@ class ReiAnixAniListIntegrationService(
                     stillIdle
                 }
                 val now = android.os.SystemClock.elapsedRealtime()
-                kitsuUpgradeNotBeforeMs = now + KITSU_UPGRADE_INTERVAL_MS
                 if (result is AniListResult.Failure && result.error is AniListError.RateLimited) {
                     val seconds = (result.error as AniListError.RateLimited).retryAfterSeconds
                         ?.coerceIn(1L, 21_600L) ?: 60L
@@ -2502,7 +2506,8 @@ internal fun isSafeDirectAutomaticRepair(
     if (!local.format.isNullOrBlank() && !local.format.equals(candidate.format, true)) return false
     if (!local.season.isNullOrBlank() && !candidate.season.isNullOrBlank() &&
         !local.season.equals(candidate.season, true)) return false
-    if ((candidate.episodes ?: 0) > 0 && evidence.episodeCount > candidate.episodes!!) return false
+    val remoteEpisodes = candidate.episodes
+    if (remoteEpisodes != null && remoteEpisodes > 0 && evidence.episodeCount > remoteEpisodes) return false
     val localDuration = evidence.durationMinutes
     val remoteDuration = candidate.durationMinutes
     if (localDuration != null && remoteDuration != null && localDuration >= 5 &&
