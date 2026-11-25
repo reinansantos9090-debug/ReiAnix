@@ -109,7 +109,7 @@ internal fun settingsIcon(key: String): ImageVector = when (key) {
     "audio.preferred_subtitle_language" -> Icons.Filled.Language
     "audio.subtitle_scale" -> Icons.Filled.FormatSize
     "audio.subtitle_bottom_padding" -> Icons.Filled.VerticalAlignBottom
-    "audio.subtitle_color" -> Icons.Filled.Palette
+    "audio.subtitle_color" -> Icons.Filled.ColorLens
     "audio.subtitle_font" -> Icons.Filled.FontDownload
     "audio.subtitle_embedded_style" -> Icons.Filled.FormatColorText
     "audio.subtitles" -> Icons.Filled.Subtitles
