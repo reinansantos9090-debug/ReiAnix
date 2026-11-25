@@ -1708,6 +1708,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onRenderedFirstFrame() {
             if (!isCurrent()) return
+            // Hide the native spinner before batched events or telemetry can delay it.
+            firstFrameRenderedForTesting = true
+            if (::preparingIndicator.isInitialized) preparingIndicator.visibility = View.GONE
             logPlayer(
                 "FIRST_FRAME_CALLBACK requestId=" + requestId.ifEmpty { "-" } +
                     " generation=" + playerGeneration +
@@ -1744,6 +1747,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         override fun onPlaybackStateChanged(state: Int) {
             if (!isCurrent()) return
+            // End rebuffering immediately, even with hidden or locked controls.
+            // Initial video preparation still waits for the first rendered frame.
+            if (state == Player.STATE_READY || state == Player.STATE_ENDED) {
+                val waitingForInitialVideoFrame = state == Player.STATE_READY &&
+                    !firstFrameRenderedForTesting && !audioOnly && player.playWhenReady &&
+                    player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
+                if (::preparingIndicator.isInitialized && !waitingForInitialVideoFrame) {
+                    preparingIndicator.visibility = View.GONE
+                }
+            }
             val clipSession = favoriteClipSession
             val restoredEpisode = (state == Player.STATE_READY || state == Player.STATE_ENDED) &&
                 clipSession?.restoring == true &&
@@ -1780,12 +1793,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (firstReadyForGeneration) {
                         playerReadyAtMs = readyAtMs
                     }
-                    val waitingForInitialVideoFrame = !firstFrameRenderedForTesting &&
-                        !audioOnly && player.playWhenReady &&
-                        player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
-                    if (::preparingIndicator.isInitialized && !waitingForInitialVideoFrame) {
-                        preparingIndicator.visibility = View.GONE
-                    }
                     if (firstReadyForGeneration) {
                         logPlayer(
                             "PLAYER_READY requestId=" + requestId.ifEmpty { "-" } +
@@ -1805,9 +1812,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     if (episodeChangePending && (nextTransitionActive || previousTransitionActive)) {
                         setTransitionPhase(TransitionPhase.READY, "media3_ready")
                     }
-                    // READY means Media3 prepared the media. The preparation indicator
-                    // is no longer needed; first-frame telemetry remains independently
-                    // measured by EVENT_RENDERED_FIRST_FRAME.
+                    // READY ends rebuffering. Initial video preparation ends at the
+                    // first-frame callback; telemetry remains in EVENT_RENDERED_FIRST_FRAME.
                     if (!openedReported && favoriteClipSession == null) {
                         openedReported = true
                         val opened = publishLegacyPlayerEvent(
@@ -3177,7 +3183,19 @@ override fun onCreate(savedInstanceState: Bundle?) {
             preparingIndicator.visibility = View.GONE
             return
         }
-        if (!::player.isInitialized || player.playbackState != Player.STATE_BUFFERING) return
+        if (!::player.isInitialized) return
+        val playbackState = player.playbackState
+        if (playbackState != Player.STATE_BUFFERING) {
+            // Never leave a stale rebuffering spinner visible. Keep initial
+            // preparation visible during preflight and until the first frame.
+            val readyWithoutVideoWait = playbackState == Player.STATE_READY &&
+                playerReadyAtMs > 0L && (audioOnly || !player.playWhenReady ||
+                    !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO))
+            if (firstFrameRenderedForTesting || playbackState == Player.STATE_ENDED || readyWithoutVideoWait) {
+                preparingIndicator.visibility = View.GONE
+            }
+            return
+        }
 
         val composeIndicatorVisible =
             firstFrameRenderedForTesting &&
