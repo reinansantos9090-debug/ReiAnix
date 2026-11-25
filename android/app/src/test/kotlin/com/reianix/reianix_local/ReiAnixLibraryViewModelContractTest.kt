@@ -26,18 +26,39 @@ class ReiAnixLibraryViewModelContractTest {
         queue.enqueue(2L, false)
         queue.enqueue(3L, false)
         queue.enqueue(2L, false)
-        assertEquals(EpisodeThumbnailQueue.Batch(1L, false), queue.poll())
+        val first = requireNotNull(queue.poll())
+        assertEquals(EpisodeThumbnailQueue.Batch(1L, false), first)
 
         queue.enqueue(3L, true)
         queue.enqueue(3L, false)
-        assertTrue(queue.hasPriorityOtherThan(1L))
+        assertTrue(queue.shouldYield(first))
         assertTrue(queue.isExplicit(3L))
         // Automatic work yields after the current episode and resumes later.
-        queue.enqueue(1L, false)
-        assertEquals(EpisodeThumbnailQueue.Batch(3L, true), queue.poll())
+        queue.defer(first)
+        val explicit = requireNotNull(queue.poll())
+        assertEquals(EpisodeThumbnailQueue.Batch(3L, true, 1L), explicit)
         assertEquals(EpisodeThumbnailQueue.Batch(2L, false), queue.poll())
         assertEquals(EpisodeThumbnailQueue.Batch(1L, false), queue.poll())
         assertFalse(queue.contains(1L))
+        assertNull(queue.poll())
+    }
+
+    @Test
+    fun newlyOpenedAnimePreemptsAnEarlierExplicitBatchButNotViceVersa() {
+        val queue = EpisodeThumbnailQueue()
+        queue.enqueue(1L, true)
+        queue.enqueue(2L, true)
+        val second = requireNotNull(queue.poll())
+        assertEquals(2L, second.animeId)
+        assertFalse(queue.shouldYield(second))
+        queue.enqueue(3L, true)
+        assertTrue(queue.shouldYield(second))
+        queue.defer(second)
+        val third = requireNotNull(queue.poll())
+        assertEquals(3L, third.animeId)
+        assertFalse(queue.shouldYield(third))
+        assertEquals(1L, queue.poll()?.animeId)
+        assertEquals(EpisodeThumbnailQueue.Batch(2L, false), queue.poll())
         assertNull(queue.poll())
     }
 
