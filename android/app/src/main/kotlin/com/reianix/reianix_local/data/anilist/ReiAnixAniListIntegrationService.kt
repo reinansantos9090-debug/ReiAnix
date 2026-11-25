@@ -712,12 +712,12 @@ class ReiAnixAniListIntegrationService(
             return 0
         }
 
-        // Four independent repairs on normal devices; two on smaller heaps.
+        // Six independent repairs on normal devices; two on smaller heaps.
         // Each uses the existing two-image preparation and atomic commit.
         // The producer can prefetch the next group while workers download.
         // Refill an available slot immediately, rather than waiting for the
         // slowest anime in a group. The completion buffer is bounded by slots.
-        val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 4 else 2
+        val parallelism = if (Runtime.getRuntime().maxMemory() >= 192L * 1024L * 1024L) 6 else 2
         coroutineScope {
             val completions = Channel<Int>(parallelism)
             var upgraded = 0
