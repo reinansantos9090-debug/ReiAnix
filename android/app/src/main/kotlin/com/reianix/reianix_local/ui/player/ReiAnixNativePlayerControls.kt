@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -166,6 +167,7 @@ fun ReiAnixNativePlayerControls(
     onCast: () -> Unit = {},
     onAspect: () -> Unit = {},
     onManualSkip: () -> Unit = {},
+    onAudioTracks: () -> Unit = {},
 ) {
     if (!state.controlsVisible || state.errorVisible) return
 
@@ -191,6 +193,7 @@ fun ReiAnixNativePlayerControls(
             onCast = onCast,
             onAspect = onAspect,
             onManualSkip = onManualSkip,
+            onAudioTracks = onAudioTracks,
         )
     }
 }
@@ -488,6 +491,7 @@ fun ReiAnixNativePlayerBottomControls(
     onCast: () -> Unit = {},
     onAspect: () -> Unit = {},
     onManualSkip: () -> Unit = {},
+    onAudioTracks: () -> Unit = {},
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val safeBottom = with(LocalDensity.current) { state.safeBottomPx.toDp() }
@@ -995,11 +999,21 @@ fun ReiAnixNativePlayerBottomControls(
                             onClick = onPlaybackSpeed,
                             enabled = !state.episodeTransitionInProgress,
                         )
+                        PlayerShortcut.AUDIO -> PlayerBottomAction(
+                            firstPortraitSlot = firstPortraitSlot,
+                            icon = Icons.Filled.Equalizer,
+                            label = "Trilhas sonoras",
+                            showLabel = !landscape,
+                            contentDescription = "Selecionar trilha sonora",
+                            iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
+                            onClick = onAudioTracks,
+                            enabled = !state.episodeTransitionInProgress,
+                        )
                         PlayerShortcut.ASPECT -> PlayerBottomAction(
                             icon = Icons.Filled.AspectRatio,
                             label = "Proporção",
                             showLabel = !landscape,
-                            contentDescription = "Alternar entre ajustar e preencher o vídeo",
+                            contentDescription = "Alternar entre ajustar, esticar e zoom. Atual: " + state.aspectLabel,
                             // Normalize the wider rectangular artwork in portrait only.
                             // Keep the same centered 48dp hit target and weighted slot.
                             iconVisualScale = (if (fiveShortcuts) 0.88f else 1f) *
