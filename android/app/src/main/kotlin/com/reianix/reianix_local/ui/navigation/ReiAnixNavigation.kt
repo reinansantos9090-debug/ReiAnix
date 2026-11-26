@@ -36,6 +36,8 @@ import com.reianix.reianix_local.ui.home.ReiAnixHomeRoute
 import com.reianix.reianix_local.ui.profile.ReiAnixProfileRoute
 import com.reianix.reianix_local.ui.theme.ReiAnixWallpaperScope
 import com.reianix.reianix_local.ui.library.ReiAnixLibraryRoute
+import com.reianix.reianix_local.ui.motion.reiAnixPrimaryTabEnterTransition
+import com.reianix.reianix_local.ui.motion.reiAnixPrimaryTabExitTransition
 import com.reianix.reianix_local.ui.motion.reiAnixScreenEnterTransition
 import com.reianix.reianix_local.ui.motion.reiAnixScreenExitTransition
 import com.reianix.reianix_local.ui.motion.reiAnixDetailsEnterTransition
@@ -492,7 +494,9 @@ fun ReiAnixNavigationHost(
                 )) {
                     ReiAnixRouteAnimation.NONE -> EnterTransition.None
                     ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsEnterTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenEnterTransition()
+                    ReiAnixRouteAnimation.STANDARD -> if (reiAnixIsPrimaryTabTransition(
+                        initialState.destination.route, targetState.destination.route,
+                    )) reiAnixPrimaryTabEnterTransition() else reiAnixScreenEnterTransition()
                 }
             },
             exitTransition = exit@{
@@ -513,7 +517,9 @@ fun ReiAnixNavigationHost(
                 )) {
                     ReiAnixRouteAnimation.NONE -> ExitTransition.None
                     ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsExitTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenExitTransition()
+                    ReiAnixRouteAnimation.STANDARD -> if (reiAnixIsPrimaryTabTransition(
+                        initialState.destination.route, targetState.destination.route,
+                    )) reiAnixPrimaryTabExitTransition() else reiAnixScreenExitTransition()
                 }
             },
             popEnterTransition = {
@@ -524,7 +530,9 @@ fun ReiAnixNavigationHost(
                 )) {
                     ReiAnixRouteAnimation.NONE -> EnterTransition.None
                     ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsPopEnterTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenPopEnterTransition()
+                    ReiAnixRouteAnimation.STANDARD -> if (reiAnixIsPrimaryTabTransition(
+                        initialState.destination.route, targetState.destination.route,
+                    )) reiAnixPrimaryTabEnterTransition(pop = true) else reiAnixScreenPopEnterTransition()
                 }
             },
             popExitTransition = {
@@ -535,7 +543,9 @@ fun ReiAnixNavigationHost(
                 )) {
                     ReiAnixRouteAnimation.NONE -> ExitTransition.None
                     ReiAnixRouteAnimation.DETAILS -> reiAnixDetailsPopExitTransition()
-                    ReiAnixRouteAnimation.STANDARD -> reiAnixScreenPopExitTransition()
+                    ReiAnixRouteAnimation.STANDARD -> if (reiAnixIsPrimaryTabTransition(
+                        initialState.destination.route, targetState.destination.route,
+                    )) reiAnixPrimaryTabExitTransition(pop = true) else reiAnixScreenPopExitTransition()
                 }
             },
         ) {
