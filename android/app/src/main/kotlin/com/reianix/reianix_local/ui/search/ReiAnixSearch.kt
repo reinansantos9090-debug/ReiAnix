@@ -1,6 +1,9 @@
 package com.reianix.reianix_local.ui.search
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
+import com.reianix.reianix_local.ui.motion.LocalReiAnixDestinationActive
+import com.reianix.reianix_local.ui.motion.LocalReiAnixDestinationSettled
+import androidx.compose.ui.focus.onFocusChanged
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.background
@@ -234,8 +237,24 @@ fun ReiAnixSearchScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    LaunchedEffect(focusRequester) {
-        focusRequester.requestFocus()
+    val destinationActive = LocalReiAnixDestinationActive.current
+    val destinationSettled = LocalReiAnixDestinationSettled.current
+    var initialFocusRequested by remember { mutableStateOf(false) }
+    var searchFieldFocused by remember { mutableStateOf(false) }
+
+    // Let the route's visual transition finish before the keyboard/focus can
+    // resize the incoming screen. An outgoing entry must never regain focus.
+    LaunchedEffect(destinationActive, destinationSettled) {
+        if (!destinationActive) {
+            initialFocusRequested = false
+            if (searchFieldFocused) {
+                keyboardController?.hide()
+                focusManager.clearFocus(force = true)
+            }
+        } else if (destinationSettled && !initialFocusRequested) {
+            initialFocusRequested = true
+            focusRequester.requestFocus()
+        }
     }
 
     Column(
@@ -281,7 +300,8 @@ fun ReiAnixSearchScreen(
                 .padding(
                     horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
                 )
-                .focusRequester(focusRequester),
+                .focusRequester(focusRequester)
+                .onFocusChanged { searchFieldFocused = it.isFocused },
             placeholder = {
                 Text(
                     if (source == "anilist") {
