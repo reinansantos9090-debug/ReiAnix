@@ -875,9 +875,6 @@ private fun ColumnScope.HomeReadyContent(
                 )
             }
         }
-        if (animes.isNotEmpty()) homeAds.banner?.let { ad ->
-            item(key = "home-banner-ad") { HomeBannerAd(ad) }
-        }
         if (movies.isNotEmpty()) {
             item(key = "home-section-movies") {
                 HomeMediaSection(
@@ -888,6 +885,9 @@ private fun ColumnScope.HomeReadyContent(
                     contentDescription = "Home Filmes",
                 )
             }
+        }
+        if (animes.isNotEmpty()) homeAds.banner?.let { ad ->
+            item(key = "home-banner-ad") { HomeBannerAd(ad) }
         }
     }
 }
