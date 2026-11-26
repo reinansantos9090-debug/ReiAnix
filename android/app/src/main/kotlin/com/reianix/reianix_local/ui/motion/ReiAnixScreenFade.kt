@@ -4,6 +4,8 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,11 +17,36 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 
-private const val SCREEN_TRANSITION_MILLIS = 150
+internal const val SCREEN_TRANSITION_MILLIS = 150
 private const val SCREEN_TRANSITION_SCALE = 0.9f
+
+// The primary tabs use a complementary, front-loaded fade: the old content
+// loses opacity sooner instead of remaining readable over the new screen.
+// Both layers begin on the same frame and use the same 150 ms clock/curve.
+internal fun reiAnixPrimaryTabProgress(fraction: Float): Float =
+    1f - (1f - fraction) * (1f - fraction)
+
+internal fun <T> reiAnixPrimaryTabMotionSpec(): TweenSpec<T> = tween(
+    durationMillis = SCREEN_TRANSITION_MILLIS,
+    easing = Easing { reiAnixPrimaryTabProgress(it) },
+)
+
+internal fun reiAnixPrimaryTabEnterTransition(pop: Boolean = false): EnterTransition =
+    fadeIn(animationSpec = reiAnixPrimaryTabMotionSpec()) +
+        scaleIn(animationSpec = reiAnixPrimaryTabMotionSpec(), initialScale = if (pop) 0.96f else SCREEN_TRANSITION_SCALE)
+
+internal fun reiAnixPrimaryTabExitTransition(pop: Boolean = false): ExitTransition =
+    fadeOut(animationSpec = reiAnixPrimaryTabMotionSpec()) +
+        scaleOut(animationSpec = reiAnixPrimaryTabMotionSpec(), targetScale = if (pop) 0.96f else SCREEN_TRANSITION_SCALE)
+
+// A route supplies its actual NavHost transition state. Standalone surfaces
+// (including the native player options) retain their existing internal motion.
+internal val LocalReiAnixDestinationActive = compositionLocalOf { true }
+internal val LocalReiAnixDestinationSettled = compositionLocalOf { true }
 
 private fun screenTransitionSpec() = tween<Float>(
     durationMillis = SCREEN_TRANSITION_MILLIS,
@@ -72,7 +99,7 @@ internal fun reiAnixDetailsPopExitTransition(): ExitTransition =
 @Composable
 internal fun Modifier.reiAnixScreenFade(destination: Any?): Modifier {
     val lastDestination = remember { mutableStateOf(destination) }
-    val animate = ReiAnixMotionPolicy.systemAnimationsEnabled()
+    val animate = ReiAnixMotionPolicy.systemAnimationsEnabled() && LocalReiAnixDestinationSettled.current
     val progress = remember(destination, animate) {
         Animatable(if (animate && lastDestination.value != destination) 0f else 1f)
     }
@@ -80,6 +107,7 @@ internal fun Modifier.reiAnixScreenFade(destination: Any?): Modifier {
     LaunchedEffect(progress) {
         if (progress.value < 1f) progress.animateTo(1f, screenTransitionSpec())
     }
+    if (!animate) return this
     return graphicsLayer {
         val fraction = progress.value
         val scale = SCREEN_TRANSITION_SCALE + (1f - SCREEN_TRANSITION_SCALE) * fraction
