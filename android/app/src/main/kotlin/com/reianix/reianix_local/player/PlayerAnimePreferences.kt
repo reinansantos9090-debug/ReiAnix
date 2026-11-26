@@ -2,6 +2,33 @@ package com.reianix.reianix_local.player
 
 import org.json.JSONObject
 
+/** Three fixed aspect modes. Keep the legacy "fill" key for proportional zoom. */
+enum class PlayerAspectMode(val setting: String, val label: String) {
+    FIT("fit", "Ajustar"),
+    STRETCH("stretch", "Esticar"),
+    ZOOM("fill", "Zoom");
+
+    fun next(): PlayerAspectMode = when (this) {
+        FIT -> STRETCH
+        STRETCH -> ZOOM
+        ZOOM -> FIT
+    }
+
+    companion object {
+        fun fromSetting(value: String?): PlayerAspectMode = when (value) {
+            "stretch" -> STRETCH
+            "fill", "zoom" -> ZOOM
+            else -> FIT
+        }
+
+        fun fromLabel(value: String?): PlayerAspectMode = when (value) {
+            "Esticar" -> STRETCH
+            "Zoom", "Preencher" -> ZOOM
+            else -> FIT
+        }
+    }
+}
+
 /**
  * One opt-in record per anime in the existing SQLite preferences table.
  * Never store the Media3 track group's runtime index: that index changes
@@ -80,7 +107,7 @@ data class PlayerAnimePreferences(
             if (obj.optInt("v") != 1) return@runCatching null
             PlayerAnimePreferences(
                 speed = obj.optDouble("speed", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(0.5f, 2f) ?: 1f,
-                aspect = obj.optString("aspect").takeIf { it == "fill" } ?: "fit",
+                aspect = PlayerAspectMode.fromSetting(obj.optString("aspect")).setting,
                 autoplay = obj.optBoolean("autoplay", true),
                 zoomEnabled = obj.optBoolean("zoom", true),
                 audioOnly = obj.optBoolean("audioOnly", false),
