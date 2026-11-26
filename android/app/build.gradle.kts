@@ -9,6 +9,17 @@ val reianixEnableR8 = providers.gradleProperty("reianixEnableR8")
     .map { it.toBoolean() }
     .getOrElse(true)
 
+// Monetization is deliberately opt-in for production. PR/benchmark/debug use
+// Google sample ad IDs and a local simulated purchase, never a real charge.
+val billingRequested = providers.gradleProperty("reianixEnablePlayBilling").orNull == "true"
+val adsRequested = providers.gradleProperty("reianixEnableLiveAds").orNull == "true"
+val productionAllowed = System.getenv("GITHUB_EVENT_NAME") != "pull_request"
+val billingEnabled = billingRequested && productionAllowed
+val liveAds = adsRequested && billingEnabled
+val billingPublicKey = providers.gradleProperty("reianixBillingPublicKey").orNull.orEmpty().trim()
+require(!billingEnabled || billingPublicKey.matches(Regex("[A-Za-z0-9+/=]+"))) {
+    "Provide the Play Console RSA billing public key before enabling real billing."
+}
 android {
     namespace = "com.reianix.reianix_local"
     compileSdk = 36
@@ -34,6 +45,10 @@ android {
             "AniList client ID must be numeric."
         }
         buildConfigField("String", "ANILIST_CLIENT_ID", "\"$aniListClientId\"")
+        buildConfigField("boolean", "MONETIZATION_PREVIEW", "true")
+        buildConfigField("boolean", "MONETIZATION_LIVE_ADS", "false")
+        buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"\"")
+        manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -55,6 +70,10 @@ android {
 
     buildTypes {
         getByName("release") {
+            buildConfigField("boolean", "MONETIZATION_PREVIEW", (!billingEnabled).toString())
+            buildConfigField("boolean", "MONETIZATION_LIVE_ADS", liveAds.toString())
+            buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"$billingPublicKey\"")
+            manifestPlaceholders["admobAppId"] = if (liveAds) "ca-app-pub-5427640733122650~3098200260" else "ca-app-pub-3940256099942544~3347511713"
             // CI disables R8 for PR preview builds and keeps it enabled on main releases.
             isMinifyEnabled = reianixEnableR8
             isShrinkResources = reianixEnableR8
@@ -81,6 +100,10 @@ android {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
+            buildConfigField("boolean", "MONETIZATION_PREVIEW", "true")
+            buildConfigField("boolean", "MONETIZATION_LIVE_ADS", "false")
+            buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"\"")
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
             matchingFallbacks += listOf("release")
         }
     }
@@ -126,6 +149,9 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     // the existing Compose/Navigation/Lifecycle/Media3 stack without new abstractions.
 dependencies {
     // Native AndroidX/Compose dependencies used by the installed application.
+    implementation("com.google.android.gms:play-services-ads:24.9.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+    implementation("com.android.billingclient:billing:8.3.0")
     implementation("androidx.activity:activity-ktx:1.13.0")
     // Compose line compatible with the existing compileSdk 36 / AGP 8.9.1 toolchain.
     implementation(platform("androidx.compose:compose-bom:2026.06.00"))

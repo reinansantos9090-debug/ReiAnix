@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.home
 
+import com.reianix.reianix_local.monetization.*
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -760,6 +762,8 @@ private fun ColumnScope.HomeReadyContent(
         return
     }
 
+    val homeAds = rememberHomeAds()
+    val showPremiumOffer = rememberHomePremiumOfferVisible()
     LazyColumn(
         modifier = Modifier
             .weight(1f)
@@ -778,6 +782,11 @@ private fun ColumnScope.HomeReadyContent(
                     onSecondaryAction = onHeroSecondaryAction,
                     secondaryLabel = heroSecondaryLabel,
                 )
+            }
+        }
+        if (showPremiumOffer) {
+            item(key = "home-premium-offer", contentType = "home-premium-offer") {
+                HomePremiumOffer(Modifier.padding(horizontal = responsive.horizontalPadding))
             }
         }
         if (visibleContinue.isNotEmpty()) {
@@ -812,6 +821,9 @@ private fun ColumnScope.HomeReadyContent(
                     contentDescription = "Home Adicionados recentemente",
                 )
             }
+        }
+        if (animes.isNotEmpty()) homeAds.native?.let { ad ->
+            item(key = "home-native-ad") { HomeNativeAd(ad) }
         }
         if (available.isNotEmpty()) {
             item(key = "home-section-available") {
@@ -879,6 +891,9 @@ private fun ColumnScope.HomeReadyContent(
                     contentDescription = "Home Filmes",
                 )
             }
+        }
+        if (animes.isNotEmpty()) homeAds.banner?.let { ad ->
+            item(key = "home-banner-ad") { HomeBannerAd(ad) }
         }
     }
 }

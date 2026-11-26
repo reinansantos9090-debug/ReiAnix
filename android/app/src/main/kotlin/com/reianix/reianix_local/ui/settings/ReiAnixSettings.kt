@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.monetization.*
+
 import com.reianix.reianix_local.ui.privacy.TraceMoeConsentDialog
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
@@ -383,26 +385,33 @@ fun ReiAnixSettingsScreen(
 
                     com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
-                            Row(
+                            Column(
                                 Modifier.fillMaxWidth()
                                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                                    .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                    .padding(vertical = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                if (account.connected) {
-                                    com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar(
-                                        pictureUrl = account.avatarUrl,
-                                        contentDescription = "Foto de ${account.name}",
-                                        modifier = Modifier.size(50.dp),
+                                SettingsPremiumButton()
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (account.connected) {
+                                        com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar(
+                                            pictureUrl = account.avatarUrl,
+                                            contentDescription = "Foto de ${account.name}",
+                                            modifier = Modifier.size(50.dp),
+                                        )
+                                    }
+                                    Text(
+                                        text = if (account.connected) account.name else "Configurações",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f).padding(start = 10.dp),
                                     )
                                 }
-                                Text(
-                                    text = if (account.connected) account.name else "Configurações",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                                )
                             }
                         }
                         items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
@@ -474,6 +483,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
     lastScanStatus: String? = null,
     onRetry: () -> Unit,
 ) {
+    val premiumAccess = rememberPremiumAccess()
     fun actionBusy(action: String): Boolean =
         state.operations.values.any {
             it.action == action &&
@@ -952,8 +962,8 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             keyName = "player.anime_preferences_enabled",
                             title = "Configurações individuais por anime",
                             description = "Salva automaticamente áudio, legendas e outras preferências para cada anime. Desativar mantém os ajustes já salvos.",
-                            checked = state.settings["player.anime_preferences_enabled"] != "false",
-                            onCheckedChange = { onUpdateSetting("player.anime_preferences_enabled", it.toString()) },
+                            checked = premiumAccess.active && state.settings["player.anime_preferences_enabled"] != "false",
+                            onCheckedChange = { if (premiumAccess.active) onUpdateSetting("player.anime_preferences_enabled", it.toString()) else premiumAccess.open() },
                         )
                     }
                     item(key = "setting:player.autoplay_next") {
@@ -1168,7 +1178,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             selectedValue = state.settings["audio.subtitle_color"],
                             choices = listOf(SettingChoice("system", "Sistema"), SettingChoice("white", "Branco"),
                                 SettingChoice("yellow", "Amarelo"), SettingChoice("cyan", "Ciano")),
-                            onSelected = { onUpdateSetting("audio.subtitle_color", it) },
+                            onSelected = { if (premiumAccess.active) onUpdateSetting("audio.subtitle_color", it) else premiumAccess.open() },
                         )
                     }
                     item(key = "setting:audio.subtitle_font") {
@@ -1179,7 +1189,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             selectedValue = state.settings["audio.subtitle_font"],
                             choices = listOf(SettingChoice("system", "Sistema"), SettingChoice("sans", "Sem serifa"),
                                 SettingChoice("serif", "Serifada"), SettingChoice("mono", "Monoespaçada")),
-                            onSelected = { onUpdateSetting("audio.subtitle_font", it) },
+                            onSelected = { if (premiumAccess.active) onUpdateSetting("audio.subtitle_font", it) else premiumAccess.open() },
                         )
                     }
                     item(key = "setting:audio.subtitle_embedded_style") {

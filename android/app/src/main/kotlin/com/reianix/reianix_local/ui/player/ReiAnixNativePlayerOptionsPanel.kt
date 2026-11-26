@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.player
 
+import com.reianix.reianix_local.monetization.*
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.compose.foundation.background
 import androidx.compose.animation.animateColorAsState
@@ -127,8 +129,14 @@ fun ReiAnixNativePlayerOptionsPanel(
     onSubtitleAppearance: () -> Unit = {},
     onAudioOnlyChanged: (Boolean) -> Unit = {},
     onShortcutsChanged: (List<PlayerShortcut>) -> Unit = {},
+    onAspect: () -> Unit = {},
+    onManualSkip: () -> Unit = {},
 ) {
+    val premiumAccess = rememberPremiumAccess(allowReward = false)
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
+    LaunchedEffect(premiumAccess.active) {
+        if (!premiumAccess.active && page == PlayerOptionsPage.SHORTCUTS) page = PlayerOptionsPage.MAIN
+    }
     LaunchedEffect(resetSignal) {
         page = PlayerOptionsPage.MAIN
     }
@@ -162,8 +170,8 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Tune,
                     label = "Personalizar atalhos",
-                    value = "${state.shortcuts.size}/5",
-                    onClick = { page = PlayerOptionsPage.SHORTCUTS },
+                    value = if (premiumAccess.active) "${state.shortcuts.size}/5" else "Premium",
+                    onClick = { if (premiumAccess.active) page = PlayerOptionsPage.SHORTCUTS else premiumAccess.open() },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Speed,
@@ -513,6 +521,16 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionsSubpageHeader(
                     title = "Outras opções",
                     onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Tune,
+                    label = "Proporção",
+                    onClick = onAspect,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.SkipNext,
+                    label = "Pular OP/ED",
+                    onClick = onManualSkip,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.History,

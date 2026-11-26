@@ -1,5 +1,8 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.monetization.CompactNativeAd
+import com.reianix.reianix_local.monetization.rememberCompactNativeAd
+
 import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
 
 import com.reianix.reianix_local.data.tracemoe.ReiAnixTraceMoeConsent
@@ -654,8 +657,9 @@ private fun ColumnScope.ReiAnixDetailsReady(
     }
     val coroutineScope = rememberCoroutineScope()
     val hasSeasons = anime.seasons.isNotEmpty()
-    // Hero and recommendations precede the season/episode list.
-    val episodeHeadingIndex = if (hasSeasons) 3 else 2
+    val compactAd = rememberCompactNativeAd("details:" + anime.stableKey)
+    // Include the optional ad in the existing episode scroll target.
+    val episodeHeadingIndex = (if (hasSeasons) 3 else 2) + if (compactAd != null) 1 else 0
 
     fun scrollToDetailsSection(index: Int) {
         coroutineScope.launch {
@@ -718,6 +722,15 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     libraryState = recommendationLibraryState,
                     onOpenAnime = onOpenRecommendedAnime,
                 )
+            }
+        }
+
+        compactAd?.let { ad ->
+            item(
+                key = "details-native-ad:" + anime.stableKey,
+                contentType = "details-native-ad",
+            ) {
+                CompactNativeAd(ad, Modifier.padding(horizontal = 16.dp))
             }
         }
 

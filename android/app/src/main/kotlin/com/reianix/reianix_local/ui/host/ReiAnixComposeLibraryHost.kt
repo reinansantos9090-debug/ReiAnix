@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.host
 
+import com.reianix.reianix_local.monetization.*
+
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
@@ -381,6 +383,7 @@ class ReiAnixComposeLibraryHost(
                         }
                     }
 
+                    MonetizationHost()
                     val currentRoute by navController.currentBackStackEntryAsState()
                     LaunchedEffect(currentRoute?.destination?.route) {
                         val route = currentRoute?.destination?.route

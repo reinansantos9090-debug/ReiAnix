@@ -1,5 +1,8 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.monetization.CompactNativeAd
+import com.reianix.reianix_local.monetization.rememberCompactNativeAd
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -51,7 +54,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -845,6 +847,7 @@ private fun ColumnScope.LibraryReadyContent(
     }
     val posterGridPadding = responsive.posterRailPadding(posterSize)
     val posterGridSpacing = responsive.posterGridSpacing(posterSize) + 1.dp
+    val compactAd = rememberCompactNativeAd("library", enabled = visibleAnimes.isNotEmpty())
     val gridState = rememberSaveable(
         saver = LazyGridState.Saver,
     ) {
@@ -968,44 +971,13 @@ private fun ColumnScope.LibraryReadyContent(
                 )
             }
 
-            item(
-                key = "library-filters",
-                span = { GridItemSpan(maxLineSpan) },
-                contentType = "library-filters",
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+            compactAd?.let { ad ->
+                item(
+                    key = "library-native-ad",
+                    span = { GridItemSpan(maxLineSpan) },
+                    contentType = "library-native-ad",
                 ) {
-                    LazyRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
-                        contentPadding = PaddingValues(end = ReiAnixTokens.Spacing.sm),
-                    ) {
-                        item(key = "filter-favorite") {
-                            LibraryFilterChip(
-                                text = "Favoritos",
-                                selected = filters.favoritesOnly,
-                                onClick = onToggleFavorites,
-                            )
-                        }
-                        item(key = "filter-watching") {
-                            LibraryFilterChip(
-                                text = "Assistindo",
-                                selected = filters.watchingOnly,
-                                onClick = onToggleWatching,
-                            )
-                        }
-                        item(key = "filter-completed") {
-                            LibraryFilterChip(
-                                text = "Completos",
-                                selected = filters.completedOnly,
-                                onClick = onToggleCompleted,
-                            )
-                        }
-                    }
-
-
+                    CompactNativeAd(ad)
                 }
             }
 
@@ -1279,22 +1251,6 @@ private fun LibraryLoadingGrid(
             }
         }
     }
-}
-
-@Composable
-private fun LibraryFilterChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    ReiAnixChip(
-        text = text,
-        onClick = onClick,
-        selected = selected,
-        modifier = Modifier.semantics {
-            contentDescription = "Filtro $text"
-        },
-    )
 }
 
 private fun libraryFilterTabOptions(

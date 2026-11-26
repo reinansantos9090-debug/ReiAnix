@@ -1,5 +1,7 @@
 package com.reianix.reianix_local
 
+import com.reianix.reianix_local.monetization.*
+
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
@@ -2346,6 +2348,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun applySubtitlePreferences() {
         if (!::playerView.isInitialized) return
+        val premium = ReiAnixMonetization.from(applicationContext).state.value.hasPremium
+        if (!premium) { subtitleColor = "system"; subtitleFont = "system" }
         playerView.subtitleView?.apply {
             setFractionalTextSize((SubtitleViewFraction.DEFAULT * subtitleScale).coerceIn(0.02f, 0.12f))
             setBottomPaddingFraction((subtitleBottomPaddingPercent / 100f).coerceIn(0f, 0.5f))
@@ -2847,7 +2851,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                     selected.joinToString(",") { it.key },
                                 ))
                             }.getOrNull()
-                            if (validated != null) {
+                            if (validated != null && ReiAnixMonetization.from(applicationContext).state.value.hasPremium) {
                                 playerShortcuts = validated
                                 persistCanonicalPlayerSetting(
                                     "player.shortcuts", validated.joinToString(",") { it.key },
@@ -2856,6 +2860,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onSubtitleAppearance = { showSubtitleAppearance() },
+                        onAspect = ::toggleAspectMode,
+                        onManualSkip = ::skipOpeningOrEndingManually,
                         onAudioOnlyChanged = { enabled -> setAudioOnly(enabled) },
                         onAutoplayChanged = { enabled ->
                             autoplayNext = enabled
@@ -4479,6 +4485,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun persistAnimePreferences() {
+        if (!ReiAnixMonetization.from(applicationContext).state.value.hasPremium) return
         val key = currentAnimePreferencesKey() ?: return
         if (activeAnimePreferences == null) return
         val snapshot = snapshotCurrentAnimePreferences()
@@ -4498,6 +4505,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun enableAnimePreferences() {
+        if (!ReiAnixMonetization.from(applicationContext).state.value.hasPremium) {
+            showFeedback("Preferências individuais disponíveis no ReiAnix Premium.")
+            return
+        }
         if (currentAnimePreferencesKey() == null || favoriteClipSession != null) {
             showFeedback("Abra um episódio vinculado a um anime para usar esta opção")
             return
@@ -4563,8 +4574,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         subtitleScale = setting("audio.subtitle_scale").toFloatOrNull() ?: 1f
         subtitleBottomPaddingPercent = setting("audio.subtitle_bottom_padding").toIntOrNull() ?: 8
         subtitleEmbeddedStyle = setting("audio.subtitle_embedded_style") != "false"
-        subtitleColor = setting("audio.subtitle_color").ifBlank { "system" }
-        subtitleFont = setting("audio.subtitle_font").ifBlank { "system" }
+        val premium = ReiAnixMonetization.from(applicationContext).state.value.hasPremium
+        subtitleColor = if (premium) setting("audio.subtitle_color").ifBlank { "system" } else "system"
+        subtitleFont = if (premium) setting("audio.subtitle_font").ifBlank { "system" } else "system"
         if (audioOnly) setAudioOnly(false)
         applyGlobalTrackPreferences()
         applySubtitlePreferences()
@@ -5785,6 +5797,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     override fun onResume() {
         super.onResume()
+        ReiAnixMonetization.from(applicationContext).start(this, withAds = false)
         expireSleepTimerIfDue()
         if (!isPictureInPictureActive()) pictureInPictureSession = false
 
@@ -6533,7 +6546,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (revision != captionRevision || sessionState != SessionState.ACTIVE ||
                 animeKey != currentAnimePreferencesKey()
             ) return@launch
-            playerShortcuts = PlayerShortcutPolicy.parse(values["player.shortcuts"])
+            val premium = ReiAnixMonetization.from(applicationContext).state.value.hasPremium
+            playerShortcuts = if (premium) PlayerShortcutPolicy.parse(values["player.shortcuts"]) else PlayerShortcutPolicy.default
             if (skipGenerationAtLoad == smartSkipGeneration) {
                 val enableSkip = values["player.aniskip_enabled"] != "false"
                 if (smartSkipEnabled != enableSkip) {
@@ -6550,12 +6564,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             // On a same-anime handoff the already-applied in-memory snapshot
             // is more recent than an in-flight SQLite write. Do not apply
             // stale preferences or repeat Media3 track changes unnecessarily.
-            val autoSaveEnabled = values["player.anime_preferences_enabled"] != "false"
+            val autoSaveEnabled = premium && values["player.anime_preferences_enabled"] != "false"
             val reuse = autoSaveEnabled && animeKey != null &&
                 activeAnimePreferences != null && activeAnimePreferencesKey == animeKey
             if (!reuse) {
-                subtitleColor = values["audio.subtitle_color"] ?: "system"
-                subtitleFont = values["audio.subtitle_font"] ?: "system"
+                subtitleColor = if (premium) values["audio.subtitle_color"] ?: "system" else "system"
+                subtitleFont = if (premium) values["audio.subtitle_font"] ?: "system" else "system"
                 // Disabling per-anime preferences only stops applying/saving:
                 // previously saved per-anime records remain intact in SQLite.
                 val saved = if (autoSaveEnabled) {
@@ -6608,6 +6622,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // page open. Entering a category dismisses only the parent dialog.
         dialog.setOnShowListener {
             dialog.listView.setOnItemClickListener { _, _, index, _ ->
+                if (index in 2..3 && !ReiAnixMonetization.from(applicationContext).state.value.hasPremium) {
+                    showFeedback("Cores e fontes exclusivas do ReiAnix Premium.")
+                    return@setOnItemClickListener
+                }
                 if (index != 5) dialog.dismiss()
                 when (index) {
                     0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande"),
