@@ -6,6 +6,21 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -62,6 +77,28 @@ internal fun MonetizationEntry() {
     }
 }
 
+private val premiumBlue = ComposeColor(0xFF3D8BFF)
+private val premiumText = ComposeColor(0xFFF4F7FF)
+private val premiumMuted = ComposeColor(0xFFB2BDD3)
+
+@Composable
+private fun PremiumBenefit(icon: ImageVector, title: String, description: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.size(48.dp).background(premiumBlue.copy(alpha = .14f), CircleShape),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = premiumBlue, modifier = Modifier.size(25.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, color = premiumText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(description, color = premiumMuted, fontSize = 13.sp)
+        }
+    }
+}
+
 @Composable
 private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, close: () -> Unit) {
     val activity = LocalContext.current.monetizationActivity() ?: return
@@ -70,45 +107,102 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
     DisposableEffect(manager, allowReward) {
         onDispose { if (allowReward) manager.cancelPendingReward() }
     }
-    AlertDialog(
+    val price = if (BuildConfig.MONETIZATION_PREVIEW) "R$ 9,90" else state.price
+    Dialog(
         onDismissRequest = close,
-        title = { Text("ReiAnix Premium") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (BuildConfig.MONETIZATION_PREVIEW)
-                    Text("Modo de teste · nenhuma cobrança real", color = MaterialTheme.colorScheme.primary)
-                Text(if (state.premium) "Premium ativo" else "Compra única, sem mensalidade.", style = MaterialTheme.typography.titleMedium)
-                Text("• Sem publicidade automática\n• Banners, papéis de parede, avatares e molduras\n• Atalhos personalizados\n• Preferências individuais por anime\n• Personalização avançada de legendas")
-                if (!state.premium) {
-                    Button(onClick = { manager.buy(activity) },
-                        enabled = !state.busy && (BuildConfig.MONETIZATION_PREVIEW || state.price != null),
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(if (BuildConfig.MONETIZATION_PREVIEW) "Testar Premium · R$ 9,90" else
-                            state.price?.let { "Comprar Premium · " + it } ?: "Compra indisponível")
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Surface(Modifier.fillMaxSize(), color = ComposeColor(0xFF0B1020)) {
+            BoxWithConstraints(Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(ComposeColor(0xFF101A31), ComposeColor(0xFF101A30), ComposeColor(0xFF080C16)))
+            ).safeDrawingPadding()) {
+                val compact = maxHeight < 480.dp
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp)) {
+                        IconButton(onClick = close, modifier = Modifier.align(Alignment.CenterStart)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = premiumText)
+                        }
+                        Box(Modifier.align(Alignment.Center)
+                            .border(1.dp, ComposeColor(0xFFB49A60), RoundedCornerShape(30.dp))
+                            .background(ComposeColor(0xFFB49A60).copy(alpha = .10f), RoundedCornerShape(30.dp))
+                            .padding(horizontal = 16.dp, vertical = 5.dp)) {
+                            Text("COMPRA ÚNICA", color = ComposeColor(0xFFE8CF8B), fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold, letterSpacing = 1.6.sp)
+                        }
                     }
-                    if (allowReward) {
-                        HorizontalDivider()
-                        Text("24 horas sem publicidade automática")
-                        Text(if (state.hideAds) "Recompensa ativa." else "Assista a um anúncio opcional para remover banners publicitários e anúncios nativos por 24 horas.")
-                        OutlinedButton(onClick = { manager.reward(activity, RewardKind.DAY) },
-                            enabled = !state.hideAds && !state.busy, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (state.hideAds) "24h sem anúncios · Ativo" else "Assistir anúncio")
+                    Column(Modifier.weight(1f).widthIn(max = 620.dp).fillMaxWidth()
+                        .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(Modifier.height(if (compact) 4.dp else 20.dp))
+                        Icon(Icons.Filled.Star, null, tint = premiumBlue, modifier = Modifier.size(36.dp))
+                        Text("ReiAnix Premium", color = premiumText, fontSize = 29.sp,
+                            fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(12.dp))
+                        Box(Modifier.background(premiumBlue.copy(alpha = .18f), RoundedCornerShape(30.dp))
+                            .padding(horizontal = 22.dp, vertical = 8.dp)) {
+                            Text(if (state.premium) "Premium ativo" else price?.let { "Somente " + it } ?: "Preço indisponível",
+                                color = ComposeColor(0xFF92BFFF), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Box(Modifier.fillMaxWidth().background(ComposeColor.White.copy(alpha = .05f), RoundedCornerShape(14.dp))
+                            .border(1.dp, ComposeColor.White.copy(alpha = .12f), RoundedCornerShape(14.dp))
+                            .padding(14.dp), contentAlignment = Alignment.Center) {
+                            Text("Sem assinatura. Sem mensalidade.\nUma compra, sua para sempre.",
+                                color = premiumText, textAlign = TextAlign.Center, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        PremiumBenefit(Icons.Filled.Block, "Experiência sem anúncios", "Assista e navegue sem publicidade automática.")
+                        PremiumBenefit(Icons.Filled.Palette, "Personalização completa", "Todos os banners, papéis de parede, avatares e molduras.")
+                        PremiumBenefit(Icons.Filled.Tune, "Atalhos personalizados", "Organize os controles do player do seu jeito.")
+                        PremiumBenefit(Icons.Filled.Settings, "Preferências por anime", "Guarde configurações individuais de reprodução.")
+                        PremiumBenefit(Icons.Filled.Subtitles, "Legendas avançadas", "Personalize fontes e cores das legendas.")
+                        PremiumBenefit(Icons.Filled.Favorite, "Apoie o desenvolvimento", "Ajude o ReiAnix a continuar evoluindo.")
+                        if (!state.premium && allowReward) {
+                            Spacer(Modifier.height(16.dp))
+                            HorizontalDivider(color = ComposeColor.White.copy(alpha = .12f))
+                            Spacer(Modifier.height(12.dp))
+                            Text("24 horas sem anúncios", color = premiumText, fontWeight = FontWeight.SemiBold)
+                            Text("Assista a um anúncio opcional para remover a publicidade automática por 24 horas.",
+                                color = premiumMuted, textAlign = TextAlign.Center, fontSize = 13.sp)
+                            OutlinedButton(onClick = { manager.reward(activity, RewardKind.DAY) },
+                                enabled = !state.hideAds && !state.busy, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (state.hideAds) "24h sem anúncios · Ativo" else "Assistir anúncio", color = premiumBlue)
+                            }
+                        }
+                        if (allowReward && state.privacyRequired) TextButton(onClick = { manager.privacy(activity) }) {
+                            Text("Opções de privacidade dos anúncios", color = premiumBlue)
+                        }
+                        if (BuildConfig.MONETIZATION_PREVIEW) TextButton(onClick = manager::resetPreview, enabled = !state.busy) {
+                            Text("Redefinir monetização de teste", color = premiumMuted)
+                        }
+                        state.notice?.let { Text(it, color = premiumMuted, fontSize = 13.sp, textAlign = TextAlign.Center) }
+                        Spacer(Modifier.height(18.dp))
+                    }
+                    Surface(color = ComposeColor(0xFF101727), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.widthIn(max = 620.dp).fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = premiumBlue)
+                            Button(onClick = { if (state.premium) close() else manager.buy(activity) },
+                                enabled = state.premium || (!state.busy && price != null),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = premiumBlue, contentColor = ComposeColor.White)) {
+                                Text(if (state.premium) "Continuar" else if (BuildConfig.MONETIZATION_PREVIEW) "Testar Premium" else "Desbloquear Premium",
+                                    fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Text(if (BuildConfig.MONETIZATION_PREVIEW) "Modo de teste · nenhuma cobrança real" else
+                                "Compra vinculada à sua conta Google Play.",
+                                color = premiumMuted, fontSize = 11.sp, textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 6.dp))
+                            TextButton(onClick = { manager.restore(activity) }, enabled = !state.busy) {
+                                Text("Já comprou? Restaurar compra", color = premiumBlue, fontSize = 13.sp)
+                            }
                         }
                     }
                 }
-                TextButton(onClick = { manager.restore(activity) }, enabled = !state.busy) { Text("Restaurar compra") }
-                if (allowReward && state.privacyRequired) TextButton(onClick = { manager.privacy(activity) }) {
-                    Text("Opções de privacidade dos anúncios")
-                }
-                if (BuildConfig.MONETIZATION_PREVIEW) TextButton(onClick = manager::resetPreview, enabled = !state.busy) {
-                    Text("Redefinir monetização de teste")
-                }
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
-        },
-        confirmButton = { TextButton(onClick = close) { Text("Fechar") } }
-    )
+        }
+    }
 }
 
 internal data class HomeAds(val banner: AdView?, val native: NativeAd?)
