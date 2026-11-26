@@ -619,8 +619,9 @@ fun ReiAnixNativePlayerBottomControls(
     }
     var userDragging by remember(mediaUri) { mutableStateOf(false) }
     var seekPointerHeld by remember(mediaUri) { mutableStateOf(false) }
-    val seekEnabled = duration > 0L && !state.episodeTransitionInProgress &&
-        !state.errorVisible && state.controlsVisible
+    val seekAvailable = duration > 0L && !state.episodeTransitionInProgress &&
+        !state.errorVisible
+    val seekEnabled = seekAvailable && state.controlsVisible
     val reportScrubInteraction by rememberUpdatedState(onScrubInteraction)
 
     DisposableEffect(mediaUri, seekEnabled) {
@@ -893,6 +894,14 @@ fun ReiAnixNativePlayerBottomControls(
                         thumbColor = ReiAnixTokens.Colors.primary,
                         activeTrackColor = Color.Transparent,
                         inactiveTrackColor = Color.Transparent,
+                        // The custom timeline is drawn underneath the Slider. Its
+                        // disabled track must stay transparent during the exit fade.
+                        disabledActiveTrackColor = Color.Transparent,
+                        disabledInactiveTrackColor = Color.Transparent,
+                        // Hiding the controls disables input before the parent fade
+                        // finishes; keep the normal thumb color in that interval.
+                        disabledThumbColor = if (seekAvailable) ReiAnixTokens.Colors.primary
+                            else SliderDefaults.colors().disabledThumbColor,
                     ),
                     steps = 0,
                 )
