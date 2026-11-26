@@ -65,18 +65,41 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(-PlayerShortcutPolicy.FIVE_SHORTCUT_INSET_UNIT_FRACTION,
             PlayerShortcutPolicy.centerActionGroupShiftFraction(five, landscape = true), 0f)
     }
-    @Test fun fourNewShortcutsPersistWithoutChangingTheDefaultOrFiveSlotLimit() {
-        val additions = listOf(PlayerShortcut.AUDIO, PlayerShortcut.ASPECT,
-            PlayerShortcut.SKIP_OP_ED, PlayerShortcut.NOTES)
-        val selection = additions + PlayerShortcut.OPTIONS
-        val raw = "audio,aspect,skip_op_ed,notes,options"
-        assertEquals(12, PlayerShortcut.entries.size)
+    @Test fun remainingShortcutsPersistWithoutChangingTheDefaultOrFiveSlotLimit() {
+        val selection = listOf(PlayerShortcut.ASPECT, PlayerShortcut.SKIP_OP_ED,
+            PlayerShortcut.SPEED, PlayerShortcut.LOCK, PlayerShortcut.OPTIONS)
+        val raw = "aspect,skip_op_ed,speed,lock,options"
+        assertEquals(9, PlayerShortcut.entries.size)
         assertEquals(raw, ReiAnixSettingsContract.normalize("player.shortcuts", raw))
         assertEquals(selection, PlayerShortcutPolicy.parse(raw))
         assertEquals(selection, PlayerShortcutPolicy.toggle(selection, PlayerShortcut.CAST, true))
         assertEquals(PlayerShortcut.OPTIONS, selection.last())
         assertEquals(85_000L, PlayerShortcutPolicy.MANUAL_OP_ED_SKIP_MS)
         assertEquals("cast,episodes,lock,next,options", PlayerShortcutPolicy.defaultValue)
+    }
+
+    @Test fun removesThreeRetiredShortcutIdsAndKeepsRenamedAudio() {
+        val removed = setOf("subtitles", "timer", "notes")
+        assertFalse(PlayerShortcut.entries.any { it.key in removed })
+        assertEquals("Trilhas sonoras", PlayerShortcut.AUDIO.displayName)
+        assertEquals("audio,aspect,skip_op_ed,options",
+            ReiAnixSettingsContract.normalize("player.shortcuts", "audio,aspect,notes,skip_op_ed,options"))
+        assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.CAST, PlayerShortcut.OPTIONS),
+            PlayerShortcutPolicy.parse("timer,lock,subtitles,cast,options"))
+        assertEquals(listOf(PlayerShortcut.AUDIO, PlayerShortcut.OPTIONS),
+            PlayerShortcutPolicy.parse("audio,subtitles,timer,notes,options"))
+    }
+
+    @Test fun aspectModesCycleAndPersistIncludingLegacyFill() {
+        assertEquals(PlayerAspectMode.STRETCH, PlayerAspectMode.FIT.next())
+        assertEquals(PlayerAspectMode.ZOOM, PlayerAspectMode.STRETCH.next())
+        assertEquals(PlayerAspectMode.FIT, PlayerAspectMode.ZOOM.next())
+        assertEquals(PlayerAspectMode.ZOOM, PlayerAspectMode.fromSetting("fill"))
+        assertEquals(PlayerAspectMode.ZOOM, PlayerAspectMode.fromLabel("Preencher"))
+        assertEquals("stretch", ReiAnixSettingsContract.normalize("player.aspect_ratio", "stretch"))
+        val prefs = PlayerAnimePreferences(aspect = "stretch")
+        assertEquals(prefs, PlayerAnimePreferences.decode(prefs.encode()))
+        assertEquals("fill", PlayerAnimePreferences.decode(PlayerAnimePreferences(aspect = "fill").encode())?.aspect)
     }
 
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
@@ -86,10 +109,10 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(four, PlayerShortcutPolicy.parse(PlayerShortcutPolicy.normalize(
             four.joinToString(",") { it.key },
         )))
-        val five = PlayerShortcutPolicy.toggle(four, PlayerShortcut.TIMER, true)
-        assertEquals(listOf(PlayerShortcut.TIMER, PlayerShortcut.EPISODES, PlayerShortcut.LOCK,
+        val five = PlayerShortcutPolicy.toggle(four, PlayerShortcut.ASPECT, true)
+        assertEquals(listOf(PlayerShortcut.ASPECT, PlayerShortcut.EPISODES, PlayerShortcut.LOCK,
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), five)
-        assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.SUBTITLES, true))
+        assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.SKIP_OP_ED, true))
         assertEquals(five, PlayerShortcutPolicy.toggle(five, PlayerShortcut.OPTIONS, false))
     }
 
@@ -131,10 +154,10 @@ class PlayerShortcutAndAnimePreferencesTest {
 
     @Test fun activatingAndDisablingKeepsOptionsLast() {
         val four = PlayerShortcutPolicy.toggle(PlayerShortcutPolicy.default, PlayerShortcut.CAST, false)
-        val activated = PlayerShortcutPolicy.toggle(four, PlayerShortcut.SUBTITLES, true)
-        assertEquals(listOf(PlayerShortcut.SUBTITLES, PlayerShortcut.EPISODES, PlayerShortcut.LOCK,
+        val activated = PlayerShortcutPolicy.toggle(four, PlayerShortcut.SKIP_OP_ED, true)
+        assertEquals(listOf(PlayerShortcut.SKIP_OP_ED, PlayerShortcut.EPISODES, PlayerShortcut.LOCK,
             PlayerShortcut.NEXT, PlayerShortcut.OPTIONS), activated)
-        val disabled = PlayerShortcutPolicy.toggle(activated, PlayerShortcut.SUBTITLES, false)
+        val disabled = PlayerShortcutPolicy.toggle(activated, PlayerShortcut.SKIP_OP_ED, false)
         assertEquals(four, disabled)
         assertEquals(activated, PlayerShortcutPolicy.move(activated, PlayerShortcut.OPTIONS, -1))
         assertEquals("next,options", PlayerShortcutPolicy.normalize("options,next"))
@@ -157,7 +180,7 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals(listOf(PlayerShortcut.CAST, PlayerShortcut.EPISODES, PlayerShortcut.NEXT,
             PlayerShortcut.LOCK, PlayerShortcut.OPTIONS), afterDrag)
         assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.OPTIONS, -1))
-        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.TIMER, -1))
+        assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.ASPECT, -1))
         assertEquals(afterDrag, PlayerShortcutPolicy.move(afterDrag, PlayerShortcut.LOCK, 1))
     }
 

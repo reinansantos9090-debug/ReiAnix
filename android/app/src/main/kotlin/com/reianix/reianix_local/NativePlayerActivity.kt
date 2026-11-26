@@ -21,6 +21,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import com.reianix.reianix_local.player.PlayerShortcut
 import com.reianix.reianix_local.player.PlayerShortcutPolicy
+import com.reianix.reianix_local.player.PlayerAspectMode
 import com.reianix.reianix_local.player.tv.ReiAnixTvPicker
 import com.reianix.reianix_local.player.PlayerAnimePreferences
 import com.reianix.reianix_local.player.PlayerAnimeTrackChoice
@@ -770,8 +771,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ?.takeIf { it.isFinite() && it >= 0f && it <= 1f }
             ?.let { setWindowBrightness(it) }
         restoredPositionMs = savedInstanceState?.takeIf { it.containsKey("position_ms") }?.getLong("position_ms")
-        aspectModeLabel = savedInstanceState?.getString("aspect_mode_label")
-            ?: aspectLabelFromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
+        val restoredAspect = savedInstanceState?.getString("aspect_mode_label")
+            ?.let { PlayerAspectMode.fromLabel(it) }
+            ?: PlayerAspectMode.fromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
+        aspectModeLabel = restoredAspect.label
+        intent.putExtra("setting_player_aspect_ratio", restoredAspect.setting)
         root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             clipChildren = false
@@ -860,10 +864,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 ?: intent.getFloatExtra("setting_player_default_speed", 1f)
             player.setPlaybackSpeed(PlayerGesturePolicy.normalizePlaybackSpeed(requestedSpeed))
 
-            val savedResize = savedInstanceState?.takeIf { it.containsKey("resize_mode") }
-                ?.getInt("resize_mode", AspectRatioFrameLayout.RESIZE_MODE_FIT)
-                ?: resizeModeFromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
-            playerView.resizeMode = savedResize
+            // Restore the configured fixed mode rather than a transient pinch transform.
+            playerView.resizeMode = resizeModeFromSetting(restoredAspect.setting)
 
             sleepTimerDeadlineMs = savedInstanceState?.getLong("sleep_timer_deadline_ms", 0L) ?: 0L
             sleepTimerPaused = savedInstanceState?.getBoolean("sleep_timer_paused", false) ?: false
@@ -1134,16 +1136,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
         loadCaptionAppearance()
         zoomEnabled = newIntent.getBooleanExtra("setting_player_zoom_enabled", zoomEnabled)
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
-        // A missing aspect extra must not convert the human-readable label
-        // "Preencher" into a FIT preference when reusing this Activity.
+        // Preserve the configured aspect mode when reusing this Activity without an extra.
         val incomingAspectRatio = newIntent.getStringExtra("setting_player_aspect_ratio")
-            ?: if (aspectModeLabel == "Preencher") "fill" else "fit"
+            ?.let { PlayerAspectMode.fromSetting(it).setting }
+            ?: PlayerAspectMode.fromLabel(aspectModeLabel).setting
         intent.putExtra("setting_player_aspect_ratio", incomingAspectRatio)
         playerView.resizeMode = resizeModeFromSetting(incomingAspectRatio)
         aspectModeLabel = aspectLabelFromSetting(incomingAspectRatio)
         findViewByTag<TextView>("reianix_aspect_button")?.apply {
             text = aspectModeLabel
-            isSelected = aspectModeLabel == "Preencher"
+            isSelected = aspectModeLabel != "Ajustar"
         }
         findViewByTag<TextView>("reianix_gesture_horizontal_seek")?.apply {
             text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
@@ -1178,7 +1180,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         JSONObject()
             .put("player.autoplay_next", autoplayNext)
             .put("player.default_speed", if (::player.isInitialized) player.playbackParameters.speed else 1f)
-            .put("player.aspect_ratio", if (aspectModeLabel == "Preencher") "fill" else "fit")
+            .put("player.aspect_ratio", PlayerAspectMode.fromLabel(aspectModeLabel).setting)
             .put("player.zoom_enabled", zoomEnabled)
             .put("player.immersive", immersiveSetting)
             .put("player.rotation", intent.getStringExtra("setting_player_rotation") ?: "auto")
@@ -2878,7 +2880,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onZoomChanged = { enabled ->
                             zoomEnabled = enabled
                             persistCanonicalPlayerSetting("player.zoom_enabled", enabled.toString())
-                            if (!enabled) findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+                            if (!enabled) {
+                                findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+                                // Disabling pinch must not discard the selected fixed aspect mode.
+                                if (::playerView.isInitialized) {
+                                    playerView.resizeMode = resizeModeFromSetting(
+                                        PlayerAspectMode.fromLabel(aspectModeLabel).setting,
+                                    )
+                                }
+                            }
                             touchControls()
                             syncComposePlayerUiState()
                         },
@@ -3052,12 +3062,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onSource = { toggleMorePanel() },
                         onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
                         onCast = { showTvPicker() },
-                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Selecionar faixa de áudio") },
                         onAspect = ::toggleAspectMode,
+                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Trilhas sonoras") },
                         onManualSkip = ::skipOpeningOrEndingManually,
-                        onNotes = ::showAddLocalNoteDialog,
-                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
-                        onSleepTimer = { showSleepTimerSelection() },
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
                                 requestEpisode("player_next_request")
@@ -3730,36 +3737,23 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun toggleAspectMode() {
-        if (!::playerView.isInitialized) return
-
-        // Read the active Media3 view, not a possibly stale Compose label or legacy button.
-        val nextMode = if (playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) {
-            "Ajustar"
-        } else {
-            "Preencher"
-        }
-        applyAspectMode(nextMode)
+        if (!::playerView.isInitialized || episodeChangePending || locked || errorVisible) return
+        // Cycle the configured modes, independent of temporary pinch/pan transforms.
+        val current = PlayerAspectMode.fromLabel(aspectModeLabel)
+        applyAspectMode(current.next())
     }
 
-    private fun applyAspectMode(mode: String) {
+    private fun applyAspectMode(mode: PlayerAspectMode) {
         if (!::playerView.isInitialized) return
         findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
-
-        playerView.resizeMode = when (mode) {
-            "Preencher" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-        }
-
-        // Derive the label and persisted setting from the resize mode actually applied.
-        val isFill = playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-        aspectModeLabel = if (isFill) "Preencher" else "Ajustar"
-        val settingValue = if (isFill) "fill" else "fit"
-        intent.putExtra("setting_player_aspect_ratio", settingValue)
+        playerView.resizeMode = resizeModeFromSetting(mode.setting)
+        aspectModeLabel = mode.label
+        intent.putExtra("setting_player_aspect_ratio", mode.setting)
         findViewByTag<TextView>("reianix_aspect_button")?.apply {
             text = aspectModeLabel
-            isSelected = isFill
+            isSelected = mode != PlayerAspectMode.FIT
         }
-        persistCanonicalPlayerSetting("player.aspect_ratio", settingValue)
+        persistCanonicalPlayerSetting("player.aspect_ratio", mode.setting)
         touchControls()
         playerView.requestLayout()
         syncComposePlayerUiState()
@@ -4467,7 +4461,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val previous = activeAnimePreferences
         return PlayerAnimePreferences(
             speed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
-            aspect = if (aspectModeLabel == "Preencher") "fill" else "fit",
+            aspect = PlayerAspectMode.fromLabel(aspectModeLabel).setting,
             autoplay = autoplayNext,
             zoomEnabled = zoomEnabled,
             audioOnly = audioOnly,
@@ -4559,7 +4553,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         autoplayNext = setting("player.autoplay_next") != "false"
         zoomEnabled = setting("player.zoom_enabled") != "false"
-        val aspect = setting("player.aspect_ratio").takeIf { it == "fill" } ?: "fit"
+        val aspect = PlayerAspectMode.fromSetting(setting("player.aspect_ratio")).setting
         intent.putExtra("setting_player_aspect_ratio", aspect)
         playerView.resizeMode = resizeModeFromSetting(aspect)
         aspectModeLabel = aspectLabelFromSetting(aspect)
@@ -6040,11 +6034,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun aspectLabelFromSetting(value: String?): String =
-        if (value == "fill") "Preencher" else "Ajustar"
+        PlayerAspectMode.fromSetting(value).label
 
-    private fun resizeModeFromSetting(value: String?): Int = when (value) {
-        "fill" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+    private fun resizeModeFromSetting(value: String?): Int = when (PlayerAspectMode.fromSetting(value)) {
+        PlayerAspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+        PlayerAspectMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+        PlayerAspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
     }
 
     private fun enterImmersiveMode() {
@@ -7898,7 +7893,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (zoomScale <= ZOOM_SNAP_THRESHOLD) {
                 val label = aspectLabelFromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
                 button.text = label
-                button.isSelected = label == "Preencher"
+                button.isSelected = label != "Ajustar"
             } else {
                 button.text = "Zoom " + String.format(java.util.Locale.US, "%.2fx", zoomScale)
                 button.isSelected = true
@@ -7914,14 +7909,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 translationY = 0f
             }
             val value = intent.getStringExtra("setting_player_aspect_ratio")
-                ?: if (aspectModeLabel == "Preencher") "fill" else "fit"
+                ?: PlayerAspectMode.fromLabel(aspectModeLabel).setting
             val label = aspectLabelFromSetting(value)
             val configuredMode = resizeModeFromSetting(value)
             if (playerView.resizeMode != configuredMode) playerView.resizeMode = configuredMode
             aspectModeLabel = label
             findViewByTag<TextView>("reianix_aspect_button")?.apply {
                 text = label
-                isSelected = label == "Preencher"
+                isSelected = label != "Ajustar"
             }
         }
 

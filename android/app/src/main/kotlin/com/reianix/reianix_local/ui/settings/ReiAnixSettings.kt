@@ -140,7 +140,8 @@ private val defaultSpeedChoices = listOf(
 
 private val aspectRatioChoices = listOf(
     SettingChoice("fit", "Ajustar"),
-    SettingChoice("fill", "Preencher"),
+    SettingChoice("stretch", "Esticar"),
+    SettingChoice("fill", "Zoom"),
 )
 
 private val immersiveChoices = listOf(
@@ -1012,7 +1013,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "player.aspect_ratio",
                             title = "Modo de vídeo",
-                            description = "Ajustar preserva toda a imagem; Preencher ocupa a tela cortando somente o excedente.",
+                            description = "Ajustar preserva a imagem; Esticar ocupa toda a tela; Zoom preenche mantendo a proporção e cortando o excedente.",
                             selectedValue = state.settings["player.aspect_ratio"],
                             choices = aspectRatioChoices,
                             onSelected = { onUpdateSetting("player.aspect_ratio", it) },
