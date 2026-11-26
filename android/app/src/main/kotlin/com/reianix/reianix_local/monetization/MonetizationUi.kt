@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +77,8 @@ internal fun MonetizationEntry() {
 }
 
 private val premiumBlue = ComposeColor(0xFF3D8BFF)
-private val premiumText = ComposeColor(0xFFF4F7FF)
-private val premiumMuted = ComposeColor(0xFFB2BDD3)
+private val premiumText = ComposeColor.White
+private val premiumMuted = ComposeColor(0xFFBDBDBD)
 
 @Composable
 private fun PremiumBenefit(icon: ImageVector, title: String, description: String) {
@@ -88,9 +87,9 @@ private fun PremiumBenefit(icon: ImageVector, title: String, description: String
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Box(Modifier.size(48.dp).background(premiumBlue.copy(alpha = .14f), CircleShape),
+        Box(Modifier.size(48.dp).background(ComposeColor(0xFF191919), CircleShape),
             contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = premiumBlue, modifier = Modifier.size(25.dp))
+            Icon(icon, null, tint = ComposeColor.White, modifier = Modifier.size(25.dp))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, color = premiumText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -112,29 +111,19 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
         onDismissRequest = close,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Surface(Modifier.fillMaxSize(), color = ComposeColor(0xFF0B1020)) {
-            BoxWithConstraints(Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(ComposeColor(0xFF101A31), ComposeColor(0xFF101A30), ComposeColor(0xFF080C16)))
-            ).safeDrawingPadding()) {
+        Surface(Modifier.fillMaxSize(), color = ComposeColor.Black) {
+            BoxWithConstraints(Modifier.fillMaxSize().background(ComposeColor.Black).safeDrawingPadding()) {
                 val compact = maxHeight < 480.dp
                 Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp)) {
                         IconButton(onClick = close, modifier = Modifier.align(Alignment.CenterStart)) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = premiumText)
                         }
-                        Box(Modifier.align(Alignment.Center)
-                            .border(1.dp, ComposeColor(0xFFB49A60), RoundedCornerShape(30.dp))
-                            .background(ComposeColor(0xFFB49A60).copy(alpha = .10f), RoundedCornerShape(30.dp))
-                            .padding(horizontal = 16.dp, vertical = 5.dp)) {
-                            Text("COMPRA ÚNICA", color = ComposeColor(0xFFE8CF8B), fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold, letterSpacing = 1.6.sp)
-                        }
                     }
                     Column(Modifier.weight(1f).widthIn(max = 620.dp).fillMaxWidth()
                         .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally) {
                         Spacer(Modifier.height(if (compact) 4.dp else 20.dp))
-                        Icon(Icons.Filled.Star, null, tint = premiumBlue, modifier = Modifier.size(36.dp))
                         Text("ReiAnix Premium", color = premiumText, fontSize = 29.sp,
                             fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
@@ -142,6 +131,14 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                             .padding(horizontal = 22.dp, vertical = 8.dp)) {
                             Text(if (state.premium) "Premium ativo" else price?.let { "Somente " + it } ?: "Preço indisponível",
                                 color = ComposeColor(0xFF92BFFF), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Box(Modifier
+                            .border(1.dp, ComposeColor(0xFFB49A60), RoundedCornerShape(30.dp))
+                            .background(ComposeColor(0xFFB49A60).copy(alpha = .10f), RoundedCornerShape(30.dp))
+                            .padding(horizontal = 16.dp, vertical = 5.dp)) {
+                            Text("COMPRA ÚNICA", color = ComposeColor(0xFFE8CF8B), fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold, letterSpacing = 1.6.sp)
                         }
                         Spacer(Modifier.height(18.dp))
                         Box(Modifier.fillMaxWidth().background(ComposeColor.White.copy(alpha = .05f), RoundedCornerShape(14.dp))
@@ -178,7 +175,7 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                         state.notice?.let { Text(it, color = premiumMuted, fontSize = 13.sp, textAlign = TextAlign.Center) }
                         Spacer(Modifier.height(18.dp))
                     }
-                    Surface(color = ComposeColor(0xFF101727), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = ComposeColor.Black, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.widthIn(max = 620.dp).fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = premiumBlue)
