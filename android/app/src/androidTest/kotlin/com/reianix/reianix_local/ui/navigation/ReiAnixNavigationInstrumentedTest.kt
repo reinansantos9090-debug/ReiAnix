@@ -186,6 +186,27 @@ class ReiAnixNavigationInstrumentedTest {
     }
 
     @Test
+    fun rapidPrimaryTabChangesSettleOnTheLastDestination() {
+        composeRule.mainClock.autoAdvance = false
+        try {
+            composeRule.runOnIdle { navController.navigateToTopLevel(ReiAnixRoutes.SEARCH) }
+            composeRule.mainClock.advanceTimeBy(32L)
+            composeRule.runOnIdle { navController.navigateToTopLevel(ReiAnixRoutes.SETTINGS) }
+            composeRule.mainClock.advanceTimeBy(32L)
+            composeRule.runOnIdle { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) }
+            composeRule.mainClock.advanceTimeBy(600L)
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+        composeRule.waitForIdle()
+        assertEquals(ReiAnixRoutes.LIBRARY, navController.currentBackStackEntry?.destination?.route)
+        composeRule.onNodeWithText("Biblioteca counter=0").assertIsDisplayed()
+        composeRule.onNodeWithText("Buscar counter=0").assertDoesNotExist()
+        composeRule.onNodeWithText("Ajustes counter=0").assertDoesNotExist()
+        composeRule.onNodeWithText("Biblioteca").assertIsSelected()
+    }
+
+    @Test
     fun topLevelNavigationDoesNotDuplicateAnyDestination() {
         listOf(
             "Início" to ReiAnixRoutes.HOME,
