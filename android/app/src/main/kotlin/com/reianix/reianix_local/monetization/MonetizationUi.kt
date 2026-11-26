@@ -131,44 +131,65 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
-                        Text(if (state.premium) "Premium ativo" else price?.let { "Somente " + it } ?: "Preço indisponível",
-                            color = premiumText, fontSize = 27.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                        Text("Compra única · Acesso vitalício", color = premiumMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
+                        if (!state.premium && price != null) {
+                            Text("Somente", color = premiumMuted, fontSize = 14.sp)
+                        }
+                        Text(if (state.premium) "Premium ativo" else price ?: "Preço indisponível",
+                            color = premiumBlue, fontSize = if (state.premium || price == null) 28.sp else 40.sp,
+                            fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        Text("Compra única · Acesso vitalício", color = premiumText, fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
                         Text("Sem mensalidades", color = premiumMuted, fontSize = 14.sp)
                         if (state.trialActive && !state.premium) {
                             Text("Premium temporário ativo", color = premiumBlue, fontSize = 13.sp)
                         }
                     }
-                    HorizontalDivider(color = ComposeColor(0xFF292929))
-                    Text("Benefícios Premium", color = premiumBlue, fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
-                    PremiumBenefit(Icons.Filled.VerifiedUser, "Sem anúncios", "Navegue sem publicidade.")
-                    PremiumBenefit(Icons.Filled.Palette, "Personalização completa", "Todas as artes desbloqueadas.")
-                    PremiumBenefit(Icons.Filled.Tune, "Atalhos personalizados", "Organize os controles do player.")
-                    PremiumBenefit(Icons.Filled.Settings, "Preferências por anime", "Configurações individuais.")
-                    PremiumBenefit(Icons.Filled.Subtitles, "Legendas avançadas", "Personalize fontes e cores.")
-                    PremiumBenefit(Icons.Filled.Favorite, "Apoie o desenvolvimento", "Ajude o ReiAnix a evoluir.")
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = ComposeColor(0xFF1C1C1C),
+                        contentColor = premiumText,
+                    ) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                            Text("Benefícios Premium", color = premiumBlue, fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 6.dp))
+                            PremiumBenefit(Icons.Filled.VerifiedUser, "Sem anúncios", "Navegue sem publicidade.")
+                            PremiumBenefit(Icons.Filled.Palette, "Personalização completa", "Todas as artes desbloqueadas.")
+                            PremiumBenefit(Icons.Filled.Tune, "Atalhos personalizados", "Organize os controles do player.")
+                            PremiumBenefit(Icons.Filled.Settings, "Preferências por anime", "Configurações individuais.")
+                            PremiumBenefit(Icons.Filled.Subtitles, "Legendas avançadas", "Personalize fontes e cores.")
+                            PremiumBenefit(Icons.Filled.Favorite, "Apoie o desenvolvimento", "Ajude o ReiAnix a evoluir.")
+                        }
+                    }
                     if (!state.premium && allowReward) {
-                        Spacer(Modifier.height(8.dp))
-                        HorizontalDivider(color = ComposeColor(0xFF292929))
-                        Text("Experimente gratuitamente", color = premiumBlue, fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clickable(enabled = !state.trialActive && !state.busy) { confirmReward = true }
-                                .heightIn(min = 68.dp).padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = ComposeColor(0xFF1C1C1C),
+                            contentColor = premiumText,
                         ) {
-                            Icon(Icons.Filled.PlayCircleFilled, null, tint = premiumText, modifier = Modifier.size(26.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("1 dia de Premium", color = premiumText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                                Text(if (state.trialActive) "Premium temporário ativo." else
-                                    "Assista a um anúncio para liberar todos os benefícios.",
-                                    color = premiumMuted, fontSize = 14.sp)
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                                Text("Experimente gratuitamente", color = premiumBlue, fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 6.dp))
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .clickable(enabled = !state.trialActive && !state.busy) { confirmReward = true }
+                                        .heightIn(min = 68.dp).padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                ) {
+                                    Icon(Icons.Filled.PlayCircleFilled, null, tint = premiumText, modifier = Modifier.size(26.dp))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("1 dia de Premium", color = premiumText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                        Text(if (state.trialActive) "Premium temporário ativo." else
+                                            "Assista a um anúncio para liberar todos os benefícios.",
+                                            color = premiumMuted, fontSize = 14.sp)
+                                    }
+                                    if (!state.trialActive) Icon(Icons.Filled.ChevronRight, null,
+                                        tint = premiumText, modifier = Modifier.size(22.dp))
+                                }
                             }
-                            if (!state.trialActive) Icon(Icons.Filled.ChevronRight, null,
-                                tint = premiumMuted, modifier = Modifier.size(22.dp))
                         }
                     }
                     if (allowReward && state.privacyRequired) TextButton(onClick = { manager.privacy(activity) }) {
