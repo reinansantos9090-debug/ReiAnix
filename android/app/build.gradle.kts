@@ -1,3 +1,7 @@
+import java.util.Base64
+import java.security.KeyFactory
+import java.security.spec.X509EncodedKeySpec
+
 plugins {
     id("com.android.application")
     id("com.google.android.gms.oss-licenses-plugin")
@@ -23,9 +27,9 @@ require(preview || !billingRequested || billingEnabled) {
     "Provide the Play Console RSA billing public key before enabling real billing."
 }
 require(!billingEnabled || runCatching {
-    val decoded = java.util.Base64.getDecoder().decode(billingPublicKey)
-    java.security.KeyFactory.getInstance("RSA")
-        .generatePublic(java.security.spec.X509EncodedKeySpec(decoded))
+    val decoded = Base64.getDecoder().decode(billingPublicKey)
+    KeyFactory.getInstance("RSA")
+        .generatePublic(X509EncodedKeySpec(decoded))
 }.isSuccess) {
     "The Play Console billing public key must be a valid Base64 RSA public key."
 }
