@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.player
 
+import com.reianix.reianix_local.monetization.*
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.compose.foundation.background
 import androidx.compose.animation.animateColorAsState
@@ -128,6 +130,7 @@ fun ReiAnixNativePlayerOptionsPanel(
     onAudioOnlyChanged: (Boolean) -> Unit = {},
     onShortcutsChanged: (List<PlayerShortcut>) -> Unit = {},
 ) {
+    val premiumAccess = rememberPremiumAccess(allowReward = false)
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
     LaunchedEffect(resetSignal) {
         page = PlayerOptionsPage.MAIN
@@ -162,8 +165,8 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Tune,
                     label = "Personalizar atalhos",
-                    value = "${state.shortcuts.size}/5",
-                    onClick = { page = PlayerOptionsPage.SHORTCUTS },
+                    value = if (premiumAccess.active) "${state.shortcuts.size}/5" else "Premium",
+                    onClick = { if (premiumAccess.active) page = PlayerOptionsPage.SHORTCUTS else premiumAccess.open() },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Speed,

@@ -47,3 +47,7 @@ O aplicativo não é um serviço de streaming nem oferece um catálogo próprio 
 
 # 10. Alterações
 Esta política poderá ser atualizada para refletir alterações nas funcionalidades, nas integrações ou nas obrigações legais. A data de atualização será indicada na página. Consulte a versão pública antes de utilizar novas funções online.
+
+
+# Publicidade e compras opcionais
+Quando habilitada, a publicidade usa o Google Mobile Ads (AdMob). O Google pode processar identificadores de dispositivo/publicidade, interações, informações de diagnóstico e outros dados conforme suas políticas e escolhas de consentimento. A opção de privacidade é apresentada quando exigida. Não enviamos arquivos de vídeo ou a biblioteca local ao SDK de anúncios. A compra única Premium usa o Google Play Billing; o pagamento é processado pela Google Play e o aplicativo recebe a confirmação da compra. Não coletamos dados do cartão. Recompensas de anúncios são armazenadas localmente e não são transferíveis. Consulte https://policies.google.com/privacy.

@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.monetization.*
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
@@ -401,6 +403,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                 }
                 item {
                     Spacer(Modifier.height(14.dp))
+                    MonetizationEntry()
                     ProfileRow(Icons.Outlined.BarChart, "Estatísticas") { section = "stats" }
                     ProfileRow(Icons.Outlined.FavoriteBorder, "Favoritos") { section = "favorites" }
                     ProfileRow(Icons.Outlined.FolderCopy, "Minhas coleções") { navController.navigate(ReiAnixRoutes.COLLECTIONS) { launchSingleTop = true } }
@@ -531,6 +534,7 @@ internal fun ProfileCustomization(
     onBack: () -> Unit,
 ) {
     val profile by store.state.collectAsStateWithLifecycle()
+    val premiumAccess = rememberPremiumAccess()
     val scope = rememberCoroutineScope()
     var page by rememberSaveable { mutableStateOf("menu") }
     var busy by remember { mutableStateOf(false) }
@@ -726,13 +730,14 @@ internal fun ProfileCustomization(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 group.forEach { p ->
                                     val selected = selectedAvatarId == p.id && profile.photo == null
+                                    val locked = !premiumAccess.active && !selected && p.id != "fire" && presets.indexOf(p) >= 4
                                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.weight(1f).clickable(enabled = !busy) {
-                                            saveChange { it.copy(avatar = p.id, photo = null) }
+                                            if (locked) premiumAccess.open() else saveChange { it.copy(avatar = p.id, photo = null) }
                                         }.padding(vertical = 8.dp)) {
                                         ProfileAvatar(profile.copy(avatar = p.id, photo = null,
                                             frame = "none"), store, 48.dp)
-                                        Text(p.label, style = MaterialTheme.typography.labelSmall)
+                                        Text(p.label + if (locked) " · Premium" else "", style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
                             }
@@ -755,6 +760,7 @@ internal fun ProfileCustomization(
                         Spacer(Modifier.height(6.dp))
                         profileFrameOptions.forEach { option ->
                             val selected = profile.frame == option.id
+                            val locked = !premiumAccess.active && !selected && option.id != "none" && profileFrameOptions.indexOf(option) >= 3
                             val shape = RoundedCornerShape(18.dp)
                             Row(
                                 Modifier.fillMaxWidth()
@@ -765,7 +771,7 @@ internal fun ProfileCustomization(
                                         if (selected) Color(0xFF3E84FF) else Color.Transparent,
                                         shape,
                                     )
-                                    .clickable(enabled = !busy) { saveChange { it.copy(frame = option.id) } }
+                                    .clickable(enabled = !busy) { if (locked) premiumAccess.open() else saveChange { it.copy(frame = option.id) } }
                                     .testTag("profile-frame-option-" + option.id)
                                     .heightIn(min = 76.dp)
                                     .padding(horizontal = 10.dp, vertical = 9.dp),
@@ -774,7 +780,7 @@ internal fun ProfileCustomization(
                             ) {
                                 ProfileAvatar(profile.copy(frame = option.id), store, 58.dp)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(option.title, style = MaterialTheme.typography.bodyLarge)
+                                    Text(option.title + if (locked) " · Premium" else "", style = MaterialTheme.typography.bodyLarge)
                                     Text(
                                         option.description,
                                         style = MaterialTheme.typography.bodySmall,

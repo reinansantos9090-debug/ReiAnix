@@ -1,5 +1,7 @@
 package com.reianix.reianix_local
 
+import com.reianix.reianix_local.monetization.*
+
 import com.reianix.reianix_local.bridge.NativeMailbox
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsContract
 import com.reianix.reianix_local.data.sqlite.ReiAnixSqliteSettingsRepository
@@ -2847,7 +2849,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                                     selected.joinToString(",") { it.key },
                                 ))
                             }.getOrNull()
-                            if (validated != null) {
+                            if (validated != null && ReiAnixMonetization.from(applicationContext).state.value.premium) {
                                 playerShortcuts = validated
                                 persistCanonicalPlayerSetting(
                                     "player.shortcuts", validated.joinToString(",") { it.key },
@@ -6533,7 +6535,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (revision != captionRevision || sessionState != SessionState.ACTIVE ||
                 animeKey != currentAnimePreferencesKey()
             ) return@launch
-            playerShortcuts = PlayerShortcutPolicy.parse(values["player.shortcuts"])
+            val premium = ReiAnixMonetization.from(applicationContext).state.value.premium
+            playerShortcuts = if (premium) PlayerShortcutPolicy.parse(values["player.shortcuts"]) else PlayerShortcutPolicy.default
             if (skipGenerationAtLoad == smartSkipGeneration) {
                 val enableSkip = values["player.aniskip_enabled"] != "false"
                 if (smartSkipEnabled != enableSkip) {
@@ -6550,12 +6553,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
             // On a same-anime handoff the already-applied in-memory snapshot
             // is more recent than an in-flight SQLite write. Do not apply
             // stale preferences or repeat Media3 track changes unnecessarily.
-            val autoSaveEnabled = values["player.anime_preferences_enabled"] != "false"
+            val autoSaveEnabled = premium && values["player.anime_preferences_enabled"] != "false"
             val reuse = autoSaveEnabled && animeKey != null &&
                 activeAnimePreferences != null && activeAnimePreferencesKey == animeKey
             if (!reuse) {
-                subtitleColor = values["audio.subtitle_color"] ?: "system"
-                subtitleFont = values["audio.subtitle_font"] ?: "system"
+                subtitleColor = if (premium) values["audio.subtitle_color"] ?: "system" else "system"
+                subtitleFont = if (premium) values["audio.subtitle_font"] ?: "system" else "system"
                 // Disabling per-anime preferences only stops applying/saving:
                 // previously saved per-anime records remain intact in SQLite.
                 val saved = if (autoSaveEnabled) {
@@ -6608,6 +6611,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
         // page open. Entering a category dismisses only the parent dialog.
         dialog.setOnShowListener {
             dialog.listView.setOnItemClickListener { _, _, index, _ ->
+                if (index in 2..3 && !ReiAnixMonetization.from(applicationContext).state.value.premium) {
+                    showFeedback("Cores e fontes exclusivas do ReiAnix Premium.")
+                    return@setOnItemClickListener
+                }
                 if (index != 5) dialog.dismiss()
                 when (index) {
                     0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande"),

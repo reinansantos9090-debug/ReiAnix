@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.monetization.*
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,11 +41,18 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false) {
     val context = LocalContext.current
+    val manager = remember(context) { ReiAnixMonetization.from(context) }
+    val monetization by manager.state.collectAsStateWithLifecycle()
+    val activity = context.monetizationActivity()
+    val premiumAccess = rememberPremiumAccess()
+    LaunchedEffect(activity) { activity?.let { manager.start(it) } }
     val store = remember(context, banner) {
         if (banner) ReiAnixWallpaperStore.banner(context) else ReiAnixWallpaperStore.from(context)
     }
     val saved by store.state.collectAsStateWithLifecycle()
     val arts = remember(banner) { ReiAnixArtPack.available(banner) }
+    fun unlocked(art: PersonalArt): Boolean = MonetizationPolicy.artAvailable(
+        monetization.premium, arts.indexOf(art), MonetizationPolicy.artKey(banner, art.id), monetization.unlocked)
     var selectedId by rememberSaveable(banner) { mutableStateOf<String?>(null) }
     val selected = arts.firstOrNull { it.id == selectedId }
     var busy by remember { mutableStateOf(false) }
@@ -56,7 +65,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
         }
     }
     fun selectArt(art: PersonalArt) {
-        if (busy) return
+        if (busy || !unlocked(art)) return
         busy = true
         error = null
         scope.launch {
@@ -96,10 +105,22 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
             }
             Text(selected.title, modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
                 style = MaterialTheme.typography.titleMedium)
-            Button(onClick = { selectArt(selected) }, enabled = !busy,
-                modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp)) {
-                Text(if (banner) "Aplicar banner" else "Aplicar papel de parede")
+            if (unlocked(selected)) {
+                Button(onClick = { selectArt(selected) }, enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp)) {
+                    Text(if (banner) "Aplicar banner" else "Aplicar papel de parede")
+                }
+            } else {
+                Text("Desbloqueie esta arte permanentemente neste dispositivo.", modifier = Modifier.padding(horizontal = 16.dp))
+                Button(onClick = { activity?.let { manager.reward(it, if (banner) RewardKind.BANNER else RewardKind.WALLPAPER, selected.id) } },
+                    enabled = !busy && !monetization.busy && activity != null,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 52.dp)) {
+                    Text("Assistir anúncio e desbloquear")
+                }
+                TextButton(onClick = premiumAccess.open, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Desbloquear tudo com Premium") }
             }
+            if (monetization.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            monetization.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp)) }
         } else {
             val columns = if (banner) 2 else 3
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
@@ -130,7 +151,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                                 AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = art.title,
                                     modifier = Modifier.fillMaxWidth().aspectRatio(if (banner) 2f else 9f / 16f)
                                         .clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
-                                Text(art.title, style = MaterialTheme.typography.labelSmall,
+                                Text(art.title + if (unlocked(art)) "" else " · Bloqueado", style = MaterialTheme.typography.labelSmall,
                                     modifier = Modifier.padding(top = 5.dp, bottom = 4.dp), maxLines = 2)
                             }
                         }
