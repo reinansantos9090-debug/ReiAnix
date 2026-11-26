@@ -405,9 +405,9 @@ fun ReiAnixSettingsScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
                                 )
+                                SettingsPremiumButton()
                             }
                         }
-                        item(key = "settings:premium") { MonetizationEntry() }
                         items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
                             SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
                         }

@@ -7,6 +7,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
@@ -75,6 +77,49 @@ internal fun MonetizationEntry() {
     val access = rememberPremiumAccess()
     TextButton(onClick = access.open, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(if (access.active) "ReiAnix Premium · Ativo" else "ReiAnix Premium")
+    }
+}
+
+@Composable
+internal fun SettingsPremiumButton() {
+    val access = rememberPremiumAccess()
+    Surface(
+        onClick = access.open,
+        modifier = Modifier.padding(end = 8.dp).heightIn(min = 40.dp),
+        shape = RoundedCornerShape(50),
+        color = ComposeColor(0xFF172B47),
+        contentColor = premiumBlue,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Canvas(Modifier.size(17.dp)) {
+                val w = size.width / 24f
+                val h = size.height / 24f
+                drawPath(
+                    Path().apply {
+                        moveTo(2f * w, 6f * h)
+                        lineTo(7f * w, 11f * h)
+                        lineTo(12f * w, 3f * h)
+                        lineTo(17f * w, 11f * h)
+                        lineTo(22f * w, 6f * h)
+                        lineTo(19f * w, 18f * h)
+                        lineTo(5f * w, 18f * h)
+                        close()
+                        moveTo(5f * w, 20f * h)
+                        lineTo(19f * w, 20f * h)
+                        lineTo(19f * w, 22f * h)
+                        lineTo(5f * w, 22f * h)
+                        close()
+                    },
+                    color = premiumBlue,
+                )
+            }
+            Text("Premium", color = premiumBlue, fontSize = 13.sp,
+                fontWeight = FontWeight.Medium, maxLines = 1)
+        }
     }
 }
 
