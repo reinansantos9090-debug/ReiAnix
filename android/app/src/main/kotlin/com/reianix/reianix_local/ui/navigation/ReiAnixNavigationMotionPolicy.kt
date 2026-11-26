@@ -23,3 +23,12 @@ internal fun reiAnixRouteAnimation(
     ) return ReiAnixRouteAnimation.DETAILS
     return ReiAnixRouteAnimation.STANDARD
 }
+
+/** The four persistent tabs share a single motion contract in either direction. */
+internal fun reiAnixIsPrimaryTabTransition(fromRoute: String?, toRoute: String?): Boolean {
+    fun isPrimary(route: String?) = when (route) {
+        ReiAnixRoutes.HOME, ReiAnixRoutes.LIBRARY, ReiAnixRoutes.SEARCH, ReiAnixRoutes.SETTINGS -> true
+        else -> false
+    }
+    return fromRoute != toRoute && isPrimary(fromRoute) && isPrimary(toRoute)
+}
