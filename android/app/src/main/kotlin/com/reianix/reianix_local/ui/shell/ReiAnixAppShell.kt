@@ -10,6 +10,7 @@ import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -67,6 +68,7 @@ fun ReiAnixAppShell(
     navigationContent: @Composable (PaddingValues) -> Unit,
     modifier: Modifier = Modifier,
     showBottomNavigation: Boolean = true,
+    aboveBottomNavigation: (@Composable () -> Unit)? = null,
 ) {
     Scaffold(
         modifier = modifier,
@@ -87,11 +89,14 @@ fun ReiAnixAppShell(
             // NavHost owns the screen animation; the content gets its full
             // viewport immediately when the bar is no longer needed.
             if (showBottomNavigation) {
-                ReiAnixBottomNavigation(
-                    selectedRoute = selectedRoute,
-                    destinations = bottomDestinations,
-                    onDestinationClick = onBottomDestinationClick,
-                )
+                Column {
+                    aboveBottomNavigation?.invoke()
+                    ReiAnixBottomNavigation(
+                        selectedRoute = selectedRoute,
+                        destinations = bottomDestinations,
+                        onDestinationClick = onBottomDestinationClick,
+                    )
+                }
             }
         },
     ) { innerPadding ->

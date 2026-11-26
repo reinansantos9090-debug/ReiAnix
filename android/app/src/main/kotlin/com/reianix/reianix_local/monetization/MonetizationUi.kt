@@ -321,37 +321,47 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
     DisposableEffect(manager) { onDispose { manager.cancelPendingReward() } }
     if (state.premium) return
     val remaining = ((state.until - now).coerceAtLeast(0) + 59_999) / 60_000
-    Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-        color = ComposeColor(0xFF191919), contentColor = ComposeColor.White) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Launcher resources can be AdaptiveIconDrawable on Android 8+.
-                // Compose painterResource only accepts bitmap/vector resources.
-                // Rasterize the official icon once; omit it if loading fails.
-                val launcherIcon = remember(context) {
-                    runCatching {
-                        val size = (36 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
-                        context.getDrawable(R.mipmap.ic_launcher)
-                            ?.toBitmap(width = size, height = size)
-                            ?.asImageBitmap()
-                    }.getOrNull()
-                }
-                if (launcherIcon != null) {
-                    Image(bitmap = launcherIcon, contentDescription = null, modifier = Modifier.size(36.dp))
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("ReiAnix Premium", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    Surface(modifier = modifier.fillMaxWidth(),
+        color = ComposeColor.Black, contentColor = ComposeColor.White) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Adaptive launcher icons must be rasterized, not loaded with painterResource.
+                        val launcherIcon = remember(context) {
+                            runCatching {
+                                val size = (24 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+                                context.getDrawable(R.mipmap.ic_launcher)
+                                    ?.toBitmap(width = size, height = size)
+                                    ?.asImageBitmap()
+                            }.getOrNull()
+                        }
+                        if (launcherIcon != null) {
+                            Image(bitmap = launcherIcon, contentDescription = null, modifier = Modifier.size(24.dp))
+                        }
+                        Text("ReiAnix Premium", fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp, lineHeight = 14.sp)
+                    }
                     Text(if (state.trialActive) "${remaining / 60}h ${remaining % 60}min restantes" else "1 dia gratuito",
-                        color = premiumMuted, fontSize = 12.sp)
+                        color = premiumMuted, fontSize = 11.sp, lineHeight = 13.sp)
                 }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                val compactPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
+                val buttonColors = ButtonDefaults.buttonColors(
+                    containerColor = premiumBlue, contentColor = ComposeColor.White)
                 Button(onClick = { confirm = true }, enabled = !state.trialActive && !state.busy,
-                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = premiumBlue)) {
-                    Text(if (state.trialActive) "Ativo" else "Ativar 1 dia grátis", fontSize = 12.sp, textAlign = TextAlign.Center)
+                    shape = RoundedCornerShape(50), colors = buttonColors,
+                    contentPadding = compactPadding) {
+                    Text(if (state.trialActive) "Ativo" else "1 dia grátis", fontSize = 11.sp,
+                        maxLines = 1, textAlign = TextAlign.Center)
                 }
-                OutlinedButton(onClick = access.open, modifier = Modifier.weight(1f)) {
-                    Text("Fazer upgrade", color = ComposeColor.White, fontSize = 12.sp)
+                Button(onClick = access.open, shape = RoundedCornerShape(50),
+                    colors = buttonColors, contentPadding = compactPadding) {
+                    Text("Fazer upgrade", fontSize = 11.sp, maxLines = 1, textAlign = TextAlign.Center)
                 }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = premiumBlue)
