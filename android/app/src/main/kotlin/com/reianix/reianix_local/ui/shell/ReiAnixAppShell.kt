@@ -1,10 +1,9 @@
 package com.reianix.reianix_local.ui.shell
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.animateColor
+import com.reianix.reianix_local.ui.motion.reiAnixPrimaryTabMotionSpec
 import androidx.compose.animation.core.snap
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -112,6 +111,11 @@ private fun ReiAnixBottomNavigation(
             MaterialTheme.colorScheme.surface
         }
 
+    val selectionTransition = updateTransition(selectedRoute, label = "bottom-navigation-selection")
+    val animateSelection = ReiAnixMotionPolicy.systemAnimationsEnabled()
+    val selectedColor = MaterialTheme.colorScheme.primary
+    val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     NavigationBar(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,32 +130,14 @@ private fun ReiAnixBottomNavigation(
     ) {
         destinations.forEach { destination ->
             val selected = selectedRoute == destination.route
-            val contentColor by animateColorAsState(
-                targetValue = if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
-                    androidx.compose.animation.core.tween(
-                        durationMillis = ReiAnixTokens.Motion.stateChangeMillis,
-                    )
-                } else {
-                    snap()
-                },
+            val contentColor by selectionTransition.animateColor(
+                transitionSpec = { if (animateSelection) reiAnixPrimaryTabMotionSpec() else snap() },
                 label = "bottom-nav-color",
-            )
-            // Tiny local spring, isolated to the icon's draw layer: unlike a
-            // full-screen scale it never changes the bar's measured height.
-            val iconScale by animateFloatAsState(
-                targetValue = if (selected) 1f else 0.97f,
-                animationSpec = if (ReiAnixMotionPolicy.systemAnimationsEnabled()) {
-                    spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    )
-                } else {
-                    snap()
-                },
-                label = "bottom-nav-icon-spring",
-            )
+            ) { route -> if (route == destination.route) selectedColor else unselectedColor }
+            val iconScale by selectionTransition.animateFloat(
+                transitionSpec = { if (animateSelection) reiAnixPrimaryTabMotionSpec() else snap() },
+                label = "bottom-nav-scale",
+            ) { route -> if (route == destination.route) 1f else 0.97f }
             NavigationBarItem(
                 selected = selected,
                 onClick = { onDestinationClick(destination.route) },
