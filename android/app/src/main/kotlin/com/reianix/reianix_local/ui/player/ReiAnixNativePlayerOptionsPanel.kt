@@ -129,6 +129,8 @@ fun ReiAnixNativePlayerOptionsPanel(
     onSubtitleAppearance: () -> Unit = {},
     onAudioOnlyChanged: (Boolean) -> Unit = {},
     onShortcutsChanged: (List<PlayerShortcut>) -> Unit = {},
+    onAspect: () -> Unit = {},
+    onManualSkip: () -> Unit = {},
 ) {
     val premiumAccess = rememberPremiumAccess(allowReward = false)
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
@@ -516,6 +518,16 @@ fun ReiAnixNativePlayerOptionsPanel(
                 PlayerOptionsSubpageHeader(
                     title = "Outras opções",
                     onBack = { page = PlayerOptionsPage.MAIN },
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.Tune,
+                    label = "Proporção",
+                    onClick = onAspect,
+                )
+                PlayerOptionActionRow(
+                    icon = Icons.Filled.SkipNext,
+                    label = "Pular OP/ED",
+                    onClick = onManualSkip,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.History,

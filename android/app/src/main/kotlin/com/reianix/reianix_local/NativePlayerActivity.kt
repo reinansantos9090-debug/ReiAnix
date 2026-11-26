@@ -2858,6 +2858,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onSubtitleAppearance = { showSubtitleAppearance() },
+                        onAspect = ::toggleAspectMode,
+                        onManualSkip = ::skipOpeningOrEndingManually,
                         onAudioOnlyChanged = { enabled -> setAudioOnly(enabled) },
                         onAutoplayChanged = { enabled ->
                             autoplayNext = enabled
@@ -4481,6 +4483,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun persistAnimePreferences() {
+        if (!ReiAnixMonetization.from(applicationContext).state.value.premium) return
         val key = currentAnimePreferencesKey() ?: return
         if (activeAnimePreferences == null) return
         val snapshot = snapshotCurrentAnimePreferences()
@@ -4500,6 +4503,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun enableAnimePreferences() {
+        if (!ReiAnixMonetization.from(applicationContext).state.value.premium) {
+            showFeedback("Preferências individuais disponíveis no ReiAnix Premium.")
+            return
+        }
         if (currentAnimePreferencesKey() == null || favoriteClipSession != null) {
             showFeedback("Abra um episódio vinculado a um anime para usar esta opção")
             return
@@ -4565,8 +4572,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         subtitleScale = setting("audio.subtitle_scale").toFloatOrNull() ?: 1f
         subtitleBottomPaddingPercent = setting("audio.subtitle_bottom_padding").toIntOrNull() ?: 8
         subtitleEmbeddedStyle = setting("audio.subtitle_embedded_style") != "false"
-        subtitleColor = setting("audio.subtitle_color").ifBlank { "system" }
-        subtitleFont = setting("audio.subtitle_font").ifBlank { "system" }
+        val premium = ReiAnixMonetization.from(applicationContext).state.value.premium
+        subtitleColor = if (premium) setting("audio.subtitle_color").ifBlank { "system" } else "system"
+        subtitleFont = if (premium) setting("audio.subtitle_font").ifBlank { "system" } else "system"
         if (audioOnly) setAudioOnly(false)
         applyGlobalTrackPreferences()
         applySubtitlePreferences()

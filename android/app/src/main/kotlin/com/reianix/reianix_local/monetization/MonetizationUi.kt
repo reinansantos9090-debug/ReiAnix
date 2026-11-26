@@ -67,6 +67,9 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
     val activity = LocalContext.current.monetizationActivity() ?: return
     val state by manager.state.collectAsStateWithLifecycle()
     LaunchedEffect(activity) { manager.start(activity, withAds = allowReward) }
+    DisposableEffect(manager, allowReward) {
+        onDispose { if (allowReward) manager.cancelPendingReward() }
+    }
     AlertDialog(
         onDismissRequest = close,
         title = { Text("ReiAnix Premium") },

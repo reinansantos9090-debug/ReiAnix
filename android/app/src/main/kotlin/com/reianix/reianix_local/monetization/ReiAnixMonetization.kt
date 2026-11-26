@@ -69,6 +69,8 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
     private var consentRequested = false
     private var initializingAds = false
     private var rewardInProgress = false
+    private var rewardShowing = false
+    private var rewardGeneration = 0L
     private var expiry: Runnable? = null
 
     private fun main(action: () -> Unit) {
@@ -96,7 +98,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         scheduleExpiry()
         connect()
         if (withAds && !activity.isFinishing && !activity.isDestroyed && !current.value.premium) {
-            if (BuildConfig.MONETIZATION_PREVIEW) {
+            if (!BuildConfig.MONETIZATION_LIVE_ADS) {
                 // Only Google's public sample IDs are reachable in preview artifacts.
                 initializeAds()
             } else if (!consentRequested) {
@@ -135,7 +137,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
                 MobileAds.initialize(app) {
                     main {
                         initializingAds = false
-                        val allowed = BuildConfig.MONETIZATION_PREVIEW ||
+                        val allowed = !BuildConfig.MONETIZATION_LIVE_ADS ||
                             UserMessagingPlatform.getConsentInformation(app).canRequestAds()
                         update { it.copy(adsReady = allowed) }
                     }
@@ -155,6 +157,14 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         RewardKind.WALLPAPER -> "ca-app-pub-5427640733122650/5936116595"
     }
 
+    fun cancelPendingReward() = main {
+        if (rewardInProgress && !rewardShowing) {
+            rewardGeneration++
+            rewardInProgress = false
+            update { it.copy(busy = false, notice = null) }
+        }
+    }
+
     fun reward(activity: Activity, kind: RewardKind, artId: String? = null) = main {
         val snapshot = current.value
         if (snapshot.premium || rewardInProgress || snapshot.busy) return@main
@@ -168,9 +178,13 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
             return@main
         }
         rewardInProgress = true
+        rewardShowing = false
+        val generation = ++rewardGeneration
         update { it.copy(busy = true, notice = null) }
         fun finish(message: String? = null) {
+            if (generation != rewardGeneration) return
             rewardInProgress = false
+            rewardShowing = false
             update { it.copy(busy = false, notice = message) }
         }
         RewardedAd.load(activity, rewardId(kind), AdRequest.Builder().build(),
@@ -179,10 +193,13 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
                     finish("Nenhum anúncio disponível. Tente novamente mais tarde.")
                 }
                 override fun onAdLoaded(ad: RewardedAd) {
-                    if (activity.isFinishing || activity.isDestroyed || !activity.hasWindowFocus() ||
+                    if (generation != rewardGeneration) return
+                    if (activity.isFinishing || activity.isDestroyed ||
+                        (activity as? androidx.lifecycle.LifecycleOwner)?.lifecycle?.currentState?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) == false ||
                         !current.value.adsReady || current.value.premium) {
                         finish(); return
                     }
+                    rewardShowing = true
                     ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                         override fun onAdDismissedFullScreenContent() { finish() }
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {

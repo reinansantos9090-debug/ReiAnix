@@ -55,6 +55,9 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
         monetization.premium, arts.indexOf(art), MonetizationPolicy.artKey(banner, art.id), monetization.unlocked)
     var selectedId by rememberSaveable(banner) { mutableStateOf<String?>(null) }
     val selected = arts.firstOrNull { it.id == selectedId }
+    DisposableEffect(selectedId) {
+        onDispose { manager.cancelPendingReward() }
+    }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmRemove by rememberSaveable { mutableStateOf(false) }
