@@ -388,50 +388,17 @@ internal data class HomeAds(val banner: AdView?, val native: NativeAd?)
 @Composable
 internal fun rememberHomeAds(): HomeAds {
     val activity = LocalContext.current.monetizationActivity() ?: return HomeAds(null, null)
+    val cache = remember(activity) { ActivityAdCache.from(activity) }
     val manager = remember(activity) { ReiAnixMonetization.from(activity) }
     val state by manager.state.collectAsStateWithLifecycle()
     val width = LocalConfiguration.current.screenWidthDp
-    val canLoad = state.adsReady && !state.hideAds
-    var banner by remember { mutableStateOf<AdView?>(null) }
-    var native by remember { mutableStateOf<NativeAd?>(null) }
-    LaunchedEffect(activity, state.premium) {
-        // Do not block the existing first frame or the artwork/thumbnail workers.
-        delay(1200)
-        manager.start(activity)
+    val enabled = width >= 340 && !state.hideAds
+    val native = rememberCompactNativeAd(ActivityAdCache.HOME_NATIVE, enabled)
+    DisposableEffect(cache, enabled) {
+        if (enabled) cache.acquireBanner()
+        onDispose { if (enabled) cache.releaseBanner() }
     }
-    DisposableEffect(activity, canLoad, width) {
-        var disposed = false
-        var loadedNative: NativeAd? = null
-        var bannerView: AdView? = null
-        if (canLoad && width >= 340) {
-            val view = AdView(activity)
-            bannerView = view
-            view.setAdSize(AdSize.BANNER)
-            view.adUnitId = manager.bannerId()
-            view.adListener = object : AdListener() {
-                override fun onAdLoaded() { if (!disposed) banner = view }
-                override fun onAdFailedToLoad(error: LoadAdError) { if (!disposed) banner = null }
-            }
-            view.loadAd(AdRequest.Builder().build())
-            AdLoader.Builder(activity, manager.nativeId())
-                .forNativeAd { ad ->
-                    if (disposed) ad.destroy() else {
-                        loadedNative?.destroy()
-                        loadedNative = ad
-                        native = ad
-                    }
-                }
-                .build().loadAd(AdRequest.Builder().build())
-        }
-        onDispose {
-            disposed = true
-            banner = null
-            native = null
-            bannerView?.destroy()
-            loadedNative?.destroy()
-        }
-    }
-    return if (canLoad) HomeAds(banner, native) else HomeAds(null, null)
+    return if (enabled && state.adsReady) HomeAds(cache.banner, native) else HomeAds(null, null)
 }
 
 @Composable
@@ -447,8 +414,11 @@ internal fun HomeBannerAd(view: AdView) {
 
 @Composable
 internal fun HomeNativeAd(ad: NativeAd) {
+    val activity = LocalContext.current.monetizationActivity() ?: return
+    val cache = remember(activity) { ActivityAdCache.from(activity) }
     key(ad) {
         AndroidView(factory = { context ->
+            cache.nativeView(ad) {
             val view = NativeAdView(context)
             val density = context.resources.displayMetrics.density
             fun px(dp: Int) = (dp * density).toInt()
@@ -495,60 +465,45 @@ internal fun HomeNativeAd(ad: NativeAd) {
             view.callToActionView = cta
             view.setNativeAd(ad)
             view
+            }
         }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
     }
 }
 
 
-/** One independently owned ad per compact placement, never shared with Home. */
+/** Retain one valid native creative per placement while navigating. */
 @Composable
 internal fun rememberCompactNativeAd(placementKey: String, enabled: Boolean = true): NativeAd? {
     val activity = LocalContext.current.monetizationActivity() ?: return null
     val manager = remember(activity) { ReiAnixMonetization.from(activity) }
     val state by manager.state.collectAsStateWithLifecycle()
-    val canLoad = enabled && state.adsReady && !state.hideAds
-    var native by remember(activity, placementKey) { mutableStateOf<NativeAd?>(null) }
-    LaunchedEffect(activity, enabled, state.premium) {
-        if (enabled && !state.premium) {
-            // Keep ad initialization off the initial content render.
+    val cache = remember(activity) { ActivityAdCache.from(activity) }
+    val slot = remember(cache, placementKey) { cache.slot(placementKey) }
+    val active = enabled && !state.hideAds
+    LaunchedEffect(activity, active) {
+        if (active) {
+            // Keep ad initialization off the first content render.
             delay(1200)
             manager.start(activity)
         }
     }
-    DisposableEffect(activity, placementKey, canLoad) {
-        var disposed = false
-        var loaded: NativeAd? = null
-        if (canLoad) {
-            AdLoader.Builder(activity, manager.nativeId())
-                .forNativeAd { ad ->
-                    // Compact layout has no video MediaView. Never render video creatives
-                    // in a format that cannot present their video asset.
-                    if (disposed || ad.mediaContent?.hasVideoContent() == true) {
-                        ad.destroy()
-                    } else {
-                        loaded?.destroy()
-                        loaded = ad
-                        native = ad
-                    }
-                }
-                .build().loadAd(AdRequest.Builder().build())
-        }
-        onDispose {
-            disposed = true
-            native = null
-            loaded?.destroy()
-        }
+    DisposableEffect(cache, slot, active) {
+        if (active) cache.acquire(slot)
+        onDispose { if (active) cache.release(slot) }
     }
-    return if (canLoad) native else null
+    return if (active && state.adsReady) slot.ad else null
 }
 
 @Composable
 internal fun CompactNativeAd(ad: NativeAd, modifier: Modifier = Modifier) {
+    val activity = LocalContext.current.monetizationActivity() ?: return
+    val cache = remember(activity) { ActivityAdCache.from(activity) }
     key(ad) {
         AndroidView(
             modifier = modifier.fillMaxWidth().padding(vertical = 10.dp),
             factory = { context ->
-                val view = NativeAdView(context)
+                cache.nativeView(ad) {
+            val view = NativeAdView(context)
                 val density = context.resources.displayMetrics.density
                 fun px(dp: Int) = (dp * density).toInt()
                 val content = LinearLayout(context).apply {
@@ -635,6 +590,7 @@ internal fun CompactNativeAd(ad: NativeAd, modifier: Modifier = Modifier) {
                 view.callToActionView = cta
                 view.setNativeAd(ad)
                 view
+                }
             },
         )
     }
