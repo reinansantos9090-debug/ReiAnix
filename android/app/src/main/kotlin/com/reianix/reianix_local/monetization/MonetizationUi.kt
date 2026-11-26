@@ -228,7 +228,8 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                             PremiumBenefit(Icons.Filled.Favorite, "Apoie o desenvolvimento", "Ajude o ReiAnix a evoluir.")
                         }
                     }
-                    if (!state.premium && allowReward) {
+                    if (!state.premium && allowReward &&
+                        (BuildConfig.MONETIZATION_PREVIEW || BuildConfig.MONETIZATION_LIVE_ADS)) {
                         Spacer(Modifier.height(16.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -328,6 +329,7 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
     }
     DisposableEffect(manager) { onDispose { manager.cancelPendingReward() } }
     if (state.premium) return
+    val rewardAvailable = BuildConfig.MONETIZATION_PREVIEW || BuildConfig.MONETIZATION_LIVE_ADS
     val remaining = ((state.until - now).coerceAtLeast(0) + 59_999) / 60_000
     Surface(modifier = modifier.fillMaxWidth(),
         color = ComposeColor.Black, contentColor = ComposeColor.White) {
@@ -355,13 +357,13 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
                         Text("ReiAnix Premium", fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp, lineHeight = 17.sp)
                     }
-                    Text(if (state.trialActive) "${remaining / 60}h ${remaining % 60}min restantes" else "1 dia gratuito",
+                    Text(if (state.trialActive) "${remaining / 60}h ${remaining % 60}min restantes" else if (rewardAvailable) "1 dia gratuito" else "Recursos exclusivos",
                         color = premiumMuted, fontSize = 12.sp, lineHeight = 15.sp)
                 }
                 val compactPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                 val buttonColors = ButtonDefaults.buttonColors(
                     containerColor = premiumBlue, contentColor = ComposeColor.White)
-                Button(onClick = { confirm = true }, enabled = !state.trialActive && !state.busy,
+                if (rewardAvailable) Button(onClick = { confirm = true }, enabled = !state.trialActive && !state.busy,
                     shape = RoundedCornerShape(50), colors = buttonColors,
                     contentPadding = compactPadding) {
                     Text(if (state.trialActive) "Ativo" else "1 dia grátis", fontSize = 12.sp,

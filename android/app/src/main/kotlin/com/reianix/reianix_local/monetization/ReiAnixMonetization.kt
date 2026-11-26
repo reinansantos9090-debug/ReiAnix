@@ -100,10 +100,10 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         scheduleExpiry()
         connect()
         if (withAds && !activity.isFinishing && !activity.isDestroyed && !current.value.premium) {
-            if (!BuildConfig.MONETIZATION_LIVE_ADS) {
-                // Only Google's public sample IDs are reachable in preview artifacts.
+            if (BuildConfig.MONETIZATION_PREVIEW) {
+                // Only development artifacts request Google's sample ads.
                 initializeAds()
-            } else if (!consentRequested) {
+            } else if (BuildConfig.MONETIZATION_LIVE_ADS && !consentRequested) {
                 consentRequested = true
                 val info = UserMessagingPlatform.getConsentInformation(app)
                 info.requestConsentInfoUpdate(activity, ConsentRequestParameters.Builder().build(), {
@@ -132,6 +132,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         }
     }
     private fun initializeAds() {
+        if (!BuildConfig.MONETIZATION_PREVIEW && !BuildConfig.MONETIZATION_LIVE_ADS) return
         if (initializingAds || current.value.adsReady) return
         initializingAds = true
         scope.launch {
@@ -252,7 +253,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
     }
 
     private fun connect() {
-        if (BuildConfig.MONETIZATION_PREVIEW) return
+        if (BuildConfig.MONETIZATION_PREVIEW || BuildConfig.MONETIZATION_BILLING_KEY.isBlank()) return
         if (billing?.isReady == true) { refresh(); return }
         if (connecting) return
         connecting = true
@@ -324,6 +325,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         notice(null)
         start(activity, withAds = false)
         if (BuildConfig.MONETIZATION_PREVIEW) notice("Prévia: a compra simulada é salva neste aparelho.")
+        else if (BuildConfig.MONETIZATION_BILLING_KEY.isBlank()) notice("Compras ainda indisponíveis na Google Play.")
     }
 
     fun buy(activity: Activity) = main {

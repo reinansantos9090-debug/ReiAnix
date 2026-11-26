@@ -23,6 +23,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      ORG_GRADLE_PROJECT_reianixProductionBuild: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      ORG_GRADLE_PROJECT_reianixBillingPublicKey: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.REIANIX_BILLING_PUBLIC_KEY || '' }}
+      ORG_GRADLE_PROJECT_reianixEnableLiveAds: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.REIANIX_ENABLE_LIVE_ADS == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -204,6 +208,17 @@ jobs:
               main_py_packaged: false
             }' > build/reianix-build-identity.json
           test -s build/reianix-build-identity.json
+
+      - name: Report official monetization configuration
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          if [[ -z "$ORG_GRADLE_PROJECT_reianixBillingPublicKey" ]]; then
+            echo "::warning::REIANIX_BILLING_PUBLIC_KEY missing. Official artifacts will not simulate purchases; Premium purchasing remains unavailable."
+          fi
+          if [[ "$ORG_GRADLE_PROJECT_reianixEnableLiveAds" != "true" ]]; then
+            echo "::notice::Live ads disabled until REIANIX_ENABLE_LIVE_ADS=true. No demo ads in official artifacts."
+          fi
 
       - name: Build native Android release APK
         shell: bash
@@ -406,6 +421,7 @@ jobs:
           grep -Fq "android:versionCode=\"$GITHUB_RUN_NUMBER\"" "$manifest"
           grep -Fq 'android:versionName="0.2.1"' "$manifest"
           grep -Fq 'android:targetSdkVersion="36"' "$manifest"
+          grep -Fq 'com.android.vending.BILLING' "$manifest"
           if grep -Fq 'android.permission.MANAGE_EXTERNAL_STORAGE' "$manifest"; then
             echo "Forbidden broad file permission in AAB" >&2; exit 1
           fi
