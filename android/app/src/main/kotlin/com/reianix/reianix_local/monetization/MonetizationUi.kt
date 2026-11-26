@@ -156,7 +156,7 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
     DisposableEffect(manager, allowReward) {
         onDispose { if (allowReward) manager.cancelPendingReward() }
     }
-    val price = if (BuildConfig.MONETIZATION_PREVIEW) "R$ 9,90" else state.price
+    val price = state.price
     var confirmReward by remember { mutableStateOf(false) }
     Dialog(
         onDismissRequest = close,
@@ -229,7 +229,7 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                         }
                     }
                     if (!state.premium && allowReward &&
-                        (BuildConfig.MONETIZATION_PREVIEW || BuildConfig.MONETIZATION_LIVE_ADS)) {
+                        (BuildConfig.MONETIZATION_LIVE_ADS)) {
                         Spacer(Modifier.height(16.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -263,10 +263,6 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                     if (allowReward && state.privacyRequired) TextButton(onClick = { manager.privacy(activity) }) {
                         Text("Opções de privacidade dos anúncios", color = premiumBlue)
                     }
-                    if (BuildConfig.MONETIZATION_PREVIEW) TextButton(onClick = manager::resetPreview,
-                        enabled = !state.busy, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text("Redefinir monetização de teste", color = premiumMuted, fontSize = 12.sp)
-                    }
                     state.notice?.let { Text(it, color = premiumMuted, fontSize = 13.sp,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) }
                     Spacer(Modifier.height(12.dp))
@@ -286,8 +282,7 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                         TextButton(onClick = { manager.restore(activity) }, enabled = !state.busy) {
                             Text("Restaurar compra", color = premiumBlue, fontSize = 14.sp)
                         }
-                        Text(if (BuildConfig.MONETIZATION_PREVIEW) "Modo de teste · nenhuma cobrança real" else
-                            "Compra vinculada à sua conta Google Play.",
+                        Text("Compra vinculada à sua conta Google Play.",
                             color = premiumMuted, fontSize = 11.sp, textAlign = TextAlign.Center)
                     }
                 }
@@ -329,7 +324,7 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
     }
     DisposableEffect(manager) { onDispose { manager.cancelPendingReward() } }
     if (state.premium) return
-    val rewardAvailable = BuildConfig.MONETIZATION_PREVIEW || BuildConfig.MONETIZATION_LIVE_ADS
+    val rewardAvailable = BuildConfig.MONETIZATION_LIVE_ADS
     val remaining = ((state.until - now).coerceAtLeast(0) + 59_999) / 60_000
     Surface(modifier = modifier.fillMaxWidth(),
         color = ComposeColor.Black, contentColor = ComposeColor.White) {

@@ -24,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      ORG_GRADLE_PROJECT_reianixProductionBuild: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
-      ORG_GRADLE_PROJECT_reianixBillingPublicKey: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.REIANIX_BILLING_PUBLIC_KEY || '' }}
-      ORG_GRADLE_PROJECT_reianixEnableLiveAds: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.REIANIX_ENABLE_LIVE_ADS == 'true' }}
+      # Both settings are public configuration, not signing credentials.
+      ORG_GRADLE_PROJECT_reianixBillingPublicKey: ${{ vars.REIANIX_BILLING_PUBLIC_KEY }}
+      ORG_GRADLE_PROJECT_reianixEnableLiveAds: ${{ vars.REIANIX_ENABLE_LIVE_ADS == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -209,15 +209,18 @@ jobs:
             }' > build/reianix-build-identity.json
           test -s build/reianix-build-identity.json
 
-      - name: Report official monetization configuration
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - name: Validate and report real monetization configuration
         shell: bash
         run: |
+          if grep -REn 'MONETIZATION_PREVIEW|monetization_preview_v1|resetPreview|ca-app-pub-3940256099942544' android/app/build.gradle.kts android/app/src/main; then
+            echo "::error::Demo monetization must not be included in any build."
+            exit 1
+          fi
           if [[ -z "$ORG_GRADLE_PROJECT_reianixBillingPublicKey" ]]; then
-            echo "::warning::REIANIX_BILLING_PUBLIC_KEY missing. Official artifacts will not simulate purchases; Premium purchasing remains unavailable."
+            echo "::warning::REIANIX_BILLING_PUBLIC_KEY missing. Premium purchasing remains unavailable."
           fi
           if [[ "$ORG_GRADLE_PROJECT_reianixEnableLiveAds" != "true" ]]; then
-            echo "::notice::Live ads disabled until REIANIX_ENABLE_LIVE_ADS=true. No demo ads in official artifacts."
+            echo "::notice::Live ads disabled until REIANIX_ENABLE_LIVE_ADS=true. No ads requested until configured."
           fi
 
       - name: Build native Android release APK

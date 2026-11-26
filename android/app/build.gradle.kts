@@ -13,20 +13,11 @@ val reianixEnableR8 = providers.gradleProperty("reianixEnableR8")
     .map { it.toBoolean() }
     .getOrElse(true)
 
-// Official CI releases never simulate purchases. PR/benchmark/debug use
-// Google sample ad IDs and a local simulated purchase, never a real charge.
-val billingRequested = providers.gradleProperty("reianixEnablePlayBilling").orNull == "true"
-val adsRequested = providers.gradleProperty("reianixEnableLiveAds").orNull == "true"
-val productionAllowed = System.getenv("GITHUB_EVENT_NAME") != "pull_request"
-val productionRequested = providers.gradleProperty("reianixProductionBuild").orNull == "true"
-val preview = !productionAllowed || !(productionRequested || billingRequested || adsRequested)
+// Every build uses the same real Google Play and AdMob integrations.
+// Missing configuration disables the corresponding service; never simulate a purchase.
+val liveAds = providers.gradleProperty("reianixEnableLiveAds").orNull == "true"
 val billingPublicKey = providers.gradleProperty("reianixBillingPublicKey").orNull.orEmpty().trim()
-val billingEnabled = !preview && billingPublicKey.isNotEmpty()
-val liveAds = !preview && adsRequested
-require(preview || !billingRequested || billingEnabled) {
-    "Provide the Play Console RSA billing public key before enabling real billing."
-}
-require(!billingEnabled || runCatching {
+require(billingPublicKey.isEmpty() || runCatching {
     val decoded = Base64.getDecoder().decode(billingPublicKey)
     KeyFactory.getInstance("RSA")
         .generatePublic(X509EncodedKeySpec(decoded))
@@ -58,10 +49,9 @@ android {
             "AniList client ID must be numeric."
         }
         buildConfigField("String", "ANILIST_CLIENT_ID", "\"$aniListClientId\"")
-        buildConfigField("boolean", "MONETIZATION_PREVIEW", "true")
-        buildConfigField("boolean", "MONETIZATION_LIVE_ADS", "false")
-        buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"\"")
-        manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
+        buildConfigField("boolean", "MONETIZATION_LIVE_ADS", liveAds.toString())
+        buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"$billingPublicKey\"")
+        manifestPlaceholders["admobAppId"] = "ca-app-pub-5427640733122650~3098200260"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -83,10 +73,6 @@ android {
 
     buildTypes {
         getByName("release") {
-            buildConfigField("boolean", "MONETIZATION_PREVIEW", preview.toString())
-            buildConfigField("boolean", "MONETIZATION_LIVE_ADS", liveAds.toString())
-            buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"${if (billingEnabled) billingPublicKey else ""}\"")
-            manifestPlaceholders["admobAppId"] = if (liveAds) "ca-app-pub-5427640733122650~3098200260" else "ca-app-pub-3940256099942544~3347511713"
             // CI disables R8 for PR preview builds and keeps it enabled on main releases.
             isMinifyEnabled = reianixEnableR8
             isShrinkResources = reianixEnableR8
@@ -113,10 +99,6 @@ android {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
-            buildConfigField("boolean", "MONETIZATION_PREVIEW", "true")
-            buildConfigField("boolean", "MONETIZATION_LIVE_ADS", "false")
-            buildConfigField("String", "MONETIZATION_BILLING_KEY", "\"\"")
-            manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
             matchingFallbacks += listOf("release")
         }
     }

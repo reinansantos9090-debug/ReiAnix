@@ -55,12 +55,9 @@ internal fun Context.monetizationActivity(): Activity? = when (this) {
 internal class ReiAnixMonetization private constructor(private val app: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val prefs = app.getSharedPreferences(
-        if (BuildConfig.MONETIZATION_PREVIEW) "monetization_preview_v1" else "monetization_v1", Context.MODE_PRIVATE
-    )
+    private val prefs = app.getSharedPreferences("monetization_v1", Context.MODE_PRIVATE)
     private val current = MutableStateFlow(MonetizationState(
-        premium = if (BuildConfig.MONETIZATION_PREVIEW) prefs.getBoolean("premium", false)
-            else cachedPurchase() != null,
+        premium = cachedPurchase() != null,
         until = prefs.getLong("until", 0),
         unlocked = prefs.getStringSet("unlocked", emptySet()).orEmpty().toSet(),
     ))
@@ -100,10 +97,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         scheduleExpiry()
         connect()
         if (withAds && !activity.isFinishing && !activity.isDestroyed && !current.value.premium) {
-            if (BuildConfig.MONETIZATION_PREVIEW) {
-                // Only development artifacts request Google's sample ads.
-                initializeAds()
-            } else if (BuildConfig.MONETIZATION_LIVE_ADS && !consentRequested) {
+            if (BuildConfig.MONETIZATION_LIVE_ADS && !consentRequested) {
                 consentRequested = true
                 val info = UserMessagingPlatform.getConsentInformation(app)
                 info.requestConsentInfoUpdate(activity, ConsentRequestParameters.Builder().build(), {
@@ -132,7 +126,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         }
     }
     private fun initializeAds() {
-        if (!BuildConfig.MONETIZATION_PREVIEW && !BuildConfig.MONETIZATION_LIVE_ADS) return
+        if (!BuildConfig.MONETIZATION_LIVE_ADS) return
         if (initializingAds || current.value.adsReady) return
         initializingAds = true
         scope.launch {
@@ -140,7 +134,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
                 MobileAds.initialize(app) {
                     main {
                         initializingAds = false
-                        val allowed = !BuildConfig.MONETIZATION_LIVE_ADS ||
+                        val allowed = BuildConfig.MONETIZATION_LIVE_ADS &&
                             UserMessagingPlatform.getConsentInformation(app).canRequestAds()
                         update { it.copy(adsReady = allowed) }
                     }
@@ -149,12 +143,9 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
         }
     }
 
-    fun bannerId() = if (BuildConfig.MONETIZATION_LIVE_ADS)
-        "ca-app-pub-5427640733122650/5691419063" else "ca-app-pub-3940256099942544/6300978111"
-    fun nativeId() = if (BuildConfig.MONETIZATION_LIVE_ADS)
-        "ca-app-pub-5427640733122650/2024083909" else "ca-app-pub-3940256099942544/2247696110"
-    private fun rewardId(kind: RewardKind) = if (!BuildConfig.MONETIZATION_LIVE_ADS)
-        "ca-app-pub-3940256099942544/5224354917" else when (kind) {
+    fun bannerId() = "ca-app-pub-5427640733122650/5691419063"
+    fun nativeId() = "ca-app-pub-5427640733122650/2024083909"
+    private fun rewardId(kind: RewardKind) = when (kind) {
         RewardKind.DAY -> "ca-app-pub-5427640733122650/6019877072"
         RewardKind.BANNER -> "ca-app-pub-5427640733122650/7248490423"
         RewardKind.WALLPAPER -> "ca-app-pub-5427640733122650/5936116595"
@@ -253,7 +244,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
     }
 
     private fun connect() {
-        if (BuildConfig.MONETIZATION_PREVIEW || BuildConfig.MONETIZATION_BILLING_KEY.isBlank()) return
+        if (BuildConfig.MONETIZATION_BILLING_KEY.isBlank()) return
         if (billing?.isReady == true) { refresh(); return }
         if (connecting) return
         connecting = true
@@ -324,17 +315,11 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
     fun restore(activity: Activity) {
         notice(null)
         start(activity, withAds = false)
-        if (BuildConfig.MONETIZATION_PREVIEW) notice("Prévia: a compra simulada é salva neste aparelho.")
-        else if (BuildConfig.MONETIZATION_BILLING_KEY.isBlank()) notice("Compras ainda indisponíveis na Google Play.")
+        if (BuildConfig.MONETIZATION_BILLING_KEY.isBlank()) notice("Compras ainda indisponíveis na Google Play.")
     }
 
     fun buy(activity: Activity) = main {
         if (current.value.premium || current.value.busy) return@main
-        if (BuildConfig.MONETIZATION_PREVIEW) {
-            prefs.edit().putBoolean("premium", true).apply()
-            update { it.copy(premium = true, notice = "Premium de teste ativado. Nenhuma cobrança.") }
-            return@main
-        }
         val client = billing?.takeIf { it.isReady }
         val details = product
         if (client == null || details == null) {
@@ -350,13 +335,6 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
             if (result.responseCode == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) refresh()
             else notice("Não foi possível abrir a compra.")
         }
-    }
-
-    fun resetPreview() = main {
-        if (!BuildConfig.MONETIZATION_PREVIEW || current.value.busy) return@main
-        prefs.edit().clear().apply()
-        update { it.copy(premium = false, until = 0, unlocked = emptySet(), notice = null) }
-        scheduleExpiry()
     }
 
     companion object {
