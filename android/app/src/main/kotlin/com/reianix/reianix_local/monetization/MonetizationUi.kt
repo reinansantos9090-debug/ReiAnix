@@ -8,7 +8,8 @@ import android.widget.TextView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import com.reianix.reianix_local.R
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -236,7 +237,20 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
         color = ComposeColor(0xFF191919), contentColor = ComposeColor.White) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Image(painterResource(R.mipmap.ic_launcher), contentDescription = null, modifier = Modifier.size(36.dp))
+                // Launcher resources can be AdaptiveIconDrawable on Android 8+.
+                // Compose painterResource only accepts bitmap/vector resources.
+                // Rasterize the official icon once; omit it if loading fails.
+                val launcherIcon = remember(context) {
+                    runCatching {
+                        val size = (36 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+                        context.getDrawable(R.mipmap.ic_launcher)
+                            ?.toBitmap(width = size, height = size)
+                            ?.asImageBitmap()
+                    }.getOrNull()
+                }
+                if (launcherIcon != null) {
+                    Image(bitmap = launcherIcon, contentDescription = null, modifier = Modifier.size(36.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Text("ReiAnix Premium", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Text(if (state.trialActive) "${remaining / 60}h ${remaining % 60}min restantes" else "1 dia gratuito",
