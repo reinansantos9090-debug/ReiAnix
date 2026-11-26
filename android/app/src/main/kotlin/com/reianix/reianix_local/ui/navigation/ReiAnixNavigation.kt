@@ -52,7 +52,6 @@ import androidx.compose.animation.fadeOut
 import com.reianix.reianix_local.ui.mylist.ReiAnixMyListRoute
 import com.reianix.reianix_local.ui.player.ReiAnixPlayerRoute
 import com.reianix.reianix_local.ui.search.ReiAnixSearchRoute
-import com.reianix.reianix_local.monetization.HomePremiumOffer
 import com.reianix.reianix_local.ui.shell.ReiAnixAppShell
 import com.reianix.reianix_local.ui.shell.ReiAnixBottomNavDestination
 import com.reianix.reianix_local.viewmodel.ReiAnixLibraryViewModel
@@ -477,9 +476,6 @@ fun ReiAnixNavigationHost(
         bottomDestinations = topLevelDestinations,
         onBottomDestinationClick = navController::navigateToTopLevel,
         showBottomNavigation = shouldShowBottomNavigation,
-        aboveBottomNavigation = if (currentRoute == ReiAnixRoutes.HOME) {
-            { HomePremiumOffer() }
-        } else null,
         navigationContent = { innerPadding ->
         NavHost(
             navController = navController,

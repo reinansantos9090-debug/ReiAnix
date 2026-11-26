@@ -303,6 +303,14 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
 }
 
 @Composable
+internal fun rememberHomePremiumOfferVisible(): Boolean {
+    val context = LocalContext.current
+    val manager = remember(context) { ReiAnixMonetization.from(context) }
+    val state by manager.state.collectAsStateWithLifecycle()
+    return !state.premium
+}
+
+@Composable
 internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val activity = context.monetizationActivity() ?: return
@@ -323,7 +331,7 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
     val remaining = ((state.until - now).coerceAtLeast(0) + 59_999) / 60_000
     Surface(modifier = modifier.fillMaxWidth(),
         color = ComposeColor.Black, contentColor = ComposeColor.White) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(horizontal = 2.dp, vertical = 8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -335,33 +343,33 @@ internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
                         // Adaptive launcher icons must be rasterized, not loaded with painterResource.
                         val launcherIcon = remember(context) {
                             runCatching {
-                                val size = (24 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+                                val size = (34 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
                                 context.getDrawable(R.mipmap.ic_launcher)
                                     ?.toBitmap(width = size, height = size)
                                     ?.asImageBitmap()
                             }.getOrNull()
                         }
                         if (launcherIcon != null) {
-                            Image(bitmap = launcherIcon, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Image(bitmap = launcherIcon, contentDescription = null, modifier = Modifier.size(34.dp))
                         }
                         Text("ReiAnix Premium", fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp, lineHeight = 14.sp)
+                            fontSize = 14.sp, lineHeight = 17.sp)
                     }
                     Text(if (state.trialActive) "${remaining / 60}h ${remaining % 60}min restantes" else "1 dia gratuito",
-                        color = premiumMuted, fontSize = 11.sp, lineHeight = 13.sp)
+                        color = premiumMuted, fontSize = 12.sp, lineHeight = 15.sp)
                 }
-                val compactPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
+                val compactPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                 val buttonColors = ButtonDefaults.buttonColors(
                     containerColor = premiumBlue, contentColor = ComposeColor.White)
                 Button(onClick = { confirm = true }, enabled = !state.trialActive && !state.busy,
                     shape = RoundedCornerShape(50), colors = buttonColors,
                     contentPadding = compactPadding) {
-                    Text(if (state.trialActive) "Ativo" else "1 dia grátis", fontSize = 11.sp,
+                    Text(if (state.trialActive) "Ativo" else "1 dia grátis", fontSize = 12.sp,
                         maxLines = 1, textAlign = TextAlign.Center)
                 }
                 Button(onClick = access.open, shape = RoundedCornerShape(50),
                     colors = buttonColors, contentPadding = compactPadding) {
-                    Text("Fazer upgrade", fontSize = 11.sp, maxLines = 1, textAlign = TextAlign.Center)
+                    Text("Fazer upgrade", fontSize = 12.sp, maxLines = 1, textAlign = TextAlign.Center)
                 }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = premiumBlue)

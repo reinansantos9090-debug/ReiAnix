@@ -763,6 +763,7 @@ private fun ColumnScope.HomeReadyContent(
     }
 
     val homeAds = rememberHomeAds()
+    val showPremiumOffer = rememberHomePremiumOfferVisible()
     LazyColumn(
         modifier = Modifier
             .weight(1f)
@@ -781,6 +782,11 @@ private fun ColumnScope.HomeReadyContent(
                     onSecondaryAction = onHeroSecondaryAction,
                     secondaryLabel = heroSecondaryLabel,
                 )
+            }
+        }
+        if (showPremiumOffer) {
+            item(key = "home-premium-offer", contentType = "home-premium-offer") {
+                HomePremiumOffer(Modifier.padding(horizontal = responsive.horizontalPadding))
             }
         }
         if (visibleContinue.isNotEmpty()) {
