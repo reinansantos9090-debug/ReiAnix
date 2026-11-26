@@ -134,6 +134,9 @@ fun ReiAnixNativePlayerOptionsPanel(
 ) {
     val premiumAccess = rememberPremiumAccess(allowReward = false)
     var page by remember { mutableStateOf(PlayerOptionsPage.MAIN) }
+    LaunchedEffect(premiumAccess.active) {
+        if (!premiumAccess.active && page == PlayerOptionsPage.SHORTCUTS) page = PlayerOptionsPage.MAIN
+    }
     LaunchedEffect(resetSignal) {
         page = PlayerOptionsPage.MAIN
     }

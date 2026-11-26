@@ -52,7 +52,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
     val saved by store.state.collectAsStateWithLifecycle()
     val arts = remember(banner) { ReiAnixArtPack.available(banner) }
     fun unlocked(art: PersonalArt): Boolean = MonetizationPolicy.artAvailable(
-        monetization.premium, arts.indexOf(art), MonetizationPolicy.artKey(banner, art.id), monetization.unlocked)
+        monetization.hasPremium, arts.indexOf(art), MonetizationPolicy.artKey(banner, art.id), monetization.unlocked)
     var selectedId by rememberSaveable(banner) { mutableStateOf<String?>(null) }
     val selected = arts.firstOrNull { it.id == selectedId }
     DisposableEffect(selectedId) {

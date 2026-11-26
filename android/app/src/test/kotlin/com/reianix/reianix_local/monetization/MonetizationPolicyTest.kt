@@ -12,6 +12,13 @@ class MonetizationPolicyTest {
         assertFalse(MonetizationPolicy.suppressAds(false, until, until))
         assertTrue(MonetizationPolicy.suppressAds(true, 0, now))
     }
+    @Test fun trialUnlocksPremiumUntilExactExpiryAndPurchaseSurvives() {
+        val now = 1000L
+        val until = MonetizationPolicy.rewardUntil(now)
+        assertTrue(MonetizationPolicy.hasPremium(false, until, now))
+        assertFalse(MonetizationPolicy.hasPremium(false, until, until))
+        assertTrue(MonetizationPolicy.hasPremium(true, until, until))
+    }
     @Test fun distinctArtAndFreeAccess() {
         val banner = MonetizationPolicy.artKey(true, "same")
         val wallpaper = MonetizationPolicy.artKey(false, "same")

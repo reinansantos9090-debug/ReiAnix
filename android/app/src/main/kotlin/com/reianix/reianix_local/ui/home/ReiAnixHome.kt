@@ -783,6 +783,7 @@ private fun ColumnScope.HomeReadyContent(
                 )
             }
         }
+        item(key = "home-premium-offer") { HomePremiumOffer(Modifier.padding(horizontal = responsive.horizontalPadding)) }
         if (visibleContinue.isNotEmpty()) {
             item(key = "home-section-continue") {
                 HomeContinueSection(

@@ -40,7 +40,9 @@ internal data class MonetizationState(
     val busy: Boolean = false,
     val notice: String? = null,
 ) {
-    val hideAds get() = MonetizationPolicy.suppressAds(premium, until, System.currentTimeMillis())
+    val trialActive get() = until > System.currentTimeMillis()
+    val hasPremium get() = MonetizationPolicy.hasPremium(premium, until, System.currentTimeMillis())
+    val hideAds get() = hasPremium
 }
 
 internal fun Context.monetizationActivity(): Activity? = when (this) {
@@ -167,7 +169,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
 
     fun reward(activity: Activity, kind: RewardKind, artId: String? = null) = main {
         val snapshot = current.value
-        if (snapshot.premium || rewardInProgress || snapshot.busy) return@main
+        if (snapshot.hasPremium || rewardInProgress || snapshot.busy) return@main
         if (kind == RewardKind.DAY && snapshot.hideAds) return@main
         val key = if (kind == RewardKind.DAY) null else
             MonetizationPolicy.artKey(kind == RewardKind.BANNER, artId ?: return@main)
@@ -196,7 +198,7 @@ internal class ReiAnixMonetization private constructor(private val app: Context)
                     if (generation != rewardGeneration) return
                     if (activity.isFinishing || activity.isDestroyed ||
                         (activity as? androidx.lifecycle.LifecycleOwner)?.lifecycle?.currentState?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) == false ||
-                        !current.value.adsReady || current.value.premium) {
+                        !current.value.adsReady || current.value.hasPremium) {
                         finish(); return
                     }
                     rewardShowing = true

@@ -7,3 +7,5 @@
 - Real purchases are verified using Google's signed response locally and acknowledged; query purchases on foreground to recover/refund state. Client-only verification is not tamper-resistant; a secure backend is recommended before public monetization. Reward unlocks are local; they are not synchronized by Play Billing.
 - No advertisements are placed in the player. Free users retain essential playback, accessibility-related subtitle size/position, offline library and metadata. Premium locks advanced subtitle colors/fonts and shortcut layout.
 - Build/CI and on-device checks still required. Test reward cancellation, no fill, offline, process restart, expiry, profile art, refund/restore, and playback.
+
+- The DAY reward now grants temporary Premium for 24 hours; it does not create a Play purchase. The Home offer lets users renew after expiry. Individually rewarded art unlocks remain local and separate.

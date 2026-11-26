@@ -7,6 +7,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.reianix.reianix_local.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,7 +68,7 @@ internal fun rememberPremiumAccess(allowReward: Boolean = true): PremiumAccess {
     val state by manager.state.collectAsStateWithLifecycle()
     var open by remember { mutableStateOf(false) }
     if (open) PremiumDialog(manager, allowReward) { open = false }
-    return PremiumAccess(state.premium) { open = true }
+    return PremiumAccess(state.hasPremium) { open = true }
 }
 
 @Composable
@@ -132,6 +135,7 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                             Text(if (state.premium) "Premium ativo" else price?.let { "Somente " + it } ?: "Preço indisponível",
                                 color = ComposeColor(0xFF92BFFF), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
+                        if (state.trialActive && !state.premium) Text("Premium temporário ativo", color = premiumMuted, modifier = Modifier.padding(top = 8.dp))
                         Spacer(Modifier.height(10.dp))
                         Box(Modifier
                             .border(1.dp, ComposeColor(0xFFB49A60), RoundedCornerShape(30.dp))
@@ -158,12 +162,12 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                             Spacer(Modifier.height(16.dp))
                             HorizontalDivider(color = ComposeColor.White.copy(alpha = .12f))
                             Spacer(Modifier.height(12.dp))
-                            Text("24 horas sem anúncios", color = premiumText, fontWeight = FontWeight.SemiBold)
-                            Text("Assista a um anúncio opcional para remover a publicidade automática por 24 horas.",
+                            Text("1 dia de Premium grátis", color = premiumText, fontWeight = FontWeight.SemiBold)
+                            Text("Assista a um anúncio para liberar todos os benefícios Premium por 24 horas. Após o prazo, você pode renovar.",
                                 color = premiumMuted, textAlign = TextAlign.Center, fontSize = 13.sp)
                             OutlinedButton(onClick = { manager.reward(activity, RewardKind.DAY) },
                                 enabled = !state.hideAds && !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (state.hideAds) "24h sem anúncios · Ativo" else "Assistir anúncio", color = premiumBlue)
+                                Text(if (state.trialActive) "Premium temporário · Ativo" else "Assistir anúncio", color = premiumBlue)
                             }
                         }
                         if (allowReward && state.privacyRequired) TextButton(onClick = { manager.privacy(activity) }) {
@@ -200,6 +204,56 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
             }
         }
     }
+}
+
+@Composable
+internal fun HomePremiumOffer(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val activity = context.monetizationActivity() ?: return
+    val manager = remember(context) { ReiAnixMonetization.from(context) }
+    val state by manager.state.collectAsStateWithLifecycle()
+    val access = rememberPremiumAccess()
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var confirm by remember { mutableStateOf(false) }
+    LaunchedEffect(state.until) {
+        while (state.until > System.currentTimeMillis()) {
+            now = System.currentTimeMillis()
+            delay(30_000)
+        }
+        now = System.currentTimeMillis()
+    }
+    DisposableEffect(manager) { onDispose { manager.cancelPendingReward() } }
+    if (state.premium) return
+    val remaining = ((state.until - now).coerceAtLeast(0) + 59_999) / 60_000
+    Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+        color = ComposeColor(0xFF191919), contentColor = ComposeColor.White) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Image(painterResource(R.mipmap.ic_launcher), contentDescription = null, modifier = Modifier.size(36.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("ReiAnix Premium", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(if (state.trialActive) "${remaining / 60}h ${remaining % 60}min restantes" else "1 dia gratuito",
+                        color = premiumMuted, fontSize = 12.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { confirm = true }, enabled = !state.trialActive && !state.busy,
+                    modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = premiumBlue)) {
+                    Text(if (state.trialActive) "Ativo" else "Ativar 1 dia grátis", fontSize = 12.sp, textAlign = TextAlign.Center)
+                }
+                OutlinedButton(onClick = access.open, modifier = Modifier.weight(1f)) {
+                    Text("Fazer upgrade", color = ComposeColor.White, fontSize = 12.sp)
+                }
+            }
+            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = premiumBlue)
+            if (!state.trialActive) state.notice?.let { Text(it, fontSize = 11.sp, color = premiumMuted) }
+        }
+    }
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false },
+        title = { Text("1 dia de Premium grátis") },
+        text = { Text("Assista voluntariamente a um anúncio para liberar todos os recursos Premium e remover a publicidade automática por 24 horas.") },
+        confirmButton = { TextButton(onClick = { confirm = false; manager.reward(activity, RewardKind.DAY) }) { Text("Assistir anúncio") } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancelar") } })
 }
 
 internal data class HomeAds(val banner: AdView?, val native: NativeAd?)

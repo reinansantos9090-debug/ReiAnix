@@ -29,4 +29,4 @@ Para suporte, reclamações, questões de direitos autorais ou dúvidas, utilize
 
 
 # Monetização opcional
-A compra única ReiAnix Premium remove os anúncios automáticos e libera os recursos Premium disponíveis, sem mensalidade. O preço final é mostrado pela Google Play. A compra pode ser restaurada pela conta Google que a realizou. Recompensas voluntárias são locais ao aparelho; 24 horas sem publicidade automática não impedem o usuário de solicitar outros anúncios premiados. Nenhum anúncio é necessário para reproduzir os arquivos locais.
+A compra única ReiAnix Premium remove os anúncios automáticos e libera os recursos Premium disponíveis, sem mensalidade. O preço final é mostrado pela Google Play. A compra pode ser restaurada pela conta Google que a realizou. Recompensas voluntárias são locais ao aparelho; o anúncio de 24 horas libera temporariamente todos os benefícios Premium; ao expirar, o usuário pode renovar voluntariamente. Nenhum anúncio é necessário para reproduzir os arquivos locais.
