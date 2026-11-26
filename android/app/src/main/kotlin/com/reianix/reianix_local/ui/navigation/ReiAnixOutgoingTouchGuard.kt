@@ -1,9 +1,13 @@
 package com.reianix.reianix_local.ui.navigation
 
+import androidx.compose.animation.EnterExitState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.reianix.reianix_local.ui.motion.LocalReiAnixDestinationActive
+import com.reianix.reianix_local.ui.motion.LocalReiAnixDestinationSettled
 import androidx.compose.runtime.getValue
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
@@ -50,8 +54,12 @@ internal fun NavGraphBuilder.reiAnixGuardedComposable(
     content: @Composable (NavBackStackEntry) -> Unit,
 ) {
     composable(route = route, arguments = arguments) { entry ->
+        val foreground by navController.currentBackStackEntryAsState()
+        val active = isActiveNavigationDestination(entry.id, foreground?.id)
+        val settled = active && !transition.isRunning &&
+            transition.currentState == EnterExitState.Visible &&
+            transition.targetState == EnterExitState.Visible
         val touchPlacement = if (route == ReiAnixRoutes.DETAILS) {
-            val foreground by navController.currentBackStackEntryAsState()
             if (foreground?.destination?.route == ReiAnixRoutes.LIBRARY) {
                 Modifier.drawOutgoingDetailsInPlace()
             } else {
@@ -67,7 +75,12 @@ internal fun NavGraphBuilder.reiAnixGuardedComposable(
                 .then(touchPlacement)
                 .blockOutgoingDestinationTouches(navController, entry.id),
         ) {
-            content(entry)
+            CompositionLocalProvider(
+                LocalReiAnixDestinationActive provides active,
+                LocalReiAnixDestinationSettled provides settled,
+            ) {
+                content(entry)
+            }
         }
     }
 }
