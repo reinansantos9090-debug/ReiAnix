@@ -8,6 +8,7 @@ import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -385,26 +386,33 @@ fun ReiAnixSettingsScreen(
 
                     com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.READY -> {
                         item(key = "settings:top-bar") {
-                            Row(
+                            BoxWithConstraints(
                                 Modifier.fillMaxWidth()
                                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                                    .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                if (account.connected) {
-                                    com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar(
-                                        pictureUrl = account.avatarUrl,
-                                        contentDescription = "Foto de ${account.name}",
-                                        modifier = Modifier.size(50.dp),
+                                val titleWidth = (maxWidth / 2 - 62.dp).coerceAtLeast(0.dp)
+                                Row(
+                                    Modifier.align(Alignment.CenterStart).widthIn(max = titleWidth)
+                                        .padding(start = 20.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (account.connected && titleWidth >= 150.dp) {
+                                        com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar(
+                                            pictureUrl = account.avatarUrl,
+                                            contentDescription = "Foto de ${account.name}",
+                                            modifier = Modifier.size(50.dp),
+                                        )
+                                    }
+                                    Text(
+                                        text = if (account.connected) account.name else "Configurações",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(start = 10.dp),
                                     )
                                 }
-                                Text(
-                                    text = if (account.connected) account.name else "Configurações",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                                )
                                 SettingsPremiumButton()
                             }
                         }

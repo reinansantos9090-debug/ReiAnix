@@ -83,9 +83,15 @@ internal fun MonetizationEntry() {
 @Composable
 internal fun SettingsPremiumButton() {
     val access = rememberPremiumAccess()
+    PremiumCrownBadge("Premium", onClick = access.open)
+}
+
+@Composable
+private fun PremiumCrownBadge(label: String, onClick: (() -> Unit)? = null) {
     Surface(
-        onClick = access.open,
-        modifier = Modifier.padding(end = 8.dp).heightIn(min = 40.dp),
+        modifier = Modifier.heightIn(min = 40.dp).then(
+            if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+        ),
         shape = RoundedCornerShape(50),
         color = ComposeColor(0xFF172B47),
         contentColor = premiumBlue,
@@ -117,7 +123,7 @@ internal fun SettingsPremiumButton() {
                     color = premiumBlue,
                 )
             }
-            Text("Premium", color = premiumBlue, fontSize = 13.sp,
+            Text(label, color = premiumBlue, fontSize = 13.sp,
                 fontWeight = FontWeight.Medium, maxLines = 1)
         }
     }
@@ -176,17 +182,21 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
-                        if (!state.premium && price != null) {
-                            Text("Somente", color = premiumMuted, fontSize = 14.sp)
-                        }
-                        Text(if (state.premium) "Premium ativo" else price ?: "Preço indisponível",
-                            color = premiumBlue, fontSize = if (state.premium || price == null) 28.sp else 40.sp,
-                            fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                        Text("Compra única · Acesso vitalício", color = premiumText, fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
-                        Text("Sem mensalidades", color = premiumMuted, fontSize = 14.sp)
-                        if (state.trialActive && !state.premium) {
-                            Text("Premium temporário ativo", color = premiumBlue, fontSize = 13.sp)
+                        if (state.premium) {
+                            PremiumCrownBadge("Premium ativo")
+                        } else {
+                            if (state.trialActive) {
+                                PremiumCrownBadge("Premium temporário ativo")
+                            }
+                            if (price != null) {
+                                Text("Somente", color = premiumMuted, fontSize = 14.sp)
+                            }
+                            Text(price ?: "Preço indisponível",
+                                color = premiumBlue, fontSize = if (price == null) 28.sp else 40.sp,
+                                fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                            Text("Compra única · Acesso vitalício", color = premiumText, fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                            Text("Sem mensalidades", color = premiumMuted, fontSize = 14.sp)
                         }
                     }
                     Surface(
@@ -196,8 +206,20 @@ private fun PremiumDialog(manager: ReiAnixMonetization, allowReward: Boolean, cl
                         contentColor = premiumText,
                     ) {
                         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                            Text("Benefícios Premium", color = premiumBlue, fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 6.dp))
+                            Row(
+                                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("Benefícios Premium", color = premiumBlue, fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                if (state.hasPremium) {
+                                    val unlockedGreen = ComposeColor(0xFF4CAF50)
+                                    Icon(Icons.Filled.CheckCircle, null, tint = unlockedGreen,
+                                        modifier = Modifier.size(16.dp))
+                                    Text("Desbloqueados", color = unlockedGreen, fontSize = 12.sp)
+                                }
+                            }
                             PremiumBenefit(Icons.Filled.VerifiedUser, "Sem anúncios", "Navegue sem publicidade.")
                             PremiumBenefit(Icons.Filled.Palette, "Personalização completa", "Todas as artes desbloqueadas.")
                             PremiumBenefit(Icons.Filled.Tune, "Atalhos personalizados", "Organize os controles do player.")
