@@ -447,7 +447,7 @@ internal fun HomeNativeAd(ad: NativeAd) {
             val content = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(px(12), px(8), px(12), px(12))
-                setBackgroundColor(Color.rgb(38, 38, 44))
+                setBackgroundColor(Color.BLACK)
             }
             val header = FrameLayout(context)
             val attribution = TextView(context).apply { text = "Publicidade"; setTextColor(Color.WHITE); textSize = 12f }
@@ -469,6 +469,15 @@ internal fun HomeNativeAd(ad: NativeAd) {
                 text = ad.callToAction.orEmpty()
                 visibility = if (ad.callToAction == null) android.view.View.GONE else android.view.View.VISIBLE
                 isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(0xFF3D8BFF.toInt())
+                        cornerRadius = px(8).toFloat()
+                    },
+                    null,
+                )
             }
             content.addView(cta)
             view.addView(content, FrameLayout.LayoutParams(-1, -2))
