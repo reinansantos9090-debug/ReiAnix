@@ -12,7 +12,8 @@ enum class PlayerShortcut(val key: String, val displayName: String) {
     SPEED("speed", "Velocidade"),
     CAST("cast", "Transmitir"),
     ASPECT("aspect", "Proporção"),
-    SKIP_OP_ED("skip_op_ed", "Pular OP/ED");
+    SKIP_OP_ED("skip_op_ed", "Pular OP/ED"),
+    AUDIO("audio", "Trilhas sonoras");
 }
 
 object PlayerShortcutPolicy {
@@ -61,7 +62,7 @@ object PlayerShortcutPolicy {
 
         // Retired shortcut IDs may still exist in SQLite preferences and
         // imported backups. Drop only those IDs, preserving other choices/order.
-        val retired = setOf("capture", "subtitles", "timer", "audio", "notes")
+        val retired = setOf("capture", "subtitles", "timer", "notes")
         val kept = keys.filterNot { it in retired }
         val options = kept.map { key ->
             PlayerShortcut.entries.firstOrNull { it.key == key }
