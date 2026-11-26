@@ -69,7 +69,7 @@ class PlayerShortcutAndAnimePreferencesTest {
         val selection = listOf(PlayerShortcut.ASPECT, PlayerShortcut.SKIP_OP_ED,
             PlayerShortcut.SPEED, PlayerShortcut.LOCK, PlayerShortcut.OPTIONS)
         val raw = "aspect,skip_op_ed,speed,lock,options"
-        assertEquals(8, PlayerShortcut.entries.size)
+        assertEquals(9, PlayerShortcut.entries.size)
         assertEquals(raw, ReiAnixSettingsContract.normalize("player.shortcuts", raw))
         assertEquals(selection, PlayerShortcutPolicy.parse(raw))
         assertEquals(selection, PlayerShortcutPolicy.toggle(selection, PlayerShortcut.CAST, true))
@@ -78,15 +78,28 @@ class PlayerShortcutAndAnimePreferencesTest {
         assertEquals("cast,episodes,lock,next,options", PlayerShortcutPolicy.defaultValue)
     }
 
-    @Test fun removesFourRetiredShortcutIdsWithoutResettingOtherSelections() {
-        val removed = setOf("audio", "subtitles", "timer", "notes")
+    @Test fun removesThreeRetiredShortcutIdsAndKeepsRenamedAudio() {
+        val removed = setOf("subtitles", "timer", "notes")
         assertFalse(PlayerShortcut.entries.any { it.key in removed })
-        assertEquals("aspect,skip_op_ed,options",
+        assertEquals("Trilhas sonoras", PlayerShortcut.AUDIO.displayName)
+        assertEquals("audio,aspect,skip_op_ed,options",
             ReiAnixSettingsContract.normalize("player.shortcuts", "audio,aspect,notes,skip_op_ed,options"))
         assertEquals(listOf(PlayerShortcut.LOCK, PlayerShortcut.CAST, PlayerShortcut.OPTIONS),
             PlayerShortcutPolicy.parse("timer,lock,subtitles,cast,options"))
-        assertEquals(listOf(PlayerShortcut.OPTIONS),
+        assertEquals(listOf(PlayerShortcut.AUDIO, PlayerShortcut.OPTIONS),
             PlayerShortcutPolicy.parse("audio,subtitles,timer,notes,options"))
+    }
+
+    @Test fun aspectModesCycleAndPersistIncludingLegacyFill() {
+        assertEquals(PlayerAspectMode.STRETCH, PlayerAspectMode.FIT.next())
+        assertEquals(PlayerAspectMode.ZOOM, PlayerAspectMode.STRETCH.next())
+        assertEquals(PlayerAspectMode.FIT, PlayerAspectMode.ZOOM.next())
+        assertEquals(PlayerAspectMode.ZOOM, PlayerAspectMode.fromSetting("fill"))
+        assertEquals(PlayerAspectMode.ZOOM, PlayerAspectMode.fromLabel("Preencher"))
+        assertEquals("stretch", ReiAnixSettingsContract.normalize("player.aspect_ratio", "stretch"))
+        val prefs = PlayerAnimePreferences(aspect = "stretch")
+        assertEquals(prefs, PlayerAnimePreferences.decode(prefs.encode()))
+        assertEquals("fill", PlayerAnimePreferences.decode(PlayerAnimePreferences(aspect = "fill").encode())?.aspect)
     }
 
     @Test fun supportsFiveAndPreservesDeliberatelyDisabledShortcuts() {
