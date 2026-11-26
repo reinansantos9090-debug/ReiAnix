@@ -772,7 +772,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ?.let { setWindowBrightness(it) }
         restoredPositionMs = savedInstanceState?.takeIf { it.containsKey("position_ms") }?.getLong("position_ms")
         val restoredAspect = savedInstanceState?.getString("aspect_mode_label")
-            ?.let(PlayerAspectMode::fromLabel)
+            ?.let { PlayerAspectMode.fromLabel(it) }
             ?: PlayerAspectMode.fromSetting(intent.getStringExtra("setting_player_aspect_ratio"))
         aspectModeLabel = restoredAspect.label
         intent.putExtra("setting_player_aspect_ratio", restoredAspect.setting)
@@ -2880,7 +2880,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onZoomChanged = { enabled ->
                             zoomEnabled = enabled
                             persistCanonicalPlayerSetting("player.zoom_enabled", enabled.toString())
-                            if (!enabled) findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+                            if (!enabled) {
+                                findViewByTag<GestureLayer>("reianix_gesture_layer")?.resetZoomToFit()
+                                // Disabling pinch must not discard the selected fixed aspect mode.
+                                if (::playerView.isInitialized) {
+                                    playerView.resizeMode = resizeModeFromSetting(
+                                        PlayerAspectMode.fromLabel(aspectModeLabel).setting,
+                                    )
+                                }
+                            }
                             touchControls()
                             syncComposePlayerUiState()
                         },
