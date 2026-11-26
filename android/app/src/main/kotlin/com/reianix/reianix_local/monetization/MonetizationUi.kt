@@ -490,3 +490,144 @@ internal fun HomeNativeAd(ad: NativeAd) {
         }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
     }
 }
+
+
+/** One independently owned ad per compact placement, never shared with Home. */
+@Composable
+internal fun rememberCompactNativeAd(placementKey: String, enabled: Boolean = true): NativeAd? {
+    val activity = LocalContext.current.monetizationActivity() ?: return null
+    val manager = remember(activity) { ReiAnixMonetization.from(activity) }
+    val state by manager.state.collectAsStateWithLifecycle()
+    val canLoad = enabled && state.adsReady && !state.hideAds
+    var native by remember(activity, placementKey) { mutableStateOf<NativeAd?>(null) }
+    LaunchedEffect(activity, enabled, state.premium) {
+        if (enabled && !state.premium) {
+            // Keep ad initialization off the initial content render.
+            delay(1200)
+            manager.start(activity)
+        }
+    }
+    DisposableEffect(activity, placementKey, canLoad) {
+        var disposed = false
+        var loaded: NativeAd? = null
+        if (canLoad) {
+            AdLoader.Builder(activity, manager.nativeId())
+                .forNativeAd { ad ->
+                    // Compact layout has no video MediaView. Never render video creatives
+                    // in a format that cannot present their video asset.
+                    if (disposed || ad.mediaContent?.hasVideoContent() == true) {
+                        ad.destroy()
+                    } else {
+                        loaded?.destroy()
+                        loaded = ad
+                        native = ad
+                    }
+                }
+                .build().loadAd(AdRequest.Builder().build())
+        }
+        onDispose {
+            disposed = true
+            native = null
+            loaded?.destroy()
+        }
+    }
+    return if (canLoad) native else null
+}
+
+@Composable
+internal fun CompactNativeAd(ad: NativeAd, modifier: Modifier = Modifier) {
+    key(ad) {
+        AndroidView(
+            modifier = modifier.fillMaxWidth().padding(vertical = 10.dp),
+            factory = { context ->
+                val view = NativeAdView(context)
+                val density = context.resources.displayMetrics.density
+                fun px(dp: Int) = (dp * density).toInt()
+                val content = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setBackgroundColor(Color.BLACK)
+                    setPadding(px(8), px(4), px(8), px(8))
+                }
+                val header = FrameLayout(context)
+                val attribution = TextView(context).apply {
+                    text = "Publicidade"
+                    textSize = 12f
+                    setTextColor(Color.WHITE)
+                }
+                header.addView(attribution, FrameLayout.LayoutParams(-1, px(26)).apply {
+                    rightMargin = px(40)
+                })
+                val choices = AdChoicesView(context)
+                header.addView(choices, FrameLayout.LayoutParams(-2, -2,
+                    android.view.Gravity.TOP or android.view.Gravity.END))
+                content.addView(header)
+
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+                ad.icon?.drawable?.let { drawable ->
+                    val icon = android.widget.ImageView(context).apply {
+                        setImageDrawable(drawable)
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    }
+                    row.addView(icon, LinearLayout.LayoutParams(px(44), px(44)).apply {
+                        marginEnd = px(8)
+                    })
+                    view.iconView = icon
+                }
+                val textColumn = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+                val headline = TextView(context).apply {
+                    text = ad.headline
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }
+                textColumn.addView(headline)
+                val body = TextView(context).apply {
+                    text = ad.body.orEmpty()
+                    textSize = 12f
+                    setTextColor(Color.LTGRAY)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    visibility = if (ad.body.isNullOrBlank()) android.view.View.GONE else android.view.View.VISIBLE
+                }
+                textColumn.addView(body)
+                row.addView(textColumn, LinearLayout.LayoutParams(0, -2, 1f))
+                val cta = android.widget.Button(context).apply {
+                    text = ad.callToAction.orEmpty()
+                    textSize = 12f
+                    isAllCaps = false
+                    setTextColor(Color.WHITE)
+                    setPadding(px(12), px(4), px(12), px(4))
+                    minWidth = 0
+                    minimumWidth = 0
+                    minHeight = px(44)
+                    minimumHeight = px(44)
+                    maxLines = 2
+                    visibility = if (ad.callToAction.isNullOrBlank()) android.view.View.GONE else android.view.View.VISIBLE
+                    background = android.graphics.drawable.RippleDrawable(
+                        android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                        android.graphics.drawable.GradientDrawable().apply {
+                            setColor(0xFF3D8BFF.toInt())
+                            cornerRadius = px(22).toFloat()
+                        },
+                        null,
+                    )
+                }
+                row.addView(cta, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8) })
+                content.addView(row, LinearLayout.LayoutParams(-1, -2))
+                view.addView(content, FrameLayout.LayoutParams(-1, -2))
+                view.adChoicesView = choices
+                view.headlineView = headline
+                view.bodyView = body
+                view.callToActionView = cta
+                view.setNativeAd(ad)
+                view
+            },
+        )
+    }
+}
