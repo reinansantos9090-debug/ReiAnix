@@ -14,8 +14,8 @@ val reianixEnableR8 = providers.gradleProperty("reianixEnableR8")
     .getOrElse(true)
 
 // Every build uses the same real Google Play and AdMob integrations.
-// Missing configuration disables the corresponding service; never simulate a purchase.
-val liveAds = providers.gradleProperty("reianixEnableLiveAds").orNull == "true"
+// Real ads are enabled by default; an explicit false can pause delivery without demo ads.
+val liveAds = providers.gradleProperty("reianixEnableLiveAds").map { it.toBooleanStrict() }.getOrElse(true)
 val billingPublicKey = providers.gradleProperty("reianixBillingPublicKey").orNull.orEmpty().trim()
 require(billingPublicKey.isEmpty() || runCatching {
     val decoded = Base64.getDecoder().decode(billingPublicKey)

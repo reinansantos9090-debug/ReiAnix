@@ -26,7 +26,7 @@ jobs:
     env:
       # Both settings are public configuration, not signing credentials.
       ORG_GRADLE_PROJECT_reianixBillingPublicKey: ${{ vars.REIANIX_BILLING_PUBLIC_KEY }}
-      ORG_GRADLE_PROJECT_reianixEnableLiveAds: ${{ vars.REIANIX_ENABLE_LIVE_ADS == 'true' }}
+      ORG_GRADLE_PROJECT_reianixEnableLiveAds: ${{ vars.REIANIX_ENABLE_LIVE_ADS || 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -219,9 +219,11 @@ jobs:
           if [[ -z "$ORG_GRADLE_PROJECT_reianixBillingPublicKey" ]]; then
             echo "::warning::REIANIX_BILLING_PUBLIC_KEY missing. Premium purchasing remains unavailable."
           fi
-          if [[ "$ORG_GRADLE_PROJECT_reianixEnableLiveAds" != "true" ]]; then
-            echo "::notice::Live ads disabled until REIANIX_ENABLE_LIVE_ADS=true. No ads requested until configured."
-          fi
+          case "$ORG_GRADLE_PROJECT_reianixEnableLiveAds" in
+            true) echo "Real AdMob ads enabled; delivery subject to consent and AdMob eligibility." ;;
+            false) echo "::notice::Real ads explicitly paused; no demo ads will be requested." ;;
+            *) echo "::error::REIANIX_ENABLE_LIVE_ADS must be true or false."; exit 1 ;;
+          esac
 
       - name: Build native Android release APK
         shell: bash
