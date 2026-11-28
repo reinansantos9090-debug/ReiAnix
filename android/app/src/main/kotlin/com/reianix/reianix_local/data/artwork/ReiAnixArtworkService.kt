@@ -1,5 +1,8 @@
 package com.reianix.reianix_local.data.artwork
 
+import com.reianix.reianix_local.data.media.LocalCatalogLookup
+import com.reianix.reianix_local.data.media.LocalCatalogLookupPolicy
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import android.content.ContentValues
@@ -274,6 +277,8 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
         val bannerUrl: String?,
         val metadataManualFields: String?,
         val adultArtwork: Boolean = false,
+        val lookupTitle: String = "",
+        val manualAssociation: Boolean = false,
     )
     private data class Artwork(
         val id: Long, val source: String, val sourceRef: String?, val path: String?, val url: String?,
@@ -478,10 +483,29 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
             }
             retryJobs.remove(animeId)?.cancel()
             val task = scope.launch(start = CoroutineStart.LAZY) {
+                var personalVideo = false
                 try {
                     val anime = loadAnime(animeId) ?: return@launch
                     if (anime.adultArtwork) return@launch
                     val entityType = if (anime.kind.equals("movie", true)) "movie" else "anime"
+                    personalVideo = isPersonalVideo(animeId, anime)
+                    if (personalVideo) {
+                        // Do not revive an old automatic remote candidate after upgrading.
+                        // User-owned artwork and same-folder images are still permitted.
+                        if (candidateCandidates == null) {
+                            if (ownsManualField(anime.metadataManualFields, "cover_url")) {
+                                anime.coverUrl?.let { materialize(animeId, entityType, "poster", it, anime.anilistId, force, requestId) }
+                            }
+                            if (ownsManualField(anime.metadataManualFields, "banner_url")) {
+                                anime.bannerUrl?.let { materialize(animeId, entityType, "backdrop", it, anime.anilistId, force, requestId) }
+                            }
+                            if (!hasUsablePersistedPoster(animeId, entityType) &&
+                                !ownsManualField(anime.metadataManualFields, "cover_url") &&
+                                !ownsManualField(anime.metadataManualFields, "cover_cache")
+                            ) discoverAndPersistLocalSidecars(animeId, entityType, requestId, listOf(POSTER))
+                        }
+                        return@launch
+                    }
                     if (candidateCandidates == null) {
                         val posterUrl = anime.coverUrl?.trim()?.takeIf(String::isNotEmpty)
                         val backdropUrl = anime.bannerUrl?.trim()?.takeIf(String::isNotEmpty)
@@ -583,7 +607,7 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                     currentCoroutineContext()[Job]?.let { jobs.remove(animeId, it) }
                     val candidateFollowUp = candidateFollowUpRequests.remove(animeId)
                     val forceFollowUp = forceFollowUpIds.remove(animeId)
-                    if (!cacheClearInProgress.get()) {
+                    if (!cacheClearInProgress.get() && !personalVideo) {
                         when {
                             candidateFollowUp != null -> {
                                 // Preserve a forced canonical refresh alongside candidate-only lookup.
@@ -1805,10 +1829,21 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
 
     }
 
+    private fun isPersonalVideo(id: Long, anime: Anime): Boolean {
+        if (anime.anilistId != null || anime.manualAssociation ||
+            !LocalCatalogLookupPolicy.needsEvidence(anime.lookupTitle, anime.kind)
+        ) return false
+        val names = database.read { db ->
+            db.rawQuery("SELECT file_name FROM episodes WHERE anime_id=? ORDER BY id LIMIT 8", arrayOf(id.toString()))
+                .use { cursor -> buildList { while (cursor.moveToNext()) cursor.getString(0)?.let(::add) } }
+        }
+        return LocalCatalogLookupPolicy.classify(anime.lookupTitle, anime.kind, names) == LocalCatalogLookup.PERSONAL
+    }
+
     private fun loadAnime(id: Long): Anime? = database.read { db ->
         db.rawQuery(
             "SELECT anilist_id,media_kind,cover_url,cover_cache,banner_url,metadata_manual_fields,genres," +
-                "(SELECT GROUP_CONCAT(g.canonical_name,\'|\') FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id WHERE ag.anime_id=anime.id) FROM anime WHERE id=? LIMIT 1",
+                "(SELECT GROUP_CONCAT(g.canonical_name,\'|\') FROM anime_genres ag JOIN genres g ON g.id=ag.genre_id WHERE ag.anime_id=anime.id),lookup_title,metadata_source,metadata_status,anilist_match_manual FROM anime WHERE id=? LIMIT 1",
             arrayOf(id.toString()),
         ).use { c ->
             if (!c.moveToFirst()) return@use null
@@ -1822,6 +1857,9 @@ class ReiAnixArtworkService(context: Context, private val database: ReiAnixSqlit
                 metadataManualFields = c.getString(5),
                 adultArtwork = ReiAnixAdultArtworkPolicy.blockedJson(c.getString(6)) ||
                     ReiAnixAdultArtworkPolicy.blocked(c.getString(7).orEmpty().split('|')),
+                lookupTitle = c.getString(8).orEmpty(),
+                manualAssociation = c.getString(9).equals("manual", true) ||
+                    c.getString(10).equals("manual", true) || c.getInt(11) == 1,
             )
         }
     }

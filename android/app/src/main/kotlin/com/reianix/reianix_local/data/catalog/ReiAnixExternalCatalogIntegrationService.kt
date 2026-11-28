@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.data.catalog
 
+import com.reianix.reianix_local.data.media.LocalCatalogLookup
+import com.reianix.reianix_local.data.media.LocalCatalogLookupPolicy
+import com.reianix.reianix_local.data.sqlite.localCatalogLookup
+
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkService
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkCandidate
 import com.reianix.reianix_local.data.sqlite.ReiAnixAnimeRecord
@@ -146,6 +150,9 @@ class ReiAnixExternalCatalogIntegrationService(
             if (target.posterSource.equals("anilist", ignoreCase = true)) continue
             currentCoroutineContext().ensureActive()
             val now = System.currentTimeMillis() / 1_000.0
+            val local = library.getAnime(target.animeId) ?: continue
+            val lookupMode = library.localCatalogLookup(local)
+            if (lookupMode == LocalCatalogLookup.PERSONAL) continue
             val previous = library.candidateMetadataRecoveryAttemptAt(target.animeId)
             if (previous != null && now - previous < SOURCE_RETRY_COOLDOWN_SECONDS) continue
             // A distinct metadata-only retry marker does not change artwork attempts,
@@ -161,11 +168,14 @@ class ReiAnixExternalCatalogIntegrationService(
             }
             when (result) {
                 is ReiAnixCatalogResult.Success -> {
-                    val candidate = result.value.firstOrNull {
+                    val candidates = if (lookupMode == LocalCatalogLookup.NORMAL) result.value else result.value.filter {
+                        allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, it)
+                    }
+                    val candidate = candidates.firstOrNull {
                         target.posterUrl != null && it.coverUrl == target.posterUrl
-                    } ?: result.value.firstOrNull {
+                    } ?: candidates.firstOrNull {
                         !it.synopsis.isNullOrBlank()
-                    } ?: result.value.firstOrNull()
+                    } ?: candidates.firstOrNull()
                     if (candidate != null) {
                         candidateMetadataPublisher?.invoke(target.animeId, candidate)
                         offered++
@@ -274,6 +284,8 @@ class ReiAnixExternalCatalogIntegrationService(
         artworkOnly: Boolean = false,
     ): Boolean {
         var anime = library.getAnime(initial.id) ?: return false
+        val lookupMode = library.localCatalogLookup(anime)
+        if (lookupMode == LocalCatalogLookup.PERSONAL) return false
         val identity = anime.toExternalCatalogIdentity()
         val posterReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "poster")
         val backdropReadyBeforeAniListArtwork = hasValidArtwork(anime.id, "backdrop")
@@ -355,7 +367,7 @@ class ReiAnixExternalCatalogIntegrationService(
 
             val provider = providers.provider(source) ?: continue
             val resolution = try {
-                resolve(provider, anime, identity, ids)
+                resolve(provider, anime, identity, ids, lookupMode)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -455,11 +467,17 @@ class ReiAnixExternalCatalogIntegrationService(
         val artworkCandidates: List<ReiAnixCatalogAnime> = emptyList(),
     )
 
+    private fun allowsLocalCatalogCandidate(mode: LocalCatalogLookup, title: String, remote: ReiAnixCatalogAnime): Boolean =
+        mode == LocalCatalogLookup.NORMAL || LocalCatalogLookupPolicy.allowsCandidate(
+            mode, title, listOf(remote.title) + remote.alternativeTitles,
+        )
+
     private suspend fun resolve(
         provider: ReiAnixAnimeCatalogProvider,
         anime: ReiAnixAnimeRecord,
         identity: ReiAnixCatalogIdentity,
         ids: ReiAnixExternalCatalogIds,
+        lookupMode: LocalCatalogLookup,
     ): Resolution {
         val knownId = ids.idFor(provider.source)
         if (!knownId.isNullOrBlank()) {
@@ -494,7 +512,7 @@ class ReiAnixExternalCatalogIntegrationService(
                         val remoteId = remote.ids.idFor(remote.source)
                         if (remoteId.isNullOrBlank()) {
                             incompleteSearch = true
-                        } else {
+                        } else if (allowsLocalCatalogCandidate(lookupMode, anime.lookupTitle, remote)) {
                             candidates.putIfAbsent(remoteId, remote)
                         }
                     }
