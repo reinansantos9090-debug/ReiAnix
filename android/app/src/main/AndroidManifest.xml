@@ -78,7 +78,8 @@
       </intent-filter>
     </service>
     <activity android:name=".NativePlayerActivity" android:theme="@style/ReiAnixPlayerTheme" android:launchMode="singleTop" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" android:screenOrientation="fullSensor" android:supportsPictureInPicture="true" android:exported="false" />
-    <activity android:name="com.reianix.reianix_local.MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden|locale|layoutDirection" android:windowSoftInputMode="adjustResize">
+    <!-- Android 13 can report a screenLayout change with the first per-app locale update. -->
+    <activity android:name="com.reianix.reianix_local.MainActivity" android:exported="true" android:launchMode="singleTask" android:documentLaunchMode="never" android:configChanges="orientation|screenSize|keyboardHidden|locale|layoutDirection|screenLayout" android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
