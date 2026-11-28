@@ -1,0 +1,8 @@
+<resources>
+    <plurals name="aux_saved_scenes">
+        <item quantity="one">%1$d сохранённая сцена</item>
+        <item quantity="few">%1$d сохранённые сцены</item>
+        <item quantity="many">%1$d сохранённых сцен</item>
+        <item quantity="other">%1$d сохранённой сцены</item>
+    </plurals>
+</resources>

@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.player
 
+import com.reianix.reianix_local.R
+
 import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
@@ -22,12 +24,12 @@ internal object ExternalVideoChooser {
     private fun createVideoViewIntent(context: Context, localUri: Uri): Intent {
         val sharedUri = when (localUri.scheme?.lowercase(Locale.ROOT)) {
             "content" -> {
-                require(localUri.authority != "${context.packageName}.videoexports") { "URI interna não pode ser compartilhada novamente." }
+                require(localUri.authority != "${context.packageName}.videoexports") { context.getString(R.string.aux_uri_reshare) }
                 localUri
             }
             "file" -> {
                 val path = requireNotNull(localUri.path?.takeIf { it.isNotBlank() }) {
-                    "Caminho do arquivo não disponível"
+                    context.getString(R.string.aux_path_unavailable)
                 }
                 FileProvider.getUriForFile(
                     context,
@@ -35,12 +37,12 @@ internal object ExternalVideoChooser {
                     requireShareableVideoFile(context, File(path)),
                 )
             }
-            else -> throw IllegalArgumentException("Somente vídeos locais podem ser abertos externamente")
+            else -> throw IllegalArgumentException(context.getString(R.string.aux_local_only))
         }
 
         return Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(sharedUri, "video/*")
-            clipData = ClipData.newRawUri("Vídeo ReiAnix", sharedUri)
+            clipData = ClipData.newRawUri(context.getString(R.string.aux_video_label), sharedUri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -60,9 +62,9 @@ internal object ExternalVideoChooser {
     fun createIntent(context: Context, localUri: Uri): Intent {
         val viewVideo = createVideoViewIntent(context, localUri)
         val sharedUri = requireNotNull(viewVideo.data)
-        return Intent.createChooser(viewVideo, "Abrir com...").apply {
+        return Intent.createChooser(viewVideo, context.getString(R.string.aux_open_with)).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            clipData = ClipData.newRawUri("Vídeo ReiAnix", sharedUri)
+            clipData = ClipData.newRawUri(context.getString(R.string.aux_video_label), sharedUri)
             // ReiAnix itself is also an ACTION_VIEW handler. Exclude it to
             // prevent users from accidentally reopening this same episode.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

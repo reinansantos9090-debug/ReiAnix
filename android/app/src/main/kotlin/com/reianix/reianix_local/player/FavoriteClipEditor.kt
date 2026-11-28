@@ -147,12 +147,12 @@ internal class FavoriteClipEditor(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(4), dp(8), dp(4))
         }
-        back = button("‹", "Voltar sem salvar") { leave() }.apply { textSize = 26f }
+        back = button("‹", host.getString(R.string.aux_back_without_save)) { leave() }.apply { textSize = 26f }
         top.addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
         top.addView(View(host), LinearLayout.LayoutParams(0, 1, 1f))
-        revert = button("Reverter", "Reverter recorte") { reset() }
-        save = button("Salvar", "Salvar cena favorita") { persist() }
-        menu = button("⋮", "Mais opções") { showMenu() }.apply { textSize = 24f }
+        revert = button(host.getString(R.string.aux_revert), host.getString(R.string.aux_revert_trim)) { reset() }
+        save = button(host.getString(R.string.pref_save), host.getString(R.string.aux_save_favorite_scene)) { persist() }
+        menu = button("⋮", host.getString(R.string.ui_more_options)) { showMenu() }.apply { textSize = 24f }
         top.addView(revert)
         top.addView(save)
         top.addView(menu)
@@ -168,7 +168,7 @@ internal class FavoriteClipEditor(
             setBackgroundColor(Color.BLACK)
             keepScreenOn = true
             setOnClickListener { if (!saving && !leaving) togglePlayback() }
-            contentDescription = "Prévia do vídeo"
+            contentDescription = host.getString(R.string.aux_video_preview)
         }
         placeholder = ImageView(host).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -192,7 +192,7 @@ internal class FavoriteClipEditor(
             gravity = Gravity.CENTER_VERTICAL
             background = pill()
         }
-        play = button("▶", "Reproduzir trecho") { togglePlayback() }.apply { textSize = 21f }
+        play = button("▶", host.getString(R.string.aux_play_clip)) { togglePlayback() }.apply { textSize = 21f }
         timeLabel = text("", 14f).apply { setPadding(0, 0, dp(16), 0) }
         controls.addView(play)
         controls.addView(timeLabel)
@@ -200,7 +200,7 @@ internal class FavoriteClipEditor(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             addView(controls)
-            addView(button("↺", "Voltar ao início do trecho") {
+            addView(button("↺", host.getString(R.string.aux_restart_clip)) {
                 previewPlayer?.pause()
                 seek(start, true)
             }.apply { background = pill(); textSize = 20f },
@@ -250,7 +250,7 @@ internal class FavoriteClipEditor(
                 override fun onIsPlayingChanged(isPlaying: Boolean) { render() }
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { render() }
                 override fun onPlayerError(error: PlaybackException) {
-                    report("Não foi possível abrir a prévia deste vídeo.")
+                    report(host.getString(R.string.aux_preview_open_failed))
                     render()
                 }
             })
@@ -262,7 +262,7 @@ internal class FavoriteClipEditor(
             preview.player = null
             previewPlayer?.release()
             previewPlayer = null
-            report("Prévia indisponível. Você ainda pode selecionar um trecho.")
+            report(host.getString(R.string.aux_preview_still_select))
         }
         handler.post(tick)
         loadFilmstrip()
@@ -275,9 +275,9 @@ internal class FavoriteClipEditor(
         rangeLabel.text = format(start) + " – " + format(end)
         val playing = previewPlayer?.playWhenReady == true
         play.text = if (playing) "Ⅱ" else "▶"
-        play.contentDescription = if (playing) "Pausar prévia" else "Reproduzir trecho"
+        play.contentDescription = if (playing) host.getString(R.string.aux_pause_preview) else host.getString(R.string.aux_play_clip)
         revert.alpha = if (start == initial.startMs && end == initial.endMs && name == originalName) 0.4f else 1f
-        save.text = if (saving) "Salvando…" else "Salvar"
+        save.text = if (saving) host.getString(R.string.flow_saving) else host.getString(R.string.pref_save)
         listOf(back, save, revert, menu, play, filmstrip).forEach { it.isEnabled = !saving }
     }
 
@@ -330,10 +330,10 @@ internal class FavoriteClipEditor(
     private fun showMenu() {
         previewPlayer?.pause()
         PopupMenu(host, menu).apply {
-            this.menu.add("Nome da cena")
-            this.menu.add("Cancelar edição")
+            this.menu.add(0, 1, 0, host.getString(R.string.extra_profile_scene_name))
+            this.menu.add(0, 2, 1, host.getString(R.string.aux_cancel_edit))
             setOnMenuItemClickListener {
-                if (it.title == "Nome da cena") rename() else leave()
+                if (it.itemId == 1) rename() else leave()
                 true
             }
             show()
@@ -344,14 +344,14 @@ internal class FavoriteClipEditor(
         val input = EditText(host).apply {
             setSingleLine(true)
             setTextColor(Color.WHITE)
-            hint = "Nome da cena (opcional)"
+            hint = host.getString(R.string.aux_scene_name_optional)
             filters = arrayOf(InputFilter.LengthFilter(500))
             setText(name)
         }
         nameDialog = AlertDialog.Builder(host, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Nome da cena")
+            .setTitle(host.getString(R.string.extra_profile_scene_name))
             .setView(input)
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(host.getString(R.string.locale_cancel), null)
             .setPositiveButton("OK") { _, _ -> name = input.text.toString(); render() }
             .create().also { dialog ->
                 dialog.setOnDismissListener {
@@ -382,7 +382,7 @@ internal class FavoriteClipEditor(
                 if (!closed) {
                     saving = false
                     render()
-                    report("Não foi possível salvar a cena. Verifique o intervalo e o limite de notas.")
+                    report(host.getString(R.string.aux_scene_save_failed))
                 }
             }
         }

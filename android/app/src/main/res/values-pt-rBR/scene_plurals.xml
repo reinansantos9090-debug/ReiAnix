@@ -1,0 +1,6 @@
+<resources>
+    <plurals name="aux_saved_scenes">
+        <item quantity="one">%1$d cena salva</item>
+        <item quantity="other">%1$d cenas salvas</item>
+    </plurals>
+</resources>

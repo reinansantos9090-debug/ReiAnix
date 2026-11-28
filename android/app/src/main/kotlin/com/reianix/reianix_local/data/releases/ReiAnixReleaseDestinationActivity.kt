@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.data.releases
 
+import androidx.compose.ui.res.stringResource
+
+import com.reianix.reianix_local.R
+
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -67,12 +71,11 @@ class ReiAnixReleaseDestinationActivity : ComponentActivity() {
                         .padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
-                    Text("Novo episódio", style = MaterialTheme.typography.headlineMedium)
+                    Text(stringResource(R.string.aux_new_episode), style = MaterialTheme.typography.headlineMedium)
                     Text(title, style = MaterialTheme.typography.titleLarge)
-                    if (episode > 0) Text("Episódio " + episode)
+                    if (episode > 0) Text(stringResource(R.string.aux_episode_number, episode))
                     Text(
-                        "O episódio estreou segundo a programação do AniList. " +
-                            "A disponibilidade em serviços oficiais no Brasil pode variar.",
+                        stringResource(R.string.aux_release_notice),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(Modifier.height(8.dp))
@@ -80,10 +83,10 @@ class ReiAnixReleaseDestinationActivity : ComponentActivity() {
                         Button(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { open(trusted.url) },
-                        ) { Text("Abrir " + trusted.site) }
+                        ) { Text(stringResource(R.string.common_open, trusted.site)) }
                     } else {
                         Text(
-                            "Nenhum link oficial de reprodução foi confirmado para este episódio.",
+                            stringResource(R.string.aux_no_official_link),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -91,9 +94,9 @@ class ReiAnixReleaseDestinationActivity : ComponentActivity() {
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { open("https://anilist.co/anime/" + aniListId) },
-                        ) { Text("Ver informações no AniList (não é streaming)") }
+                        ) { Text(stringResource(R.string.aux_anilist_info)) }
                     }
-                    OutlinedButton(onClick = { finish() }) { Text("Fechar") }
+                    OutlinedButton(onClick = { finish() }) { Text(stringResource(R.string.ui_close)) }
                 }
             }
         }

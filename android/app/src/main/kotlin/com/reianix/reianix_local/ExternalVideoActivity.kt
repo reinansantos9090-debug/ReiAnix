@@ -46,7 +46,7 @@ class ExternalVideoActivity : ComponentActivity() {
         // Never pass arbitrary external URLs or unsupported URI schemes into
         // the local-media player. The provider must grant access to content://.
         if (externalUri?.scheme?.lowercase(Locale.ROOT) !in setOf("content", "file")) {
-            Toast.makeText(this, "Vídeo local inválido ou indisponível.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.aux_external_invalid), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -84,7 +84,7 @@ class ExternalVideoActivity : ComponentActivity() {
 
             val title = (displayName?.takeIf { it.isNotBlank() }
                 ?: videoUri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
-                ?: "Vídeo externo").take(240)
+                ?: getString(R.string.aux_external_video)).take(240)
 
             // Reuse the exact parser and preferences mapping used by playback
             // from the ReiAnix library; external media has no catalogue IDs.
@@ -125,7 +125,7 @@ class ExternalVideoActivity : ComponentActivity() {
                 Log.w(TAG, "Unable to open shared video in player", error)
                 Toast.makeText(
                     this@ExternalVideoActivity,
-                    "Não foi possível abrir este vídeo no ReiAnix.",
+                    getString(R.string.aux_external_open_failed),
                     Toast.LENGTH_SHORT,
                 ).show()
             } finally {

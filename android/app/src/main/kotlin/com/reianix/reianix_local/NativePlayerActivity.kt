@@ -2606,7 +2606,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         topBar.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-        lockButton = actionButton(if (locked) "Desbloquear" else getString(R.string.ui_lock), 48) {
+        lockButton = actionButton(if (locked) getString(R.string.native_unlock) else getString(R.string.ui_lock), 48) {
             setLocked(!locked)
         }.apply {
             tag = "reianix_lock_button"
@@ -3664,7 +3664,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .firstOrNull()
         return selectedFormat?.label?.takeIf { it.isNotBlank() }
             ?: selectedFormat?.language?.takeIf { it.isNotBlank() }
-            ?: if (trackType == C.TRACK_TYPE_TEXT) "Off" else getString(R.string.choice_automatic)
+            ?: if (trackType == C.TRACK_TYPE_TEXT) getString(R.string.choice_disabled) else getString(R.string.choice_automatic)
     }
 
     private fun showSpeedSelection(button: TextView) {
