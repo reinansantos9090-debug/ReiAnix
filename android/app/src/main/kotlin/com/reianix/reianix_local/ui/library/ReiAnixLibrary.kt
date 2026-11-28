@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -457,7 +461,7 @@ private fun ReiAnixLibraryPresentationScreen(
                 )
 
                 ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-                    title = "Erro na biblioteca",
+                    title = stringResource(R.string.ui_library_error),
                     message = state.error ?: "Não foi possível carregar a biblioteca local.",
                     onRetry = onRefresh,
                     modifier = Modifier
@@ -466,7 +470,7 @@ private fun ReiAnixLibraryPresentationScreen(
                 )
 
                 ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-                    title = "Biblioteca local indisponível",
+                    title = stringResource(R.string.ui_local_unavailable),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         "Configure uma pasta local para acessar sua biblioteca."
                     } else {
@@ -489,7 +493,7 @@ private fun ReiAnixLibraryPresentationScreen(
 
                 ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                     transparentOnWallpaper = true,
-                    title = "Biblioteca vazia",
+                    title = stringResource(R.string.ui_library_empty),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         "Configure uma pasta de mídia para começar."
                     } else {
@@ -529,13 +533,13 @@ private fun LibraryHeader(
     onFilters: () -> Unit,
 ) {
     ReiAnixTopBar(
-        title = "Biblioteca",
+        title = stringResource(R.string.nav_library),
         actions = {
             IconButton(
                 onClick = onRetryMissingArtwork,
                 enabled = !missingArtworkRetryState.isRunning,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = "Baixar capas que faltam"
+                    contentDescription = stringResource(R.string.ui_missing_covers)
                 },
             ) {
                 if (missingArtworkRetryState.isRunning) {
@@ -569,7 +573,7 @@ private fun LibraryHeader(
             IconButton(
                 onClick = onFilters,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = "Filtros da biblioteca"
+                    contentDescription = stringResource(R.string.ui_library_filters)
                 },
             ) {
                 Canvas(Modifier.size(ReiAnixTokens.Dimensions.iconMedium)) {
@@ -684,7 +688,7 @@ private fun LibraryFiltersDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Filtros da biblioteca",
+                    stringResource(R.string.ui_library_filters),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
@@ -925,7 +929,7 @@ private fun ColumnScope.LibraryReadyContent(
                     contentType = "library-error-banner",
                 ) {
                     ReiAnixRecoverableErrorState(
-                        title = "Atualização indisponível",
+                        title = stringResource(R.string.ui_refresh_unavailable),
                         message = errorMessage,
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxWidth(),
@@ -943,7 +947,7 @@ private fun ColumnScope.LibraryReadyContent(
                     onValueChange = onQueryChange,
                     accessibilityLabel = "Pesquisar na biblioteca",
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Título ou gênero") },
+                    placeholder = { Text(stringResource(R.string.ui_title_genre)) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Search,
@@ -955,7 +959,7 @@ private fun ColumnScope.LibraryReadyContent(
                             IconButton(
                                 onClick = { onQueryChange("") },
                                 modifier = Modifier.semantics {
-                                    contentDescription = "Limpar pesquisa"
+                                    contentDescription = stringResource(R.string.ui_clear_search)
                                 },
                             ) {
                                 Icon(
@@ -984,21 +988,21 @@ private fun ColumnScope.LibraryReadyContent(
                     ) {
                         item(key = "filter-favorite") {
                             LibraryFilterChip(
-                                text = "Favoritos",
+                                text = stringResource(R.string.ui_favorites),
                                 selected = filters.favoritesOnly,
                                 onClick = onToggleFavorites,
                             )
                         }
                         item(key = "filter-watching") {
                             LibraryFilterChip(
-                                text = "Assistindo",
+                                text = stringResource(R.string.ui_watching),
                                 selected = filters.watchingOnly,
                                 onClick = onToggleWatching,
                             )
                         }
                         item(key = "filter-completed") {
                             LibraryFilterChip(
-                                text = "Completos",
+                                text = stringResource(R.string.ui_completed),
                                 selected = filters.completedOnly,
                                 onClick = onToggleCompleted,
                             )
@@ -1048,10 +1052,10 @@ private fun ColumnScope.LibraryReadyContent(
                         )
                         Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
                         ReiAnixChip(
-                            text = "Limpar",
+                            text = stringResource(R.string.ui_clear),
                             onClick = onClearFilters,
                             modifier = Modifier.semantics {
-                                contentDescription = "Limpar filtros"
+                                contentDescription = stringResource(R.string.ui_clear_filters)
                             },
                         )
                     }
@@ -1184,7 +1188,7 @@ private fun LibrarySourceSummaryCard(
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
-                    text = "Capas sincronizadas",
+                    text = stringResource(R.string.ui_covers_synced),
                     style = ReiAnixTokens.TypographyTokens.sectionTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,

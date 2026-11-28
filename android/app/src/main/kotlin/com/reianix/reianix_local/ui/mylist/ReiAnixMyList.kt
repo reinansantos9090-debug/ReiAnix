@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.mylist
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.background
@@ -96,13 +100,13 @@ fun ReiAnixMyListRoute(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ReiAnixTopBar(
-            title = "Minha Lista",
+            title = stringResource(R.string.ui_my_list_title),
         )
 
         when (state.status) {
             ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
-                title = "Carregando Minha Lista",
-                message = "Lendo os títulos salvos da biblioteca local…",
+                title = stringResource(R.string.ui_my_list_loading),
+                message = stringResource(R.string.ui_my_list_read),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -132,7 +136,7 @@ fun ReiAnixMyListRoute(
                 )
             } else {
                 ReiAnixRecoverableErrorState(
-                    title = "Não foi possível carregar Minha Lista",
+                    title = stringResource(R.string.ui_my_list_failed),
                     message = state.error ?: "A biblioteca local retornou um erro.",
                     onRetry = viewModel::refresh,
                     modifier = Modifier
@@ -165,7 +169,7 @@ fun ReiAnixMyListRoute(
                 )
             } else {
                 ReiAnixSourceUnavailableState(
-                    title = "Minha Lista indisponível",
+                    title = stringResource(R.string.ui_my_list_unavailable),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         "Configure uma pasta local para carregar os títulos salvos."
                     } else {
@@ -188,8 +192,8 @@ fun ReiAnixMyListRoute(
             }
 
             ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyState(
-                title = "Minha Lista está vazia",
-                message = "Adicione títulos à Minha Lista para encontrá-los aqui.",
+                title = stringResource(R.string.ui_my_list_empty),
+                message = stringResource(R.string.ui_my_list_hint),
                 actionLabel = "Abrir Biblioteca",
                 onAction = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
                 modifier = Modifier
@@ -396,11 +400,11 @@ private fun MyListInlineError(
     onRetry: () -> Unit,
 ) {
     ReiAnixRecoverableErrorState(
-        title = "Minha Lista carregada com erro",
+        title = stringResource(R.string.ui_my_list_partial_error),
         message = message,
         onRetry = onRetry,
         modifier = Modifier.fillMaxWidth(),
-        retryLabel = "Tentar novamente",
+        retryLabel = stringResource(R.string.ui_retry),
     )
 }
 
