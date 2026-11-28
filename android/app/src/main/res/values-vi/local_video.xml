@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Video</string>
+    <string name="local_video_section">Video</string>
+    <string name="local_video_label">Video trên thiết bị</string>
+    <string name="local_video_actions">Thao tác với video %1$s</string>
+    <string name="local_video_delete">Xóa video?</string>
+    <string name="local_video_delete_warning">Tệp “%1$s” sẽ bị xóa vĩnh viễn khỏi thiết bị. Mục tương ứng trong thư viện và tiến độ xem cũng sẽ bị xóa. Không thể hoàn tác thao tác này.</string>
+    <plurals name="local_video_count">
+        <item quantity="other">%d video</item>
+    </plurals>
+</resources>
