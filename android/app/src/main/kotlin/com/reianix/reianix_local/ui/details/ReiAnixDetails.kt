@@ -1546,11 +1546,12 @@ private fun DetailsSeasonsSection(
                 modifier = Modifier.weight(1f),
             )
             if (selectedSeason != null && anime.seasons.size > 1) {
+                val seeEpisodesDescription = stringResource(R.string.ui_see_episodes)
                 ReiAnixCompactButton(
                     text = stringResource(R.string.ui_see_seasons),
                     onClick = onViewEpisodes,
                     modifier = Modifier.semantics {
-                        contentDescription = stringResource(R.string.ui_see_episodes)
+                        contentDescription = seeEpisodesDescription
                     },
                 )
             }
