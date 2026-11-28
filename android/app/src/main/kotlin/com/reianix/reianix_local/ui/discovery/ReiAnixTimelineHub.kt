@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.discovery
 
+import androidx.compose.ui.platform.LocalContext
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -62,6 +64,7 @@ fun ReiAnixTimelineHubRoute(
     viewModel: ReiAnixLibraryViewModel,
     initialSection: String,
 ) {
+    val context = LocalContext.current
     val playEpisode = rememberEpisodeLauncher(viewModel)
     val allowedSections = listOf("animes", "roleta", "colecionador")
     var selectedTab by rememberSaveable(initialSection) {
@@ -89,7 +92,7 @@ fun ReiAnixTimelineHubRoute(
         } catch (failure: Exception) {
             groups = null
             error = failure.message?.takeIf(String::isNotBlank)
-                ?: "Não foi possível carregar a linha do tempo local."
+                ?: context.getString(R.string.finish_timeline_error)
             loadedToken = retryToken
         } finally {
             loading = false
@@ -113,9 +116,9 @@ fun ReiAnixTimelineHubRoute(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 listOf(
-                    "animes" to "Animes",
-                    "roleta" to "Roleta",
-                    "colecionador" to "Colecionador",
+                    "animes" to stringResource(R.string.profile_anime),
+                    "roleta" to stringResource(R.string.finish_timeline_roulette),
+                    "colecionador" to stringResource(R.string.finish_timeline_collector),
                 ).forEach { (section, label) ->
                     FilterChip(
                         selected = selectedTab == section,

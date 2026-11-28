@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -98,7 +100,7 @@ fun ReiAnixWatchStatusCollections(
                 }
             }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { error = "Não foi possível carregar suas listas." }
+        catch (_: Exception) { error = context.getString(R.string.finish_tracking_load) }
         finally { loading = false }
     }
     // Prefer the same materialized artwork already exposed by the library.
@@ -125,7 +127,7 @@ internal fun TrackingCollectionsContent(
     fun back() { if (selected != null) selectedName = null else onBack() }
     BackHandler(enabled = selected != null) { back() }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).reiAnixScreenFade(selected).navigationBarsPadding()) {
-        ReiAnixTopBar(title = selected?.label ?: "Listas de acompanhamento",
+        ReiAnixTopBar(title = selected?.let { localizedUiLabel(it.label) } ?: stringResource(R.string.profile_tracking),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { back() })
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (error != null) {
@@ -147,8 +149,8 @@ internal fun TrackingCollectionsContent(
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Icon(icon, null, tint = tint, modifier = Modifier.size(28.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(status.label, style = MaterialTheme.typography.bodyLarge)
-                            Text(if (loading) "Carregando…" else if (count == 1) "1 anime" else "$count animes",
+                            Text(localizedUiLabel(status.label), style = MaterialTheme.typography.bodyLarge)
+                            Text(if (loading) stringResource(R.string.common_loading_ellipsis) else androidx.compose.ui.res.pluralStringResource(R.plurals.common_anime_count, count, count),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -180,10 +182,10 @@ internal fun TrackingCollectionsContent(
                                 }
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(anime.title, style = MaterialTheme.typography.titleMedium)
-                                    Text("${anime.available} episódios disponíveis", style = MaterialTheme.typography.bodySmall)
+                                    Text(stringResource(R.string.profile_available_episodes, anime.available), style = MaterialTheme.typography.bodySmall)
                                     LinearProgressIndicator(progress = { if (anime.available > 0) (anime.completed.toFloat() / anime.available).coerceIn(0f, 1f) else 0f },
                                         modifier = Modifier.fillMaxWidth())
-                                    Text("${anime.completed}/${anime.available} concluídos", style = MaterialTheme.typography.labelSmall,
+                                    Text(stringResource(R.string.finish_tracking_progress, anime.completed, anime.available), style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)

@@ -190,17 +190,17 @@ internal fun ReiAnixCollectorJourneyScreen(
                 IconButton(onClick = { back() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Voltar",
+                        contentDescription = stringResource(R.string.ui_back),
                     )
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = when (page) {
-                        "stats" -> "Estatísticas da jornada"
-                        "activity" -> "Minha atividade"
-                        "titles" -> "Títulos do colecionador"
-                        "achievements" -> "Conquistas"
+                        "stats" -> stringResource(R.string.finish_journey_stats)
+                        "activity" -> stringResource(R.string.finish_journey_my_activity)
+                        "titles" -> stringResource(R.string.more_journey_titles)
+                        "achievements" -> stringResource(R.string.more_achievements)
                         else -> "Jornada do Colecionador"
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -267,33 +267,33 @@ internal fun ReiAnixCollectorJourneyScreen(
                     "stats" -> {
             item {
                 MetricCard(
-                    firstLabel = "Animes concluídos",
+                    firstLabel = stringResource(R.string.finish_journey_completed),
                     firstValue = journey.animesCompleted.toString(),
-                    secondLabel = "Episódios concluídos",
+                    secondLabel = stringResource(R.string.profile_completed_count),
                     secondValue = journey.episodesCompleted.toString(),
                 )
             }
             item {
                 MetricCard(
-                    firstLabel = "Dias ativos",
+                    firstLabel = stringResource(R.string.finish_journey_days),
                     firstValue = journey.activeDays.toString(),
-                    secondLabel = "Gêneros explorados",
+                    secondLabel = stringResource(R.string.finish_journey_genres),
                     secondValue = journey.genresExplored.toString(),
                 )
             }
             item {
                 MetricCard(
-                    firstLabel = "Décadas exploradas",
+                    firstLabel = stringResource(R.string.finish_journey_decades),
                     firstValue = journey.decadesExplored.toString(),
-                    secondLabel = "Conquistas",
+                    secondLabel = stringResource(R.string.more_achievements),
                     secondValue = journey.achievementsUnlocked.toString() + "/" + journey.achievementsTotal,
                 )
             }
             item {
                 MetricCard(
-                    firstLabel = "Horas concluídas",
+                    firstLabel = stringResource(R.string.finish_journey_hours),
                     firstValue = (journey.completedDurationSeconds / 3600L).toString() + " h",
-                    secondLabel = "Formatos explorados",
+                    secondLabel = stringResource(R.string.finish_journey_formats),
                     secondValue = journey.formatsExplored.toString(),
                 )
             }
@@ -353,9 +353,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                             ) {
                                 Text(
                                     when {
-                                        state.isSaving && title.id == journey.activeTitle -> "Salvando…"
-                                        title.id == journey.activeTitle -> "Título ativo"
-                                        else -> "Selecionar título"
+                                        state.isSaving && title.id == journey.activeTitle -> stringResource(R.string.flow_saving)
+                                        title.id == journey.activeTitle -> stringResource(R.string.finish_journey_active_title)
+                                        else -> stringResource(R.string.finish_journey_select_title)
                                     },
                                 )
                             }
@@ -426,14 +426,14 @@ internal fun ReiAnixCollectorJourneyScreen(
                     Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(Icons.Outlined.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
-                        Text("Nível " + journey.level, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(journey.xp.toString() + " XP de jornada", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.finish_journey_level, journey.level.toString()), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.finish_journey_xp, journey.xp.toString()), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LinearProgressIndicator(progress = { journey.levelProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(journey.xpIntoLevel.toString() + " / " + (journey.xpIntoLevel + journey.xpToNext) + " XP", style = MaterialTheme.typography.labelSmall)
                             Text(stringResource(R.string.more_next_level), style = MaterialTheme.typography.labelSmall)
                         }
-                        Text("Título ativo: " + (journey.activeTitleLabel ?: "Nenhum título desbloqueado"),
+                        Text(stringResource(R.string.finish_journey_title_value, journey.activeTitleLabel ?: stringResource(R.string.finish_journey_no_title)),
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -441,17 +441,17 @@ internal fun ReiAnixCollectorJourneyScreen(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     JourneySummaryCard(Icons.Outlined.EmojiEvents, journey.achievementsUnlocked.toString() + "/" + journey.achievementsTotal,
-                        "Conquistas", Color(0xFFFFC768), Modifier.weight(1f)) { page = "achievements" }
+                        stringResource(R.string.more_achievements), Color(0xFFFFC768), Modifier.weight(1f)) { page = "achievements" }
                     JourneySummaryCard(Icons.Outlined.CalendarToday, journey.activeDays.toString(),
-                        "Dias ativos", MaterialTheme.colorScheme.primary, Modifier.weight(1f)) { page = "activity" }
+                        stringResource(R.string.finish_journey_days), MaterialTheme.colorScheme.primary, Modifier.weight(1f)) { page = "activity" }
                 }
             }
             item {
-                JourneyCategory(Icons.Outlined.BarChart, "Estatísticas da jornada", "Acompanhe sua evolução") { page = "stats" }
-                JourneyCategory(Icons.Outlined.ShowChart, "Minha atividade", "Atividade dos últimos 6 meses") { page = "activity" }
-                JourneyCategory(Icons.Outlined.MilitaryTech, "Títulos do colecionador", "Desbloqueie e equipe seus títulos") { page = "titles" }
-                JourneyCategory(Icons.Outlined.EmojiEvents, "Conquistas",
-                    journey.achievementsUnlocked.toString() + " de " + journey.achievementsTotal + " desbloqueadas") { page = "achievements" }
+                JourneyCategory(Icons.Outlined.BarChart, stringResource(R.string.finish_journey_stats), stringResource(R.string.finish_journey_evolution)) { page = "stats" }
+                JourneyCategory(Icons.Outlined.ShowChart, stringResource(R.string.finish_journey_my_activity), stringResource(R.string.more_journey_activity)) { page = "activity" }
+                JourneyCategory(Icons.Outlined.MilitaryTech, stringResource(R.string.more_journey_titles), stringResource(R.string.finish_journey_equip)) { page = "titles" }
+                JourneyCategory(Icons.Outlined.EmojiEvents, stringResource(R.string.more_achievements),
+                    stringResource(R.string.finish_journey_unlock_count, journey.achievementsUnlocked.toString(), journey.achievementsTotal.toString())) { page = "achievements" }
             }
                     }
                 }

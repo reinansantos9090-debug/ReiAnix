@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -585,8 +587,9 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
         }
     }
 
+    val listDescription = selected?.let { localizedUiLabel(it.label) } ?: stringResource(R.string.profile_list_outside)
     Box(modifier = modifier.semantics {
-        stateDescription = selected?.label ?: context.getString(R.string.profile_list_outside)
+        stateDescription = listDescription
     }) {
         ReiAnixDetailsQuickAction(
             label = stringResource(R.string.more_add_list),
@@ -602,7 +605,7 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
         ) {
             ReiAnixWatchStatus.entries.forEach { status ->
                 DropdownMenuItem(
-                    text = { Text(if (selected == status) "✓ " + status.label else status.label) },
+                    text = { Text((if (selected == status) "✓ " else "") + localizedUiLabel(status.label)) },
                     onClick = { save(status) },
                 )
             }

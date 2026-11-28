@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.discovery
 
+import androidx.compose.ui.platform.LocalContext
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -57,6 +59,7 @@ fun ReiAnixTimelineDialog(
     onOpenAnime: (Long) -> Unit,
     artworkByAnimeId: Map<Long, ReiAnixArtworkUiModel?> = emptyMap(),
 ) {
+    val context = LocalContext.current
     var groups by remember(viewModel) { mutableStateOf<List<ReiAnixLibraryDiscovery.TimelineGroup>?>(null) }
     var loading by remember(viewModel) { mutableStateOf(true) }
     var error by remember(viewModel) { mutableStateOf<String?>(null) }
@@ -72,7 +75,7 @@ fun ReiAnixTimelineDialog(
         } catch (failure: Exception) {
             groups = null
             error = failure.message?.takeIf(String::isNotBlank)
-                ?: "Não foi possível consultar a linha do tempo local."
+                ?: context.getString(R.string.finish_timeline_error)
         } finally {
             loading = false
         }
@@ -86,7 +89,7 @@ fun ReiAnixTimelineDialog(
                 loading = loading,
                 error = error,
                 empty = !loading && error == null && groups.orEmpty().isEmpty(),
-                emptyMessage = "A biblioteca ainda não possui itens para a linha do tempo.",
+                emptyMessage = stringResource(R.string.finish_timeline_empty),
             ) {
                 ReiAnixTimelineList(
                     groups = groups.orEmpty(),
@@ -178,6 +181,7 @@ fun ReiAnixDurationAnomalyDialog(
     viewModel: ReiAnixLibraryViewModel,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     var report by remember(viewModel) { mutableStateOf<ReiAnixLibraryDiscovery.DurationAnomalyReport?>(null) }
     var loading by remember(viewModel) { mutableStateOf(true) }
     var error by remember(viewModel) { mutableStateOf<String?>(null) }
@@ -193,7 +197,7 @@ fun ReiAnixDurationAnomalyDialog(
         } catch (failure: Exception) {
             report = null
             error = failure.message?.takeIf(String::isNotBlank)
-                ?: "Não foi possível analisar as durações locais."
+                ?: context.getString(R.string.finish_duration_error)
         } finally {
             loading = false
         }
@@ -208,7 +212,7 @@ fun ReiAnixDurationAnomalyDialog(
                 loading = loading,
                 error = error,
                 empty = report != null && report!!.anomalyCount == 0,
-                emptyMessage = "Nenhuma duração incomum foi identificada com os dados locais atuais.",
+                emptyMessage = stringResource(R.string.finish_duration_empty),
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
@@ -216,11 +220,11 @@ fun ReiAnixDurationAnomalyDialog(
                 ) {
                     report?.let {
                         Text(
-                            "${it.seriesWithAnomalies} série(s) com duração incomum • ${it.seriesWithInsufficientData} com dados insuficientes",
+                            stringResource(R.string.finish_duration_summary, it.seriesWithAnomalies, it.seriesWithInsufficientData),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("${it.anomalyCount} ocorrência(s) encontrada(s)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.finish_duration_occurrences, it.anomalyCount), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
                     unusual.forEach { series ->
                         Text(series.animeTitle, style = MaterialTheme.typography.titleSmall)
@@ -233,7 +237,7 @@ fun ReiAnixDurationAnomalyDialog(
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(
                                         anomaly.episode.episodeTitle?.takeIf(String::isNotBlank)
-                                            ?: anomaly.episode.fileName.ifBlank { "Episódio local" },
+                                            ?: anomaly.episode.fileName.ifBlank { stringResource(R.string.common_local_episode) },
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                     Text(
@@ -263,6 +267,7 @@ fun ReiAnixMarathonDialog(
     currentPath: String?,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     var plan by remember(viewModel, animeId) { mutableStateOf<ReiAnixLibraryDiscovery.MarathonPlan?>(null) }
     var loading by remember(viewModel, animeId) { mutableStateOf(true) }
     var error by remember(viewModel, animeId) { mutableStateOf<String?>(null) }
@@ -278,7 +283,7 @@ fun ReiAnixMarathonDialog(
         } catch (failure: Exception) {
             plan = null
             error = failure.message?.takeIf(String::isNotBlank)
-                ?: "Não foi possível calcular a maratona com os dados locais."
+                ?: context.getString(R.string.finish_marathon_error)
         } finally {
             loading = false
         }
@@ -299,29 +304,29 @@ fun ReiAnixMarathonDialog(
                 loading = loading,
                 error = error,
                 empty = emptyPlan,
-                emptyMessage = "Nenhum episódio restante foi encontrado. Episódios concluídos não entram na sequência.",
+                emptyMessage = stringResource(R.string.finish_marathon_empty),
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     plan?.let { value ->
-                        Text("${value.episodeCount} episódio(s) na sequência", style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.finish_marathon_count, value.episodeCount), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "Tempo conhecido: ${ReiAnixLibraryDiscovery.formatDuration(value.knownDurationSeconds)}",
+                            stringResource(R.string.finish_marathon_time, ReiAnixLibraryDiscovery.formatDuration(value.knownDurationSeconds)),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text("Início: $startLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.finish_marathon_start, startLabel), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (value.unknownDurationCount > 0) {
                             Text(
-                                "${value.unknownDurationCount} episódio(s) sem duração; término parcialmente desconhecido.",
+                                stringResource(R.string.finish_marathon_unknown, value.unknownDurationCount),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
                         } else if (endLabel != null) {
                             Text(
-                                "Término estimado: $endLabel • velocidade normal, sem pausas.",
+                                stringResource(R.string.finish_marathon_end, endLabel),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -335,7 +340,7 @@ fun ReiAnixMarathonDialog(
                                 )
                                 Text(
                                     item.episode.episodeTitle?.takeIf(String::isNotBlank)
-                                        ?: item.episode.fileName.ifBlank { "Episódio ${index + 1}" },
+                                        ?: item.episode.fileName.ifBlank { stringResource(R.string.aux_episode_number, index + 1) },
                                     modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -347,7 +352,7 @@ fun ReiAnixMarathonDialog(
                             }
                         }
                         if (value.items.size > 48) {
-                            Text("Mais ${value.items.size - 48} episódio(s) na sequência.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.finish_marathon_more, value.items.size - 48), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
