@@ -616,9 +616,9 @@ internal fun HomeHeader(
             modifier = Modifier.weight(1f).semantics { heading() },
         )
         if (onOpenTimeline != null) {
-            HomeHeaderIcon(Icons.Filled.History, "Linha do tempo", onOpenTimeline)
+            HomeHeaderIcon(Icons.Filled.History, stringResource(R.string.more_timeline), onOpenTimeline)
         }
-        HomeHeaderIcon(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+        HomeHeaderIcon(Icons.Filled.Search, stringResource(R.string.flow_search_local_label), onSearch)
         ReiAnixProfileHeaderAction(onClick = onOpenProfile)
     }
     // Move the controls upward within the existing hero footprint, without
