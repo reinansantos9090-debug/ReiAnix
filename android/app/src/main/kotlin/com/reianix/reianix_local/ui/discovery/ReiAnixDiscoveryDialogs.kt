@@ -154,7 +154,7 @@ internal fun ReiAnixTimelineList(
                     ) {
                         ReiAnixPoster(
                             localPath = (artwork?.localPath ?: anime.coverCache).takeUnless { ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson) },
-                            contentDescription = "Capa de ${anime.title.ifBlank { "Anime local" }}",
+                            contentDescription = stringResource(R.string.a11y_cover, anime.title.ifBlank { stringResource(R.string.a11y_local_anime) }),
                             identity = "anime:${anime.id}",
                             modifier = Modifier.size(width = 44.dp, height = 62.dp),
                             maxDimensionPx = 160,
@@ -381,7 +381,7 @@ private fun DiscoveryDialogBody(
         when {
             loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CircularProgressIndicator()
-                Text("Consultando biblioteca local…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.discovery_checking_local), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             error != null -> Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             empty -> Text(emptyMessage, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

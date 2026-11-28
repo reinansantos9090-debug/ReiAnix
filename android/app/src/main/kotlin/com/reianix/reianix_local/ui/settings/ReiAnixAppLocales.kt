@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.LocaleList
 import androidx.annotation.RequiresApi
+import com.reianix.reianix_local.MainActivity
 
 internal object ReiAnixAppLocales {
     private const val PREFS = "reianix_app_locale"
@@ -36,7 +37,10 @@ internal object ReiAnixAppLocales {
             val activity = context.findActivity() ?: return
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY, tag).apply()
-            activity.recreate()
+            when (activity) {
+                is MainActivity -> activity.refreshLegacyLocaleResources()
+                else -> activity.recreate()
+            }
         }
     }
 

@@ -581,6 +581,7 @@ fun ReiAnixNativePlayerBottomControls(
                             contentAlignment = Alignment.TopCenter,
                         ) {
                             if (shortcut == PlayerShortcut.LOCK) {
+                                val unlockDescription = stringResource(R.string.ui_unlock_controls)
                                 PlayerIconButton(
                                     onClick = onToggleLock,
                                     modifier = Modifier
@@ -590,7 +591,7 @@ fun ReiAnixNativePlayerBottomControls(
                                             shape = androidx.compose.foundation.shape.CircleShape,
                                         )
                                         .semantics {
-                                            contentDescription = "Desbloquear controles"
+                                            contentDescription = unlockDescription
                                             role = Role.Button
                                         },
                                 ) {

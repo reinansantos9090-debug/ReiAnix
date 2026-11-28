@@ -964,10 +964,11 @@ private fun ColumnScope.LibraryReadyContent(
                     },
                     trailingIcon = {
                         if (filters.query.isNotBlank()) {
+                            val clearSearch = stringResource(R.string.ui_clear_search)
                             IconButton(
                                 onClick = { onQueryChange("") },
                                 modifier = Modifier.semantics {
-                                    contentDescription = "Limpar pesquisa"
+                                    contentDescription = clearSearch
                                 },
                             ) {
                                 Icon(
@@ -1059,11 +1060,12 @@ private fun ColumnScope.LibraryReadyContent(
                             modifier = Modifier.weight(1f),
                         )
                         Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
+                        val clearFilters = stringResource(R.string.ui_clear_filters)
                         ReiAnixChip(
                             text = stringResource(R.string.ui_clear),
                             onClick = onClearFilters,
                             modifier = Modifier.semantics {
-                                contentDescription = "Limpar filtros"
+                                contentDescription = clearFilters
                             },
                         )
                     }
@@ -1299,12 +1301,13 @@ private fun LibraryFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val filterDescription = stringResource(R.string.common_filter, text)
     ReiAnixChip(
         text = text,
         onClick = onClick,
         selected = selected,
         modifier = Modifier.semantics {
-            contentDescription = "Filtro $text"
+            contentDescription = filterDescription
         },
     )
 }

@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.collections
 import androidx.compose.ui.platform.LocalContext
 
 import com.reianix.reianix_local.R
+import com.reianix.reianix_local.ui.localizedGenreLabel
 
 import androidx.compose.ui.res.stringResource
 
@@ -828,7 +829,11 @@ private fun ReiAnixRouletteContent(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column {
                         TextButton(onClick = { genreExpanded = true }) {
-                            Text("Gênero: ${genre ?: "Todos"}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                stringResource(R.string.roulette_genre, genre?.let { localizedGenreLabel(it) } ?: stringResource(R.string.more_all_m)),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                         DropdownMenu(
                             expanded = genreExpanded,

@@ -177,7 +177,7 @@ private fun PlayerHandoffMessage(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .semantics {
-                    contentDescription = "ReiAnixPlayerHandoff"
+                    contentDescription = "$title. $message"
                 },
         )
     } else {
@@ -186,7 +186,7 @@ private fun PlayerHandoffMessage(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .semantics {
-                    contentDescription = "ReiAnixPlayerHandoff"
+                    contentDescription = "$title. $message"
                 }
                 .padding(ReiAnixTokens.Spacing.xxl),
             verticalArrangement = Arrangement.Center,

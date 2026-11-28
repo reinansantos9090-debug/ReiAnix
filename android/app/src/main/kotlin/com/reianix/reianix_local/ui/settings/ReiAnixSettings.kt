@@ -394,7 +394,7 @@ fun ReiAnixSettingsScreen(
                                 if (account.connected) {
                                     com.reianix.reianix_local.ui.account.ReiAnixAccountAvatar(
                                         pictureUrl = account.avatarUrl,
-                                        contentDescription = "Foto de ${account.name}",
+                                        contentDescription = stringResource(R.string.a11y_account_photo, account.name),
                                         modifier = Modifier.size(50.dp),
                                     )
                                 }
@@ -1586,6 +1586,7 @@ private fun LanguageSettingRow(
     selectedValue: String,
     onSave: (String) -> Unit,
 ) {
+    val saveDescription = stringResource(R.string.a11y_save_setting, title)
     var draftValue by androidx.compose.runtime.saveable.rememberSaveable(selectedValue) {
         androidx.compose.runtime.mutableStateOf(selectedValue)
     }
@@ -1613,7 +1614,7 @@ private fun LanguageSettingRow(
             SettingsDialogButton(
                 text = stringResource(R.string.pref_save),
                 onClick = { onSave(draftValue.trim()) },
-                modifier = Modifier.semantics { contentDescription = "Salvar " + title },
+                modifier = Modifier.semantics { contentDescription = saveDescription },
             )
         }
         ReiAnixTextField(
@@ -1865,6 +1866,8 @@ private fun PosterSizeSettingRow(
         sliderValue = persistedValue.toFloat()
     }
     val displayedValue = sliderValue.toInt().coerceIn(0, 16)
+    val posterSizeLabel = stringResource(R.string.pref_poster_size)
+    val posterSizeState = stringResource(R.string.a11y_poster_size, displayedValue, 16)
 
     Column(
         modifier = Modifier
@@ -1874,8 +1877,8 @@ private fun PosterSizeSettingRow(
                 vertical = 16.dp,
             )
             .semantics(mergeDescendants = true) {
-                contentDescription = "Tamanho dos pôsteres"
-                stateDescription = "$displayedValue de 16"
+                contentDescription = posterSizeLabel
+                stateDescription = posterSizeState
             },
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
@@ -1885,7 +1888,7 @@ private fun PosterSizeSettingRow(
         ) {
             SettingsLeadingIcon("appearance.poster_size", Modifier.padding(end = 16.dp))
             SettingsPreferenceText(
-                title = stringResource(R.string.pref_poster_size),
+                title = posterSizeLabel,
                 description = stringResource(R.string.pref_poster_size_desc),
                 modifier = Modifier.weight(1f),
             )

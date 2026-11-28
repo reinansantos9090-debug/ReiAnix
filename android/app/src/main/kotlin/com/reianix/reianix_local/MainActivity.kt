@@ -23,6 +23,7 @@ import com.reianix.reianix_local.storage.NativeStorageOnboardingState
 import com.reianix.reianix_local.storage.VideoThumbnailExtractor
 import com.reianix.reianix_local.ui.host.ReiAnixComposeLibraryHost
 import com.reianix.reianix_local.ui.navigation.ReiAnixRoutes
+import com.reianix.reianix_local.ui.settings.ReiAnixAppLocales
 import com.reianix.reianix_local.data.settings.ReiAnixSettingsFileService
 import com.reianix.reianix_local.data.backup.ReiAnixBackupService
 
@@ -31,6 +32,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Resources
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -48,6 +50,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.whenStarted
@@ -94,8 +97,19 @@ data class ReiAnixWelcomeFolderPaths(
 )
 
 class MainActivity : ComponentActivity() {
-    override fun attachBaseContext(newBase: android.content.Context) {
-        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    private val legacyLocaleResources = mutableStateOf<Resources?>(null)
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        refreshLegacyLocaleResources()
+    }
+
+    override fun getResources(): Resources = legacyLocaleResources.value ?: super.getResources()
+
+    internal fun refreshLegacyLocaleResources() {
+        if (Build.VERSION.SDK_INT >= 33) return
+        val localized = ReiAnixAppLocales.localizedContext(baseContext)
+        legacyLocaleResources.value = if (localized === baseContext) null else localized.resources
     }
 
     private val tag = "[REIANIX][ANDROID]"

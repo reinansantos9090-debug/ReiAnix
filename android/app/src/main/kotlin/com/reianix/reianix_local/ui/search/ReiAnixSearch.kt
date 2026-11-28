@@ -649,7 +649,7 @@ private fun AniListSearchResults(
                 Column(modifier = Modifier.padding(ReiAnixTokens.Spacing.sm)) {
                     ReiAnixPoster(
                         localPath = null,
-                        contentDescription = "Capa de ${anime.preferredTitle}",
+                        contentDescription = stringResource(R.string.a11y_cover, anime.preferredTitle),
                         modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
                         identity = "anilist:" + anime.id,
                         externalUrl = anime.coverExtraLargeUrl ?: anime.coverLargeUrl,

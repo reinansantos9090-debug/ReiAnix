@@ -1265,4 +1265,49 @@
     <string name="frame_galaxy_desc">Cristais celestes, ametistas e estrelas cintilantes.</string>
     <string name="frame_white_desc">Contorno branco clássico.</string>
     <string name="frame_choose_hint">Escolha a moldura da foto do perfil.</string>
+    <string name="a11y_home_section">Home %1$s</string>
+    <string name="a11y_home_my_list">Home Minha Lista</string>
+    <string name="a11y_cover">Capa de %1$s</string>
+    <string name="a11y_character">Personagem: %1$s</string>
+    <string name="a11y_local_anime">Anime local</string>
+    <string name="a11y_collection_cover">Capa da coleção</string>
+    <string name="a11y_use_cover">Usar capa</string>
+    <string name="a11y_remove_collection">Remover da coleção</string>
+    <string name="a11y_remove_named">Remover %1$s</string>
+    <string name="a11y_clip_timeline">Linha do tempo do clipe. Arraste as extremidades para recortar ou toque para navegar.</string>
+    <string name="a11y_account_photo">Foto de %1$s</string>
+    <string name="a11y_save_setting">Salvar %1$s</string>
+    <string name="a11y_poster_size">%1$d de %2$d</string>
+    <string name="discovery_checking_local">Consultando biblioteca local…</string>
+    <string name="roulette_genre">Gênero: %1$s</string>
+    <string name="playback_channel_description">Controles da reprodução local do ReiAnix</string>
+    <string name="license_title_kotlin">Kotlin e biblioteca padrão</string>
+    <string name="license_title_compose">Jetpack Compose e Material</string>
+    <string name="license_title_coil">Coil e Coil Compose</string>
+    <string name="license_title_external_services">APIs e serviços externos</string>
+    <string name="license_title_google_sans">Google Sans (fonte das configurações)</string>
+    <string name="license_attribution_jetbrains">JetBrains e colaboradores Kotlin</string>
+    <string name="license_attribution_services">Fornecedores de dados, traduções e transmissão</string>
+    <string name="license_service_terms">Créditos e termos de uso</string>
+    <string name="license_intro">Licenças, avisos de terceiros e créditos dos serviços utilizados pelo ReiAnix.</string>
+    <string name="license_footnote">A lista gerada complementa os créditos locais. Consulte separadamente os avisos que não aparecem nos pacotes das bibliotecas. Os arquivos de licença originais também estão disponíveis no repositório.</string>
+    <string name="license_read_error">Não foi possível ler o texto da licença incluído no APK.</string>
+    <string name="license_notice_read_error">Não foi possível ler os avisos de atribuição incluídos no APK.</string>
+    <string name="license_title_reianix" translatable="false">ReiAnix</string>
+    <string name="license_title_coroutines" translatable="false">kotlinx.coroutines</string>
+    <string name="license_title_activity" translatable="false">AndroidX Activity</string>
+    <string name="license_title_lifecycle" translatable="false">AndroidX Lifecycle</string>
+    <string name="license_title_navigation" translatable="false">AndroidX Navigation</string>
+    <string name="license_title_documentfile" translatable="false">AndroidX DocumentFile</string>
+    <string name="license_title_webkit" translatable="false">AndroidX WebKit</string>
+    <string name="license_title_workmanager" translatable="false">AndroidX WorkManager</string>
+    <string name="license_title_media3" translatable="false">AndroidX Media3 (ExoPlayer)</string>
+    <string name="license_title_metrics" translatable="false">AndroidX Metrics</string>
+    <string name="license_title_mediarouter" translatable="false">AndroidX MediaRouter</string>
+    <string name="license_title_fragment" translatable="false">AndroidX Fragment</string>
+    <string name="license_title_appcompat" translatable="false">AndroidX AppCompat</string>
+    <string name="license_attribution_reianix" translatable="false">Copyright © 2026 Reinan Santos</string>
+    <string name="license_attribution_aosp" translatable="false">Android Open Source Project</string>
+    <string name="license_attribution_coil" translatable="false">Coil Contributors</string>
+    <string name="license_attribution_google_sans" translatable="false">Copyright 2025 The Google Sans Project Authors</string>
 </resources>

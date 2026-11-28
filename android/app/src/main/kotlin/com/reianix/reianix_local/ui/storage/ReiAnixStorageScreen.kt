@@ -224,7 +224,7 @@ private fun ReiAnixLibraryFoldersSection(
                         }
                         androidx.compose.material3.IconButton(onClick = { pendingRemoval = source },
                             enabled = !removeBusy && !selectionBusy) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Remover $name")
+                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.a11y_remove_named, name))
                         }
                     }
                 }

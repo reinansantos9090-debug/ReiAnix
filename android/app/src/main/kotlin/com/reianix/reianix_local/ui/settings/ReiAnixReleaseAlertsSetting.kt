@@ -83,15 +83,17 @@ fun ReiAnixReleaseAlertsSetting() {
         }
     }
 
+    val label = stringResource(R.string.tail_release_alerts)
     val description = stringResource(R.string.tail_release_alerts_desc)
+    val status = stringResource(if (enabled) R.string.choice_enabled else R.string.choice_disabled)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = ReiAnixTokens.Dimensions.settingsRowMinHeight)
             .settingsClickable(role = Role.Switch, onClick = { changeEnabled(!enabled) })
             .semantics(mergeDescendants = true) {
-                contentDescription = "Avisar sobre novos episódios. " + description
-                stateDescription = if (enabled) "Ativado" else "Desativado"
+                contentDescription = "$label. $description"
+                stateDescription = status
             }
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -99,7 +101,7 @@ fun ReiAnixReleaseAlertsSetting() {
     ) {
         SettingsLeadingIcon("releases.notifications")
         Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.tail_release_alerts), style = MaterialTheme.typography.bodyLarge)
+            Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(
                 description,
                 style = MaterialTheme.typography.bodySmall,

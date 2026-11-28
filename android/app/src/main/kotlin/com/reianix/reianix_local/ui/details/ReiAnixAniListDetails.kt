@@ -130,7 +130,7 @@ private fun RemoteAniListDetailsContent(
         Spacer(modifier = Modifier.height(ReiAnixTokens.Spacing.xs))
         ReiAnixPoster(
             localPath = null,
-            contentDescription = "Capa de ${anime.preferredTitle}",
+            contentDescription = stringResource(R.string.a11y_cover, anime.preferredTitle),
             modifier = Modifier.fillMaxWidth().height(300.dp),
             identity = "anilist:${anime.id}",
             externalUrl = anime.coverExtraLargeUrl ?: anime.coverLargeUrl,

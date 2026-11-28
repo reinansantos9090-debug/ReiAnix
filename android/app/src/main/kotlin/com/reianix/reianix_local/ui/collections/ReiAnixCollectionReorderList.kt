@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.collections
 
+import androidx.compose.ui.res.stringResource
+import com.reianix.reianix_local.R
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
 import androidx.compose.animation.animateColorAsState
@@ -362,14 +364,14 @@ internal fun CollectionAnimeRow(
                 ) {
                     Icon(
                         if (isCover) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                        contentDescription = if (isCover) "Capa da coleção" else "Usar capa",
+                        contentDescription = stringResource(if (isCover) R.string.a11y_collection_cover else R.string.a11y_use_cover),
                         tint = if (isCover) gold else MaterialTheme.colorScheme.onSurface,
                     )
                 }
                 IconButton(onClick = onRemove, enabled = !busy) {
                     Icon(
                         Icons.Outlined.Delete,
-                        contentDescription = "Remover da coleção",
+                        contentDescription = stringResource(R.string.a11y_remove_collection),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

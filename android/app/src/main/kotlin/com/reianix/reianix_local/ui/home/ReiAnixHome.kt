@@ -808,7 +808,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = newEpisodes.take(12),
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Novos episódios",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_new_episodes)),
                     onSeeAll = { expandedSection = "new" },
                 )
             }
@@ -820,7 +820,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = recentlyAdded,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Adicionados recentemente",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_recent_added)),
                 )
             }
         }
@@ -831,7 +831,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = available,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Conteúdo disponível",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_available)),
                 )
             }
         }
@@ -843,7 +843,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = recentlyWatched,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Recentemente assistidos",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_recent_watched)),
                 )
             }
         }
@@ -854,7 +854,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = favorites,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
+                    contentDescription = stringResource(R.string.a11y_home_my_list),
                 )
             }
         }
@@ -865,7 +865,7 @@ private fun ColumnScope.HomeReadyContent(
         ).forEach { (key, title, cards) ->
             if (cards.isNotEmpty()) {
                 item(key = "home-section-" + key) {
-                    HomeMediaSection(stringResource(title), cards, posterCardWidth, onOpenDetails, "Home " + stringResource(title))
+                    HomeMediaSection(stringResource(title), cards, posterCardWidth, onOpenDetails, stringResource(R.string.a11y_home_section, stringResource(title)))
                 }
             }
         }
@@ -876,7 +876,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = section.items,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home " + section.title,
+                    contentDescription = stringResource(R.string.a11y_home_section, localizedGenreLabel(section.title)),
                 )
             }
         }
@@ -887,7 +887,7 @@ private fun ColumnScope.HomeReadyContent(
                     items = movies,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Filmes",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_movies)),
                 )
             }
         }
@@ -1180,8 +1180,6 @@ private fun HomeContinueCard(
         }
     }
 }
-
-private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
 
 private fun homeAnimeCardWidth(
     preference: String,

@@ -156,6 +156,7 @@ fun ReiAnixScannerInProgressState(
     compact: Boolean = false,
 ) {
     val normalizedState = scanState.trim().ifBlank { "SCANNING" }
+    val scanTitle = stringResource(R.string.extra_scan_running)
     if (compact) {
         Row(
             modifier = modifier
@@ -163,7 +164,7 @@ fun ReiAnixScannerInProgressState(
                 .padding(ReiAnixTokens.Spacing.md)
                 .semantics {
                     liveRegion = LiveRegionMode.Polite
-                    contentDescription = "Varredura em andamento. " + normalizedState
+                    contentDescription = "$scanTitle. $normalizedState"
                 },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
@@ -171,7 +172,7 @@ fun ReiAnixScannerInProgressState(
             ReiAnixLoadingIndicator()
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.extra_scan_running),
+                    text = scanTitle,
                     style = ReiAnixTokens.TypographyTokens.itemTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -184,7 +185,7 @@ fun ReiAnixScannerInProgressState(
         }
     } else {
         ReiAnixLoadingState(
-            title = stringResource(R.string.extra_scan_running),
+            title = scanTitle,
             message = normalizedState,
             modifier = modifier,
         )

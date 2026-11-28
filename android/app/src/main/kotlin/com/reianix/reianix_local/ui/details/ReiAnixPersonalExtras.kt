@@ -665,7 +665,7 @@ fun ReiAnixMetadataCharacters(
                 ) {
                     AsyncImage(
                         model = character.imageUrl,
-                        contentDescription = "Personagem: " + character.name,
+                        contentDescription = stringResource(R.string.a11y_character, character.name),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(70.dp).clip(CircleShape),
                     )
