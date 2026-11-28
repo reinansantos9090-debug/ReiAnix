@@ -1,6 +1,8 @@
 package com.reianix.reianix_local.player
 
 import android.content.Intent
+import android.content.res.Configuration
+import java.util.Locale
 import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +25,10 @@ class ExternalVideoChooserTest {
             ?: error("Android chooser sem intent de vídeo")
 
     @Test fun opensSafUriWithTemporaryReadGrantAndNoForcedApp() {
-        val context = RuntimeEnvironment.getApplication()
+        val app = RuntimeEnvironment.getApplication()
+        val context = app.createConfigurationContext(Configuration(app.resources.configuration).apply {
+            setLocale(Locale.forLanguageTag("pt-BR"))
+        })
         val videoUri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3AMovies%2Fanime.mkv")
         val chooser = ExternalVideoChooser.createIntent(context, videoUri)
         val target = targetIntent(chooser)
@@ -38,6 +43,13 @@ class ExternalVideoChooserTest {
         assertEquals(videoUri, target.clipData?.getItemAt(0)?.uri)
         assertEquals(videoUri, chooser.clipData?.getItemAt(0)?.uri)
         assertEquals("Abrir com...", chooser.getCharSequenceExtra(Intent.EXTRA_TITLE))
+        val english = app.createConfigurationContext(Configuration(app.resources.configuration).apply {
+            setLocale(Locale.ENGLISH)
+        })
+        val englishChooser = ExternalVideoChooser.createIntent(english, videoUri)
+        assertEquals("Open with...", englishChooser.getCharSequenceExtra(Intent.EXTRA_TITLE))
+        assertEquals(videoUri, targetIntent(englishChooser).data)
+        assertTrue(targetIntent(englishChooser).flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
     }
 
     @Test fun acceptsMediaStoreVideos() {
