@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Видео</string>
+    <string name="local_video_section">Видео</string>
+    <string name="local_video_label">Локальное видео</string>
+    <string name="local_video_actions">Действия с видео %1$s</string>
+    <string name="local_video_delete">Удалить видео?</string>
+    <string name="local_video_delete_warning">Файл «%1$s» будет безвозвратно удалён с устройства. Запись в библиотеке и прогресс просмотра также будут удалены. Это действие нельзя отменить.</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d видео</item>
+        <item quantity="other">%d видео</item>
+    </plurals>
+</resources>

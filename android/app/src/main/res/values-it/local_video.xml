@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Video</string>
+    <string name="local_video_section">Video</string>
+    <string name="local_video_label">Video locale</string>
+    <string name="local_video_actions">Azioni del video %1$s</string>
+    <string name="local_video_delete">Eliminare il video?</string>
+    <string name="local_video_delete_warning">Il file “%1$s” verrà eliminato definitivamente dal dispositivo. Anche il record e i progressi verranno rimossi dalla libreria. Questa azione è irreversibile.</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d video</item>
+    </plurals>
+</resources>

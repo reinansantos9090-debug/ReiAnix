@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.formatDurationLabel
+
 import com.reianix.reianix_local.ui.localizedUiLabel
 import com.reianix.reianix_local.ui.localizedGenreLabel
 import com.reianix.reianix_local.ui.localizedEpisodeCount
@@ -1337,7 +1339,9 @@ private fun LibraryAnimeCard(
         artworkExternalUrl = card.artwork?.externalUrl,
         artworkIdentity = card.artworkIdentity,
         artworkSourceRevisions = card.artwork?.sourceRevisions.orEmpty(),
-        metadata = if (availableContentCount > 0) card.metadata.dropLast(1) + localizedEpisodeCount(availableContentCount) else card.metadata,
+        metadata = if (availableContentCount > 0) card.metadata.dropLast(1) +
+            (if (card.isVideo) card.videoDurationLabel ?: androidx.compose.ui.res.pluralStringResource(R.plurals.local_video_count, availableContentCount, availableContentCount)
+            else localizedEpisodeCount(availableContentCount)) else card.metadata,
         progress = card.progress,
         favorite = card.favorite,
         watching = card.watching,
@@ -1345,7 +1349,7 @@ private fun LibraryAnimeCard(
         completed = card.completed,
         modifier = modifier,
         onClick = onClick,
-        bottomBadgeText = card.badge,
+        bottomBadgeText = if (card.isVideo) stringResource(R.string.local_video_badge) else card.badge,
         onFavoriteClick = onToggleFavorite,
         maxDimensionPx = maxDimensionPx,
     )
@@ -1364,6 +1368,8 @@ private data class LibraryCardRenderData(
     val watched: Boolean,
     val completed: Boolean,
     val badge: String?,
+    val isVideo: Boolean = false,
+    val videoDurationLabel: String? = null,
 )
 
 private fun ReiAnixAnimeUiModel.toLibraryCard(): LibraryCardRenderData = LibraryCardRenderData(
@@ -1382,6 +1388,8 @@ private fun ReiAnixAnimeUiModel.toLibraryCard(): LibraryCardRenderData = Library
     completed = isCompleted,
     badge = presentationStateLabel(presentationState)
         ?: if (mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else null,
+    isVideo = mediaKind == ReiAnixMediaKind.VIDEO,
+    videoDurationLabel = localVideoDurationSeconds?.let(::formatDurationLabel),
 )
 
 @Composable

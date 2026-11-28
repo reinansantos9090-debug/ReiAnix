@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">视频</string>
+    <string name="local_video_section">视频</string>
+    <string name="local_video_label">本地视频</string>
+    <string name="local_video_actions">%1$s 的视频操作</string>
+    <string name="local_video_delete">删除视频？</string>
+    <string name="local_video_delete_warning">文件“%1$s”将从设备中永久删除。其资料库记录和播放进度也将被移除。此操作无法撤销。</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d 个视频</item>
+        <item quantity="other">%d 个视频</item>
+    </plurals>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">動画</string>
+    <string name="local_video_section">動画</string>
+    <string name="local_video_label">ローカル動画</string>
+    <string name="local_video_actions">%1$s の操作</string>
+    <string name="local_video_delete">動画を削除しますか？</string>
+    <string name="local_video_delete_warning">ファイル「%1$s」は端末から完全に削除されます。ライブラリの記録と再生進捗も削除されます。この操作は取り消せません。</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d 本の動画</item>
+        <item quantity="other">%d 本の動画</item>
+    </plurals>
+</resources>

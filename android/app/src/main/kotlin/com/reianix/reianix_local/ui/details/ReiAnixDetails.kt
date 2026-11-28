@@ -716,7 +716,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
         }
 
         // Recommendations replace Sobre/Episódios and Informações, just below playback.
-        item(
+        if (anime.mediaKind != ReiAnixMediaKind.VIDEO) item(
             key = "details-recommendations:" + anime.stableKey,
             contentType = "details-recommendations",
         ) {
@@ -787,7 +787,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onWatch = onWatch,
                     onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
-                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE && anime.mediaKind != ReiAnixMediaKind.VIDEO,
                 )
             }
         }
@@ -798,8 +798,14 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 contentType = "details-media-files-heading",
             ) {
                 DetailsSectionHeader(
-                    title = stringResource(if (anime.mediaKind == ReiAnixMediaKind.MOVIE) R.string.ui_movies else R.string.flow_content),
-                    subtitle = episodeCountLabel(anime.mediaFiles.size),
+                    title = stringResource(when (anime.mediaKind) {
+                        ReiAnixMediaKind.VIDEO -> R.string.local_video_section
+                        ReiAnixMediaKind.MOVIE -> R.string.ui_movies
+                        else -> R.string.flow_content
+                    }),
+                    subtitle = if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+                        androidx.compose.ui.res.pluralStringResource(R.plurals.local_video_count, anime.mediaFiles.size, anime.mediaFiles.size)
+                    } else episodeCountLabel(anime.mediaFiles.size),
                 )
             }
             items(
@@ -815,7 +821,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onWatch = onWatch,
                     onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
-                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE && anime.mediaKind != ReiAnixMediaKind.VIDEO,
                 )
             }
         }
@@ -843,7 +849,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onWatch = onWatch,
                     onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
-                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE && anime.mediaKind != ReiAnixMediaKind.VIDEO,
                 )
             }
         }
@@ -1014,7 +1020,12 @@ private fun DetailsHero(
 
     val localizedStatus = anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { statusLabel(it) }
     val localizedFormat = anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { formatLabel(it) }
-    val localEpisodeLabel = anime.episodeCount?.takeIf { it > 0 }?.let { stringResource(R.string.final_details_local_label, localizedEpisodeCount(it)) }
+    val localEpisodeLabel = if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+        val label = stringResource(R.string.local_video_label)
+        val duration = (target ?: anime.mediaFiles.firstOrNull())?.durationSeconds
+            ?.takeIf { it.isFinite() && it > 0.0 }?.let(::formatDurationLabel)
+        listOfNotNull(label, duration).joinToString(" • ")
+    } else anime.episodeCount?.takeIf { it > 0 }?.let { stringResource(R.string.final_details_local_label, localizedEpisodeCount(it)) }
     val expectedEpisodeLabel = anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { stringResource(R.string.final_details_expected, it) }
     val seasonCountLabel = anime.seasons.size.takeIf { it > 0 }?.let { stringResource(R.string.final_details_seasons, it) }
     val scoreLabel = anime.score?.let { stringResource(R.string.final_details_score, formatScore(it)) }
@@ -1202,7 +1213,7 @@ private fun DetailsHero(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            DetailsAniListAction(
+            if (anime.mediaKind != ReiAnixMediaKind.VIDEO) DetailsAniListAction(
                 running = aniListRepairRunning,
                 onRepair = onManageAniList,
                 modifier = Modifier.weight(1f).testTag("details-quick-anilist"),
@@ -1390,7 +1401,7 @@ private fun DetailsHero(
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-play-action"),
                 leadingIcon = Icons.Filled.PlayArrow,
             )
-            ReiAnixSecondaryButton(
+            if (anime.mediaKind != ReiAnixMediaKind.VIDEO) ReiAnixSecondaryButton(
                 text = stringResource(R.string.ui_marathon),
                 onClick = onOpenMarathon,
                 enabled = hasMarathonContent,
@@ -1742,7 +1753,7 @@ private fun DetailsEpisodeItem(
     var identificationSaving by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
     var identificationError by rememberSaveable(episode.stableKey) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
-    val episodeActionsLabel = stringResource(R.string.final_details_ep_actions, episode.displayTitle)
+    val episodeActionsLabel = stringResource(if (episode.episodeType == "video") R.string.local_video_actions else R.string.final_details_ep_actions, episode.displayTitle)
     val editScope = rememberCoroutineScope()
 
     ReiAnixEpisodeCard(episode = episode, showThumbnail = showThumbnail, isCurrent = isCurrent, isNext = isNext,
@@ -1781,9 +1792,9 @@ private fun DetailsEpisodeItem(
     deletePath?.let { path ->
         AlertDialog(
             onDismissRequest = { deletePath = null },
-            title = { Text(stringResource(R.string.ui_delete_episode)) },
+            title = { Text(stringResource(if (episode.episodeType == "video") R.string.local_video_delete else R.string.ui_delete_episode)) },
             text = {
-                Text(stringResource(R.string.flow_delete_episode_warning, episode.fileName))
+                Text(stringResource(if (episode.episodeType == "video") R.string.local_video_delete_warning else R.string.flow_delete_episode_warning, episode.fileName))
             },
             confirmButton = {
                 TextButton(onClick = {
