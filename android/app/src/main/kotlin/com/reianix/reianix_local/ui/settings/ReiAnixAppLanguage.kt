@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -24,6 +26,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.R
 import java.util.Locale
@@ -67,6 +70,19 @@ internal fun localizedSettingsDescription(value: String): String = when (value) 
     else -> value
 }
 
+private val appLanguageFlags = mapOf(
+    "pt-BR" to "🇧🇷",
+    "en" to "🇬🇧",
+    "es" to "🇪🇸",
+    "ru" to "🇷🇺",
+    "ja" to "🇯🇵",
+    "de" to "🇩🇪",
+    "ko" to "🇰🇷",
+    "zh-Hans" to "🇨🇳",
+    "it" to "🇮🇹",
+    "fr" to "🇫🇷",
+)
+
 @Composable
 internal fun ReiAnixAppLanguageRow() {
     val context = LocalContext.current
@@ -83,9 +99,10 @@ internal fun ReiAnixAppLanguageRow() {
         }
     }
     var showDialog by remember { mutableStateOf(false) }
-    SettingsLanguageRowContent(
-        label = stringResource(R.string.locale_title),
-        summary = names.getValue(selected),
+    ReiAnixSettingsRow(
+        icon = Icons.Filled.Translate,
+        title = stringResource(R.string.locale_title),
+        description = names.getValue(selected),
         onClick = { showDialog = true },
     )
     if (showDialog) {
@@ -94,7 +111,10 @@ internal fun ReiAnixAppLanguageRow() {
             title = { Text(stringResource(R.string.locale_title)) },
             text = {
                 Column(
-                    Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()).selectableGroup(),
+                    Modifier
+                        .heightIn(max = 500.dp)
+                        .verticalScroll(rememberScrollState())
+                        .selectableGroup(),
                 ) {
                     names.forEach { (tag, label) ->
                         Row(
@@ -113,7 +133,13 @@ internal fun ReiAnixAppLanguageRow() {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(selected = selected == tag, onClick = null)
-                            Text(label, Modifier.padding(start = 12.dp))
+                            appLanguageFlags[tag]?.let { flag ->
+                                Text(
+                                    text = flag,
+                                    modifier = Modifier.padding(start = 12.dp).clearAndSetSemantics { },
+                                )
+                            }
+                            Text(label, Modifier.padding(start = 8.dp))
                         }
                     }
                 }
@@ -124,26 +150,6 @@ internal fun ReiAnixAppLanguageRow() {
                 }
             },
         )
-    }
-}
-
-@Composable
-private fun SettingsLanguageRowContent(label: String, summary: String, onClick: () -> Unit) {
-    androidx.compose.material3.Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-        color = androidx.compose.ui.graphics.Color.Transparent,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(label, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
-                Text(summary, style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
     }
 }
 
