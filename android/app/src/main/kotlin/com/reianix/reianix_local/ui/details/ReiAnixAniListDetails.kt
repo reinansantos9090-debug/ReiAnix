@@ -75,7 +75,7 @@ fun ReiAnixAniListDetailsRoute(
         ReiAnixTopBar(
             title = stringResource(R.string.more_anilist_details),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
-            navigationContentDescription = "Voltar para a busca",
+            navigationContentDescription = stringResource(R.string.profile_remote_back),
             onNavigationClick = { navController.popBackStack() },
         )
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -87,7 +87,7 @@ fun ReiAnixAniListDetailsRoute(
                 )
                 state.detailsError != null -> ReiAnixRecoverableErrorState(
                     title = stringResource(R.string.more_details_load_error),
-                    message = state.detailsError ?: "Erro desconhecido ao carregar detalhes.",
+                    message = state.detailsError ?: stringResource(R.string.profile_remote_error),
                     onRetry = { aniListViewModel.loadAniListDetails(anilistId) },
                     modifier = Modifier.fillMaxSize(),
                     retryLabel = stringResource(R.string.ui_retry),
@@ -161,21 +161,21 @@ private fun RemoteAniListDetailsContent(
         }
         if (anime.genres.isNotEmpty()) {
             Text(
-                text = "Gêneros: " + anime.genres.joinToString(" · "),
+                text = stringResource(R.string.profile_remote_genres, anime.genres.joinToString(" · ")),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
         anime.episodes?.let {
-            Text("Episódios anunciados: $it", style = MaterialTheme.typography.bodyMedium,
+            Text(stringResource(R.string.profile_remote_episodes, it), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface)
         }
         anime.studios.takeIf { it.isNotEmpty() }?.let {
-            Text("Estúdio: " + it.joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
+            Text(stringResource(R.string.profile_remote_studio, it.joinToString(" · ")), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface)
         }
         anime.averageScore?.let {
-            Text("Nota AniList: $it/100", style = MaterialTheme.typography.bodyMedium,
+            Text(stringResource(R.string.profile_remote_rating, it), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface)
         }
         anime.description?.takeIf { it.isNotBlank() }?.let {

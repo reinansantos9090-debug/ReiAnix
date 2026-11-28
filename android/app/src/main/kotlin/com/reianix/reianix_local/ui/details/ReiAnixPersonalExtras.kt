@@ -202,7 +202,7 @@ fun ReiAnixPersonalExtras(
                 fontWeight = FontWeight.SemiBold)
             if (!suggestions.isNullOrEmpty()) {
                 IconButton(onClick = { showAll = true }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Todas as sugestões")
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.profile_all_suggestions))
                 }
             }
         }
@@ -306,7 +306,7 @@ internal fun ReiAnixPersonalNoteDialog(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            error = "Não foi possível ler a avaliação salva."
+            error = context.getString(R.string.profile_rating_load_error)
         }
     }
 
@@ -333,7 +333,7 @@ internal fun ReiAnixPersonalNoteDialog(
                 HorizontalDivider()
                 Text(stringResource(R.string.more_my_rating), style = MaterialTheme.typography.titleSmall)
                 Text(rating?.let { String.format(Locale.forLanguageTag("pt-BR"), "%.1f / 10", it / 10.0) }
-                    ?: "Sem avaliação", color = MaterialTheme.colorScheme.primary)
+                    ?: stringResource(R.string.profile_no_rating), color = MaterialTheme.colorScheme.primary)
                 Slider(
                     value = (rating ?: 0).toFloat(),
                     onValueChange = { rating = (it / 5f).roundToInt().times(5).coerceIn(0, 100) },
@@ -360,7 +360,7 @@ internal fun ReiAnixPersonalNoteDialog(
         },
         confirmButton = {
             ReiAnixPrimaryButton(
-                text = if (saving) "Salvando…" else "Salvar",
+                text = if (saving) stringResource(R.string.flow_saving) else stringResource(R.string.pref_save),
                 enabled = !saving && loaded,
                 onClick = {
                     if (!saving && loaded) {
@@ -379,7 +379,7 @@ internal fun ReiAnixPersonalNoteDialog(
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (_: Exception) {
-                                error = "Não foi possível concluir o salvamento. Tente novamente."
+                                error = context.getString(R.string.profile_rating_save_error)
                             } finally {
                                 saving = false
                             }
@@ -578,7 +578,7 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                Toast.makeText(context, "Não foi possível atualizar sua lista.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.profile_list_save_error), Toast.LENGTH_SHORT).show()
             } finally {
                 saving = false
             }
@@ -586,7 +586,7 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
     }
 
     Box(modifier = modifier.semantics {
-        stateDescription = selected?.label ?: "Fora das listas de acompanhamento"
+        stateDescription = selected?.label ?: context.getString(R.string.profile_list_outside)
     }) {
         ReiAnixDetailsQuickAction(
             label = stringResource(R.string.more_add_list),
