@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.organize
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -221,7 +225,7 @@ fun ReiAnixOrganizeScreen(
                 .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         ) {
             Icon(Icons.Default.Folder, contentDescription = null)
-            Text("Gerenciar arquivos locais (SAF)", modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm))
+            Text(stringResource(R.string.more_organize_saf), modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm))
         }
 
         OutlinedButton(
@@ -239,7 +243,7 @@ fun ReiAnixOrganizeScreen(
             )
         }
         Text(
-            text = "Usa regras locais e preserva gêneros existentes e metadados AniList/manuais.",
+            text = stringResource(R.string.more_organize_rules),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
@@ -270,8 +274,8 @@ fun ReiAnixOrganizeScreen(
                     )
                 } else {
                     ReiAnixLoadingState(
-                        title = "Carregando Organizar",
-                        message = "Lendo o catálogo local…",
+                        title = stringResource(R.string.more_organize_loading),
+                        message = stringResource(R.string.more_catalog_read),
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 }
@@ -279,8 +283,8 @@ fun ReiAnixOrganizeScreen(
 
             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> {
                 ReiAnixSourceUnavailableState(
-                    title = "Biblioteca local indisponível",
-                    message = "O acesso configurado ao armazenamento não está disponível agora. Isso não significa que a biblioteca esteja vazia.",
+                    title = stringResource(R.string.ui_local_unavailable),
+                    message = stringResource(R.string.more_storage_not_available),
                     actionLabel = "Gerenciar armazenamento",
                     onAction = onOpenStorageAccess,
                     modifier = Modifier.fillMaxWidth().weight(1f),
@@ -290,7 +294,7 @@ fun ReiAnixOrganizeScreen(
             ReiAnixLibraryLoadStatus.ERROR -> {
                 if (state.animes.isEmpty()) {
                     ReiAnixRecoverableErrorState(
-                        title = "Não foi possível carregar Organizar",
+                        title = stringResource(R.string.more_organize_error),
                         message = state.error ?: state.lastCommandError
                             ?: "A biblioteca local retornou um erro.",
                         onRetry = onRefresh,
@@ -373,7 +377,7 @@ fun ReiAnixOrganizeScreen(
             AlertDialog(
                 onDismissRequest = { pendingSourceRemoval = null },
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                title = { Text("Remover fonte da biblioteca?") },
+                title = { Text(stringResource(R.string.more_source_remove)) },
                 text = {
                     Text(
                         "“$sourceName” será removida somente da configuração da Biblioteca. " +
@@ -383,7 +387,7 @@ fun ReiAnixOrganizeScreen(
                 },
                 confirmButton = {
                     ReiAnixCompactButton(
-                        text = "Remover",
+                        text = stringResource(R.string.extra_remove),
                         onClick = {
                             pendingSourceRemoval = null
                             onRemoveFolder(reference)
@@ -392,7 +396,7 @@ fun ReiAnixOrganizeScreen(
                 },
                 dismissButton = {
                     ReiAnixCompactButton(
-                        text = "Cancelar",
+                        text = stringResource(R.string.locale_cancel),
                         onClick = { pendingSourceRemoval = null },
                     )
                 },
@@ -431,7 +435,7 @@ private fun OrganizeSourcesAndScanPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Fontes",
+                        text = stringResource(R.string.more_sources),
                         style = ReiAnixTokens.TypographyTokens.itemTitle,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -464,7 +468,7 @@ private fun OrganizeSourcesAndScanPanel(
                         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                     ) {
                         Icon(Icons.Filled.Info, contentDescription = null)
-                        Text("Adicionar pasta", style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.extra_storage_add), style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -555,7 +559,7 @@ private fun OrganizeSourcesAndScanPanel(
                 }
             } else {
                 Text(
-                    text = "Adicione uma pasta para alimentar a Biblioteca. A tela permanece disponível enquanto a varredura é executada.",
+                    text = stringResource(R.string.more_source_add_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -638,7 +642,7 @@ private fun OrganizeSourceRow(
                     )
                 } else if (!available) {
                     Text(
-                        text = "Acesso da pasta não está disponível.",
+                        text = stringResource(R.string.more_folder_no_access),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -706,7 +710,7 @@ private fun OrganizeTopBar(
     onOpenSettings: () -> Unit,
 ) {
     ReiAnixTopBar(
-        title = "Organizar",
+        title = stringResource(R.string.more_organize),
         navigationIcon = Icons.Filled.ArrowBack,
         navigationContentDescription = "Voltar",
         onNavigationClick = onBack,
@@ -771,7 +775,7 @@ private fun OrganizeOverview(
             item(key = "scan-completed") {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.CheckCircle,
-                    message = "Atualização da biblioteca concluída.",
+                    message = stringResource(R.string.more_refresh_done),
                     tone = ReiAnixBadgeTone.Success,
                 )
             }
@@ -779,7 +783,7 @@ private fun OrganizeOverview(
             item(key = "scan-partial") {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.Warning,
-                    message = "A atualização terminou parcialmente; a biblioteca exibida permanece na fonte de verdade local.",
+                    message = stringResource(R.string.more_refresh_partial_desc),
                     tone = ReiAnixBadgeTone.Warning,
                 )
             }
@@ -805,7 +809,7 @@ private fun OrganizeOverview(
 
         item(key = "categories-title") {
             OrganizeSectionHeader(
-                title = "Categorias",
+                title = stringResource(R.string.more_categories),
                 subtitle = "Estados já existentes no catálogo local",
                 icon = Icons.Filled.Settings,
             )
@@ -832,7 +836,7 @@ private fun OrganizeOverview(
         if (genres.isNotEmpty()) {
             item(key = "genres-title") {
                 OrganizeSectionHeader(
-                    title = "Gêneros",
+                    title = stringResource(R.string.ui_genres),
                     subtitle = "Agrupamentos vindos do catálogo real",
                     icon = Icons.Filled.Info,
                 )
@@ -870,7 +874,7 @@ private fun OrganizeOverview(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    text = "Filtrar biblioteca local",
+                                    text = stringResource(R.string.more_filter_library),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -901,7 +905,7 @@ private fun OrganizeOverview(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Catálogo local",
+                            text = stringResource(R.string.more_local_catalog),
                             style = ReiAnixTokens.TypographyTokens.itemTitle,
                         )
                         Text(
@@ -971,7 +975,7 @@ private fun OrganizeCollectionContent(
                     onValueChange = onQueryChange,
                     accessibilityLabel = "Pesquisar na organização",
                     placeholder = {
-                        Text("Buscar título, gênero, alias ou episódio")
+                        Text(stringResource(R.string.more_organize_search))
                     },
                     leadingIcon = {
                         Icon(Icons.Filled.Search, contentDescription = null)
@@ -1021,7 +1025,7 @@ private fun OrganizeCollectionContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ReiAnixChip(
-                    text = "Visão geral",
+                    text = stringResource(R.string.more_overview),
                     onClick = onOpenOverview,
                     modifier = Modifier.semantics {
                         contentDescription = "Voltar para visão geral"
@@ -1044,7 +1048,7 @@ private fun OrganizeCollectionContent(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Todos") },
+                            text = { Text(stringResource(R.string.more_all_m)) },
                             onClick = {
                                 genreMenuExpanded = false
                                 onGenreSelected(null)
@@ -1100,7 +1104,7 @@ private fun OrganizeCollectionContent(
                     filters.sort != ReiAnixOrganizeFilters.DEFAULT_SORT
                 ) {
                     ReiAnixChip(
-                        text = "Limpar",
+                        text = stringResource(R.string.ui_clear),
                         onClick = onClearFilters,
                     )
                 }
@@ -1124,7 +1128,7 @@ private fun OrganizeCollectionContent(
             ) {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.Warning,
-                    message = "A atualização terminou parcialmente.",
+                    message = stringResource(R.string.more_refresh_partial),
                     tone = ReiAnixBadgeTone.Warning,
                 )
             }
@@ -1185,8 +1189,8 @@ private fun OrganizeCollectionContent(
                 span = { GridItemSpan(maxLineSpan) },
             ) {
                 ReiAnixEmptyState(
-                    title = "Nenhum item corresponde aos filtros",
-                    message = "A biblioteca local possui dados, mas nenhuma obra corresponde à combinação atual.",
+                    title = stringResource(R.string.more_no_filter_match),
+                    message = stringResource(R.string.more_no_filter_match_desc),
                     actionLabel = "Limpar filtros",
                     onAction = onClearFilters,
                     icon = Icons.Filled.Search,
@@ -1225,8 +1229,8 @@ private fun EmptyOrganizeContent(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
         ReiAnixEmptyLibraryState(
-            title = "Seu catálogo está vazio",
-            message = "Nenhum conteúdo local está disponível neste momento. Isso é diferente de uma falha de acesso.",
+            title = stringResource(R.string.more_catalog_empty),
+            message = stringResource(R.string.more_catalog_empty_desc),
             actionLabel = "Selecionar pasta",
             onAction = onAddFolder,
             modifier = Modifier.weight(1f),
@@ -1236,7 +1240,7 @@ private fun EmptyOrganizeContent(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             EmptyAction(
-                label = "Adicionar pasta",
+                label = stringResource(R.string.extra_storage_add),
                 onClick = onAddFolder,
                 icon = Icons.Filled.Info,
                 modifier = Modifier.weight(1f),
@@ -1249,13 +1253,13 @@ private fun EmptyOrganizeContent(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             EmptyAction(
-                label = "Atualizar",
+                label = stringResource(R.string.more_refresh),
                 onClick = onRefresh,
                 icon = Icons.Filled.Refresh,
                 modifier = Modifier.weight(1f),
             )
             EmptyAction(
-                label = "Configurações",
+                label = stringResource(R.string.settings_title),
                 onClick = onOpenSettings,
                 icon = Icons.Filled.Settings,
                 modifier = Modifier.weight(1f),

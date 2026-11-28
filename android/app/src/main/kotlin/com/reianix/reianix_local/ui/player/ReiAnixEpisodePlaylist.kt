@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.player
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,8 +35,8 @@ fun ReiAnixEpisodePlaylist(
         color = Color(0xFF161616), contentColor = Color.White) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Episódios", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = onClose) { Text("Fechar", color = Color.White) }
+                Text(stringResource(R.string.ui_episodes), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onClose) { Text(stringResource(R.string.ui_close), color = Color.White) }
             }
             Text("${episodes.size} episódios", style = MaterialTheme.typography.labelMedium,
                 color = Color(0xFFCCCCCC))

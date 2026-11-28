@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.discovery
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
@@ -97,7 +101,7 @@ fun ReiAnixTimelineHubRoute(
             modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()),
         ) {
             ReiAnixTopBar(
-                title = "Linha do tempo",
+                title = stringResource(R.string.more_timeline),
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onNavigationClick = { navController.popBackStack() },
             )
@@ -138,10 +142,10 @@ fun ReiAnixTimelineHubRoute(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
-                                Button(onClick = { retryToken++ }) { Text("Tentar novamente") }
+                                Button(onClick = { retryToken++ }) { Text(stringResource(R.string.ui_retry)) }
                             }
                             groups.orEmpty().isEmpty() -> Text(
-                                text = "A biblioteca ainda não possui itens para a linha do tempo.",
+                                text = stringResource(R.string.more_timeline_empty),
                                 modifier = Modifier.align(Alignment.Center).padding(20.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                             )

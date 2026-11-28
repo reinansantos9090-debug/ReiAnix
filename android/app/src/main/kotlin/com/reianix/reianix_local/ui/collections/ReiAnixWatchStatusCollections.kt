@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.collections
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
@@ -126,7 +130,7 @@ internal fun TrackingCollectionsContent(
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (error != null) {
             Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
-            TextButton(onClick = onRetry) { Text("Tentar novamente") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.ui_retry)) }
         }
         if (selected == null) {
             val categories = listOf(
@@ -158,8 +162,8 @@ internal fun TrackingCollectionsContent(
                     verticalArrangement = Arrangement.Center) {
                     Icon(Icons.Outlined.BookmarkBorder, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    Text("Nenhum anime nesta categoria")
-                    Text("Use a página de detalhes para adicionar.", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Text(stringResource(R.string.more_category_empty))
+                    Text(stringResource(R.string.more_category_hint), color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall)
                 }
             } else {

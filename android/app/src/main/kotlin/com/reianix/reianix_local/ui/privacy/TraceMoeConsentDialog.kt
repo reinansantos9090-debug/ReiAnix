@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.privacy
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,10 +27,10 @@ internal fun TraceMoeConsentDialog(
     var authorized by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Autorizar envio de miniaturas?") },
+        title = { Text(stringResource(R.string.more_trace_consent_title)) },
         text = {
             Text(
-                "O ReiAnix poderá enviar imagens JPEG extraídas dos seus episódios ao serviço externo Trace.moe para identificar animes, inclusive na identificação automática. As imagens revelam cenas do vídeo; o vídeo completo não é enviado. O serviço recebe também seu IP. Você pode recusar e continuar usando a biblioteca ou revogar a autorização em Configurações > Metadados e Capas > Identificação por imagem. Envios anteriores não podem ser desfeitos." +
+                stringResource(R.string.more_trace_consent_body) +
                     if (savingFailed) "\n\nNão foi possível salvar a autorização. Tente novamente." else "",
                 color = if (savingFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -44,8 +48,8 @@ internal fun TraceMoeConsentDialog(
                         }
                     }
                 },
-            ) { Text("Autorizar") }
+            ) { Text(stringResource(R.string.more_authorize)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Não autorizar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.more_deny_authorize)) } },
     )
 }

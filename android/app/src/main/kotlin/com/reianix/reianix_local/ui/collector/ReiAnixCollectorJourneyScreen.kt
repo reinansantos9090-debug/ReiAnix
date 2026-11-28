@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.collector
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -221,7 +225,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                     Text(state.error, color = MaterialTheme.colorScheme.onErrorContainer)
                     if (state.journey != null) {
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = onRefresh, enabled = !state.isLoading && !state.isSaving) { Text("Tentar novamente") }
+                        Button(onClick = onRefresh, enabled = !state.isLoading && !state.isSaving) { Text(stringResource(R.string.ui_retry)) }
                     }
                 }
             }
@@ -240,15 +244,15 @@ internal fun ReiAnixCollectorJourneyScreen(
                 if (state.isLoading) {
                     androidx.compose.material3.CircularProgressIndicator()
                     Spacer(Modifier.height(12.dp))
-                    Text("Consultando a biblioteca local…")
+                    Text(stringResource(R.string.more_library_read))
                 } else {
-                    Text("A jornada está indisponível", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.more_journey_unavailable), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Não foi possível consultar seu progresso. Tente novamente.",
+                        stringResource(R.string.more_journey_error),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
-                    Button(onClick = onRefresh) { Text("Tentar novamente") }
+                    Button(onClick = onRefresh) { Text(stringResource(R.string.ui_retry)) }
                 }
             }
             return
@@ -296,9 +300,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                     }
                     "activity" -> {
             item {
-                Text("Atividade nos últimos 6 meses",
+                Text(stringResource(R.string.more_journey_activity),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Dias em que houve reprodução ou progresso registrado.",
+                Text(stringResource(R.string.more_journey_activity_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -317,9 +321,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                     }
                     "titles" -> {
             item {
-                Text("Títulos do colecionador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.more_journey_titles), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Escolha um título desbloqueado para exibir no perfil.",
+                    stringResource(R.string.more_journey_title_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -357,7 +361,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                             }
                         } else {
                             Text(
-                                "Bloqueado",
+                                stringResource(R.string.more_locked),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelMedium,
                             )
@@ -368,7 +372,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                     }
                     "achievements" -> {
             item {
-                Text("Conquistas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.more_achievements), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             items(journey.achievements) { achievement ->
                 Card(
@@ -427,7 +431,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                         LinearProgressIndicator(progress = { journey.levelProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(journey.xpIntoLevel.toString() + " / " + (journey.xpIntoLevel + journey.xpToNext) + " XP", style = MaterialTheme.typography.labelSmall)
-                            Text("Próximo nível", style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.more_next_level), style = MaterialTheme.typography.labelSmall)
                         }
                         Text("Título ativo: " + (journey.activeTitleLabel ?: "Nenhum título desbloqueado"),
                             style = MaterialTheme.typography.bodySmall)

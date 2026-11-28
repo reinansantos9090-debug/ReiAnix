@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.background
@@ -69,7 +73,7 @@ fun ReiAnixAniListDetailsRoute(
             .background(reiAnixScreenBackground()),
     ) {
         ReiAnixTopBar(
-            title = "Detalhes do AniList",
+            title = stringResource(R.string.more_anilist_details),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
             navigationContentDescription = "Voltar para a busca",
             onNavigationClick = { navController.popBackStack() },
@@ -77,16 +81,16 @@ fun ReiAnixAniListDetailsRoute(
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
                 state.isDetailsLoading -> ReiAnixLoadingState(
-                    title = "Carregando detalhes",
-                    message = "Consultando o catálogo AniList…",
+                    title = stringResource(R.string.more_details_loading),
+                    message = stringResource(R.string.more_anilist_reading),
                     modifier = Modifier.fillMaxSize(),
                 )
                 state.detailsError != null -> ReiAnixRecoverableErrorState(
-                    title = "Não foi possível carregar os detalhes",
+                    title = stringResource(R.string.more_details_load_error),
                     message = state.detailsError ?: "Erro desconhecido ao carregar detalhes.",
                     onRetry = { aniListViewModel.loadAniListDetails(anilistId) },
                     modifier = Modifier.fillMaxSize(),
-                    retryLabel = "Tentar novamente",
+                    retryLabel = stringResource(R.string.ui_retry),
                 )
                 state.selectedAnime != null -> RemoteAniListDetailsContent(
                     anime = state.selectedAnime!!,
@@ -97,11 +101,11 @@ fun ReiAnixAniListDetailsRoute(
                     },
                 )
                 else -> ReiAnixRecoverableErrorState(
-                    title = "Detalhes indisponíveis",
-                    message = "O AniList não retornou dados para esse identificador.",
+                    title = stringResource(R.string.ui_details_unavailable),
+                    message = stringResource(R.string.more_anilist_id_missing),
                     onRetry = { aniListViewModel.loadAniListDetails(anilistId) },
                     modifier = Modifier.fillMaxSize(),
-                    retryLabel = "Tentar novamente",
+                    retryLabel = stringResource(R.string.ui_retry),
                 )
             }
         }
@@ -175,21 +179,21 @@ private fun RemoteAniListDetailsContent(
                 color = MaterialTheme.colorScheme.onSurface)
         }
         anime.description?.takeIf { it.isNotBlank() }?.let {
-            Text("Sinopse", style = MaterialTheme.typography.titleMedium,
+            Text(stringResource(R.string.ui_synopsis), style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface)
             Text(it, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         associatedLocalAnimeIds.singleOrNull()?.let { localAnimeId ->
             ReiAnixPrimaryButton(
-                text = "Abrir detalhes da biblioteca",
+                text = stringResource(R.string.more_open_library_details),
                 onClick = { onOpenLocalDetails(localAnimeId) },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         if (associatedLocalAnimeIds.size > 1) {
             Text(
-                text = "Há vários itens locais associados a esta obra. Nenhum foi selecionado automaticamente.",
+                text = stringResource(R.string.more_multiple_local),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -202,7 +206,7 @@ private fun RemoteAniListDetailsContent(
             )
         }
         Text(
-            text = "Resultado do catálogo remoto. Esta busca não cria nem altera registros locais.",
+            text = stringResource(R.string.more_remote_result),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

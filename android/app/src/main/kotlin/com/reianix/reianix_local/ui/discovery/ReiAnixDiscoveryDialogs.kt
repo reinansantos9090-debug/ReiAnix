@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.discovery
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import androidx.compose.foundation.clickable
@@ -76,7 +80,7 @@ fun ReiAnixTimelineDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Linha do tempo") },
+        title = { Text(stringResource(R.string.more_timeline)) },
         text = {
             DiscoveryDialogBody(
                 loading = loading,
@@ -91,9 +95,9 @@ fun ReiAnixTimelineDialog(
                 )
             }
         },
-        confirmButton = { ReiAnixCompactButton(text = "Fechar", onClick = onDismiss) },
+        confirmButton = { ReiAnixCompactButton(text = stringResource(R.string.ui_close), onClick = onDismiss) },
         dismissButton = {
-            if (error != null) ReiAnixCompactButton(text = "Tentar novamente", onClick = { retryToken++ })
+            if (error != null) ReiAnixCompactButton(text = stringResource(R.string.ui_retry), onClick = { retryToken++ })
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
@@ -198,7 +202,7 @@ fun ReiAnixDurationAnomalyDialog(
     val unusual = report?.items.orEmpty().filter { it.status == "unusual" }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Durações incomuns") },
+        title = { Text(stringResource(R.string.more_unusual_durations)) },
         text = {
             DiscoveryDialogBody(
                 loading = loading,
@@ -244,9 +248,9 @@ fun ReiAnixDurationAnomalyDialog(
                 }
             }
         },
-        confirmButton = { ReiAnixCompactButton(text = "Fechar", onClick = onDismiss) },
+        confirmButton = { ReiAnixCompactButton(text = stringResource(R.string.ui_close), onClick = onDismiss) },
         dismissButton = {
-            if (error != null) ReiAnixCompactButton(text = "Tentar novamente", onClick = { retryToken++ })
+            if (error != null) ReiAnixCompactButton(text = stringResource(R.string.ui_retry), onClick = { retryToken++ })
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
@@ -288,7 +292,7 @@ fun ReiAnixMarathonDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Maratona") },
+        title = { Text(stringResource(R.string.ui_marathon)) },
         text = {
             val emptyPlan = plan?.let { it.items.isEmpty() } == true
             DiscoveryDialogBody(
@@ -349,9 +353,9 @@ fun ReiAnixMarathonDialog(
                 }
             }
         },
-        confirmButton = { ReiAnixCompactButton(text = "Fechar", onClick = onDismiss) },
+        confirmButton = { ReiAnixCompactButton(text = stringResource(R.string.ui_close), onClick = onDismiss) },
         dismissButton = {
-            if (error != null) ReiAnixCompactButton(text = "Tentar novamente", onClick = { retryToken++ })
+            if (error != null) ReiAnixCompactButton(text = stringResource(R.string.ui_retry), onClick = { retryToken++ })
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
