@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -90,7 +91,7 @@ fun ReiAnixLibraryFolderOnboarding(
                     )
                     Spacer(Modifier.height(26.dp))
                     Text(
-                        text = "Bem-vindo(a) ao ReiAnix",
+                        text = stringResource(R.string.welcome_title),
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp,
@@ -100,7 +101,7 @@ fun ReiAnixLibraryFolderOnboarding(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = "Organize e assista aos seus animes favoritos em um só lugar.",
+                        text = stringResource(R.string.welcome_desc),
                         modifier = Modifier.padding(horizontal = 12.dp),
                         fontFamily = FontFamily.SansSerif,
                         fontSize = 16.sp,
@@ -132,7 +133,7 @@ fun ReiAnixLibraryFolderOnboarding(
                             )
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    "Selecionar uma pasta",
+                                    stringResource(R.string.welcome_folder),
                                     fontFamily = FontFamily.SansSerif,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 16.sp,
@@ -141,7 +142,7 @@ fun ReiAnixLibraryFolderOnboarding(
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     text = selectedFolderPath?.takeIf { it.isNotBlank() }
-                                        ?: "Nenhuma pasta selecionada",
+                                        ?: stringResource(R.string.welcome_no_folder),
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 13.sp,
                                     lineHeight = 17.sp,
@@ -153,7 +154,7 @@ fun ReiAnixLibraryFolderOnboarding(
                             Icon(
                                 imageVector = if (selected) Icons.Filled.CheckCircle
                                     else Icons.Filled.ChevronRight,
-                                contentDescription = if (selected) "Pasta autorizada" else null,
+                                contentDescription = if (selected) stringResource(R.string.welcome_authorized) else null,
                                 tint = if (selected) Color(0xFF65C987) else Color(0xFF777777),
                                 modifier = Modifier.size(24.dp),
                             )
@@ -161,7 +162,7 @@ fun ReiAnixLibraryFolderOnboarding(
                     }
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "Seus arquivos permanecem no dispositivo.",
+                        stringResource(R.string.welcome_privacy),
                         fontFamily = FontFamily.SansSerif,
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
@@ -212,7 +213,7 @@ fun ReiAnixLibraryFolderOnboarding(
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = blue, contentColor = white),
                 ) {
-                    Text("Começar", fontFamily = FontFamily.SansSerif,
+                    Text(stringResource(R.string.welcome_start), fontFamily = FontFamily.SansSerif,
                         fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.Filled.ArrowForward, contentDescription = null,
@@ -220,7 +221,7 @@ fun ReiAnixLibraryFolderOnboarding(
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Você poderá alterar suas pastas nas configurações.",
+                    stringResource(R.string.welcome_change),
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     lineHeight = 16.sp,

@@ -26,6 +26,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.reianix.reianix_local.R
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -130,6 +132,14 @@ private fun ReiAnixBottomNavigation(
     ) {
         destinations.forEach { destination ->
             val selected = selectedRoute == destination.route
+            val localizedLabel = when (destination.route) {
+                "home" -> stringResource(R.string.nav_home)
+                "library" -> stringResource(R.string.nav_library)
+                "search" -> stringResource(R.string.nav_search)
+                "settings" -> stringResource(R.string.nav_settings)
+                else -> destination.label
+            }
+            val localizedState = stringResource(if (selected) R.string.nav_selected else R.string.nav_not_selected)
             val contentColor by selectionTransition.animateColor(
                 transitionSpec = { if (animateSelection) reiAnixPrimaryTabMotionSpec() else snap() },
                 label = "bottom-nav-color",
@@ -142,8 +152,8 @@ private fun ReiAnixBottomNavigation(
                 selected = selected,
                 onClick = { onDestinationClick(destination.route) },
                 modifier = Modifier.semantics {
-                    contentDescription = destination.contentDescription
-                    stateDescription = if (selected) "Selecionado" else "Não selecionado"
+                    contentDescription = if (destination.contentDescription == destination.label) localizedLabel else destination.contentDescription
+                    stateDescription = localizedState
                     role = Role.Tab
                 },
                 icon = {
@@ -165,7 +175,7 @@ private fun ReiAnixBottomNavigation(
                 },
                 label = {
                     Text(
-                        text = destination.label,
+                        text = localizedLabel,
                         style = ReiAnixTokens.TypographyTokens.navigationLabel,
                         color = contentColor,
                         maxLines = 1,

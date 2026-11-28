@@ -26,7 +26,7 @@
   <uses-feature android:name="android.software.leanback" android:required="false" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-  <application android:name=".ReiAnixApplication" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true" android:usesCleartextTraffic="true">
+  <application android:name=".ReiAnixApplication" android:localeConfig="@xml/reianix_locales" android:theme="@style/ReiAnixTheme" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="true" android:usesCleartextTraffic="true">
     <!-- DLNA/UPnP on private LAN requires plain HTTP. The TV controller
          only contacts private LAN addresses and protects its media URL by token. -->
     <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"

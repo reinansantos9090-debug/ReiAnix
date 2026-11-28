@@ -73,6 +73,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.reianix.reianix_local.BuildConfig
+import com.reianix.reianix_local.R
+import androidx.compose.ui.res.stringResource
 import com.reianix.reianix_local.ui.ReiAnixLoadingState
 import com.reianix.reianix_local.ui.ReiAnixIconActionButton
 import com.reianix.reianix_local.ui.ReiAnixTopBar
@@ -362,8 +364,8 @@ fun ReiAnixSettingsScreen(
                     com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING -> {
                         item(key = "settings:loading") {
                             ReiAnixLoadingState(
-                                title = "Carregando configurações",
-                                message = "Lendo as preferências locais…",
+                                title = stringResource(R.string.settings_loading),
+                                message = stringResource(R.string.settings_loading_desc),
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -372,9 +374,9 @@ fun ReiAnixSettingsScreen(
                     com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR -> {
                         item(key = "settings:error") {
                             ReiAnixRecoverableErrorState(
-                                title = "Não foi possível carregar as configurações",
+                                title = stringResource(R.string.settings_load_error),
                                 message = state.error
-                                    ?: "As configurações locais retornaram um erro.",
+                                    ?: stringResource(R.string.settings_load_error_desc),
                                 onRetry = onRetry,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -397,7 +399,7 @@ fun ReiAnixSettingsScreen(
                                     )
                                 }
                                 Text(
-                                    text = if (account.connected) account.name else "Configurações",
+                                    text = if (account.connected) account.name else stringResource(R.string.settings_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -407,6 +409,10 @@ fun ReiAnixSettingsScreen(
                         }
                         items(SettingsRootCategories, key = { "settings-category:${it.label}" }) { category ->
                             SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
+                        }
+
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            item(key = "settings:language") { ReiAnixAppLanguageRow() }
                         }
 
                         item(key = "settings:footer") {
@@ -439,19 +445,21 @@ private fun SettingsFlatCategoryRow(
     onClick: () -> Unit,
     showDescription: Boolean = false,
 ) {
+    val localizedLabel = localizedSettingsCategory(category.label)
+    val localizedDescription = localizedSettingsDescription(category.description)
     Row(
         Modifier.fillMaxWidth().heightIn(min = 50.dp)
             .settingsClickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = if (showDescription) 12.dp else 0.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "${category.label}. ${category.description}"
+                contentDescription = "$localizedLabel. $localizedDescription"
             },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(category.label, style = MaterialTheme.typography.bodyMedium)
-            if (showDescription) Text(category.description, style = MaterialTheme.typography.bodySmall,
+            Text(localizedLabel, style = MaterialTheme.typography.bodyMedium)
+            if (showDescription) Text(localizedDescription, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -579,7 +587,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         ) {
             item(key = "header:" + category) {
                 SettingsHeader(
-                    title = settingsDestination(category)?.title ?: category,
+                    title = localizedSettingsCategory(settingsDestination(category)?.title ?: category),
                     subtitle = settingsDestination(category)?.parent?.takeIf { it.isNotBlank() } ?: settingsCategoryDescription(category),
                     onBack = onBack,
                 )
@@ -612,16 +620,16 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             if (state.status == com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.LOADING) {
                 item(key = "category-loading") {
                     ReiAnixLoadingState(
-                        title = "Carregando configurações",
-                        message = "Lendo as preferências locais…",
+                        title = stringResource(R.string.settings_loading),
+                        message = stringResource(R.string.settings_loading_desc),
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
             } else if (state.status == com.reianix.reianix_local.ui.model.ReiAnixSettingsLoadStatus.ERROR) {
                 item(key = "category-error") {
                     ReiAnixRecoverableErrorState(
-                        title = "Não foi possível carregar as configurações",
-                        message = state.error ?: "As configurações locais retornaram um erro.",
+                        title = stringResource(R.string.settings_load_error),
+                        message = state.error ?: stringResource(R.string.settings_load_error_desc),
                         onRetry = onRetry,
                         modifier = Modifier.fillMaxWidth(),
                     )

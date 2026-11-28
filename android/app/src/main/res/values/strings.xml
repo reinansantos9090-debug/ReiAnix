@@ -1,1 +1,42 @@
-<resources><string name="app_name">ReiAnix</string><string name="reianix_google_web_client_id"></string></resources>
+<resources><string name="app_name">ReiAnix</string><string name="reianix_google_web_client_id"></string>
+    <string name="locale_title">Idioma</string>
+    <string name="locale_system">Padrão do sistema</string>
+    <string name="locale_pt" translatable="false">Português (Brasil)</string>
+    <string name="locale_en" translatable="false">English</string>
+    <string name="locale_es" translatable="false">Español</string>
+    <string name="locale_ru" translatable="false">Русский</string>
+    <string name="locale_ja" translatable="false">日本語</string>
+    <string name="locale_cancel">Cancelar</string>
+    <string name="nav_home">Início</string>
+    <string name="nav_library">Biblioteca</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="nav_selected">Selecionado</string>
+    <string name="nav_not_selected">Não selecionado</string>
+    <string name="settings_title">Configurações</string>
+    <string name="settings_general">Geral</string>
+    <string name="settings_general_desc">Preferências, aparência e biblioteca</string>
+    <string name="settings_player">Player</string>
+    <string name="settings_player_desc">Reprodução, controles, áudio e tela</string>
+    <string name="settings_metadata">Metadados e Capas</string>
+    <string name="settings_metadata_desc">Identificação, capas e miniaturas</string>
+    <string name="settings_backup">Dados e Backup</string>
+    <string name="settings_backup_desc">Configurações locais, backup e cache</string>
+    <string name="settings_accounts">Contas e Avançado</string>
+    <string name="settings_folders">Pastas</string>
+    <string name="settings_folders_desc">Pastas locais da biblioteca</string>
+    <string name="settings_about">Sobre</string>
+    <string name="settings_about_desc">Versão, informações e licenças</string>
+    <string name="settings_loading">Carregando configurações</string>
+    <string name="settings_loading_desc">Lendo as preferências locais…</string>
+    <string name="settings_load_error">Não foi possível carregar as configurações</string>
+    <string name="settings_load_error_desc">As configurações locais retornaram um erro.</string>
+    <string name="welcome_title">Bem-vindo(a) ao ReiAnix</string>
+    <string name="welcome_desc">Organize e assista aos seus animes favoritos em um só lugar.</string>
+    <string name="welcome_folder">Selecionar uma pasta</string>
+    <string name="welcome_no_folder">Nenhuma pasta selecionada</string>
+    <string name="welcome_authorized">Pasta autorizada</string>
+    <string name="welcome_privacy">Seus arquivos permanecem no dispositivo.</string>
+    <string name="welcome_start">Começar</string>
+    <string name="welcome_change">Você poderá alterar suas pastas nas configurações.</string>
+</resources>

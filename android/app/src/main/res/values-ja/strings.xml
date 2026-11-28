@@ -1,0 +1,37 @@
+<resources>
+    <string name="locale_title">言語</string>
+    <string name="locale_system">システムのデフォルト</string>
+    <string name="locale_cancel">キャンセル</string>
+    <string name="nav_home">ホーム</string>
+    <string name="nav_library">ライブラリ</string>
+    <string name="nav_search">検索</string>
+    <string name="nav_settings">設定</string>
+    <string name="nav_selected">選択済み</string>
+    <string name="nav_not_selected">未選択</string>
+    <string name="settings_title">設定</string>
+    <string name="settings_general">一般</string>
+    <string name="settings_general_desc">環境設定、外観、ライブラリ</string>
+    <string name="settings_player">プレーヤー</string>
+    <string name="settings_player_desc">再生、操作、音声、画面</string>
+    <string name="settings_metadata">メタデータとカバー</string>
+    <string name="settings_metadata_desc">識別、カバー、サムネイル</string>
+    <string name="settings_backup">データとバックアップ</string>
+    <string name="settings_backup_desc">ローカル設定、バックアップ、キャッシュ</string>
+    <string name="settings_accounts">アカウントと詳細設定</string>
+    <string name="settings_folders">フォルダー</string>
+    <string name="settings_folders_desc">ライブラリのローカルフォルダー</string>
+    <string name="settings_about">アプリについて</string>
+    <string name="settings_about_desc">バージョン、情報、ライセンス</string>
+    <string name="settings_loading">設定を読み込んでいます</string>
+    <string name="settings_loading_desc">ローカル設定を読み込んでいます…</string>
+    <string name="settings_load_error">設定を読み込めませんでした</string>
+    <string name="settings_load_error_desc">ローカル設定の読み込み中にエラーが発生しました。</string>
+    <string name="welcome_title">ReiAnixへようこそ</string>
+    <string name="welcome_desc">お気に入りのアニメを一か所で整理して視聴できます。</string>
+    <string name="welcome_folder">フォルダーを選択</string>
+    <string name="welcome_no_folder">フォルダーが選択されていません</string>
+    <string name="welcome_authorized">フォルダーへのアクセスを許可済み</string>
+    <string name="welcome_privacy">ファイルは端末内に保存されます。</string>
+    <string name="welcome_start">始める</string>
+    <string name="welcome_change">設定からフォルダーを変更できます。</string>
+</resources>

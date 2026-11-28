@@ -1,0 +1,37 @@
+<resources>
+    <string name="locale_title">Язык</string>
+    <string name="locale_system">Системный язык</string>
+    <string name="locale_cancel">Отмена</string>
+    <string name="nav_home">Главная</string>
+    <string name="nav_library">Библиотека</string>
+    <string name="nav_search">Поиск</string>
+    <string name="nav_settings">Настройки</string>
+    <string name="nav_selected">Выбрано</string>
+    <string name="nav_not_selected">Не выбрано</string>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_general">Общие</string>
+    <string name="settings_general_desc">Параметры, оформление и библиотека</string>
+    <string name="settings_player">Плеер</string>
+    <string name="settings_player_desc">Воспроизведение, управление, звук и экран</string>
+    <string name="settings_metadata">Метаданные и обложки</string>
+    <string name="settings_metadata_desc">Распознавание, обложки и миниатюры</string>
+    <string name="settings_backup">Данные и резервные копии</string>
+    <string name="settings_backup_desc">Локальные настройки, резервные копии и кэш</string>
+    <string name="settings_accounts">Аккаунты и дополнительные настройки</string>
+    <string name="settings_folders">Папки</string>
+    <string name="settings_folders_desc">Локальные папки библиотеки</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_about_desc">Версия, информация и лицензии</string>
+    <string name="settings_loading">Загрузка настроек</string>
+    <string name="settings_loading_desc">Чтение локальных настроек…</string>
+    <string name="settings_load_error">Не удалось загрузить настройки</string>
+    <string name="settings_load_error_desc">Ошибка при чтении локальных настроек.</string>
+    <string name="welcome_title">Добро пожаловать в ReiAnix</string>
+    <string name="welcome_desc">Организуйте и смотрите любимые аниме в одном месте.</string>
+    <string name="welcome_folder">Выбрать папку</string>
+    <string name="welcome_no_folder">Папка не выбрана</string>
+    <string name="welcome_authorized">Доступ к папке разрешён</string>
+    <string name="welcome_privacy">Ваши файлы остаются на устройстве.</string>
+    <string name="welcome_start">Начать</string>
+    <string name="welcome_change">Папки можно изменить в настройках.</string>
+</resources>

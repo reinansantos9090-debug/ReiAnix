@@ -1,0 +1,37 @@
+<resources>
+    <string name="locale_title">Idioma</string>
+    <string name="locale_system">Predeterminado del sistema</string>
+    <string name="locale_cancel">Cancelar</string>
+    <string name="nav_home">Inicio</string>
+    <string name="nav_library">Biblioteca</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="nav_selected">Seleccionado</string>
+    <string name="nav_not_selected">No seleccionado</string>
+    <string name="settings_title">Configuración</string>
+    <string name="settings_general">General</string>
+    <string name="settings_general_desc">Preferencias, apariencia y biblioteca</string>
+    <string name="settings_player">Reproductor</string>
+    <string name="settings_player_desc">Reproducción, controles, audio y pantalla</string>
+    <string name="settings_metadata">Metadatos y portadas</string>
+    <string name="settings_metadata_desc">Identificación, portadas y miniaturas</string>
+    <string name="settings_backup">Datos y copias de seguridad</string>
+    <string name="settings_backup_desc">Configuración local, copias de seguridad y caché</string>
+    <string name="settings_accounts">Cuentas y opciones avanzadas</string>
+    <string name="settings_folders">Carpetas</string>
+    <string name="settings_folders_desc">Carpetas locales de la biblioteca</string>
+    <string name="settings_about">Acerca de</string>
+    <string name="settings_about_desc">Versión, información y licencias</string>
+    <string name="settings_loading">Cargando configuración</string>
+    <string name="settings_loading_desc">Leyendo las preferencias locales…</string>
+    <string name="settings_load_error">No se pudo cargar la configuración</string>
+    <string name="settings_load_error_desc">Se produjo un error al leer la configuración local.</string>
+    <string name="welcome_title">Te damos la bienvenida a ReiAnix</string>
+    <string name="welcome_desc">Organiza y mira tus animes favoritos en un solo lugar.</string>
+    <string name="welcome_folder">Seleccionar una carpeta</string>
+    <string name="welcome_no_folder">Ninguna carpeta seleccionada</string>
+    <string name="welcome_authorized">Carpeta autorizada</string>
+    <string name="welcome_privacy">Tus archivos permanecen en tu dispositivo.</string>
+    <string name="welcome_start">Comenzar</string>
+    <string name="welcome_change">Puedes cambiar tus carpetas en la configuración.</string>
+</resources>
