@@ -1,0 +1,14 @@
+<resources>
+    <plurals name="flow_episode_count">
+        <item quantity="one">%1$d серия</item>
+        <item quantity="few">%1$d серии</item>
+        <item quantity="many">%1$d серий</item>
+        <item quantity="other">%1$d серии</item>
+    </plurals>
+    <plurals name="flow_search_titles">
+        <item quantity="one">Введите название аниме для поиска среди %1$d локального названия.</item>
+        <item quantity="few">Введите название аниме для поиска среди %1$d локальных названий.</item>
+        <item quantity="many">Введите название аниме для поиска среди %1$d локальных названий.</item>
+        <item quantity="other">Введите название аниме для поиска среди %1$d локального названия.</item>
+    </plurals>
+</resources>

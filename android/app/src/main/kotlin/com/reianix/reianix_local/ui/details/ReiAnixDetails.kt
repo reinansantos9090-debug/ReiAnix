@@ -464,14 +464,14 @@ fun ReiAnixDetailsScreen(
 
             ReiAnixDetailsLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                 message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Configure uma pasta local para acessar os detalhes."
+                    stringResource(R.string.flow_details_folder)
                 } else {
-                    "Nenhum anime local está disponível."
+                    stringResource(R.string.flow_no_local_anime)
                 },
                 actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecionar pasta"
+                    stringResource(R.string.flow_select_folder)
                 } else {
-                    "Atualizar"
+                    stringResource(R.string.more_refresh)
                 },
                 onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     onSelectSource
@@ -484,14 +484,14 @@ fun ReiAnixDetailsScreen(
             ReiAnixDetailsLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                 title = stringResource(R.string.ui_local_unavailable),
                 message = state.error ?: if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Configure uma pasta local para acessar os detalhes."
+                    stringResource(R.string.flow_details_folder)
                 } else {
-                    "A fonte local não está disponível agora."
+                    stringResource(R.string.flow_source_now)
                 },
                 actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecionar pasta"
+                    stringResource(R.string.flow_select_folder)
                 } else {
-                    "Atualizar"
+                    stringResource(R.string.more_refresh)
                 },
                 onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     onSelectSource
@@ -503,13 +503,13 @@ fun ReiAnixDetailsScreen(
 
             ReiAnixDetailsLoadStatus.NOT_FOUND -> ReiAnixEmptyState(
                 title = stringResource(R.string.ui_content_not_found),
-                message = state.error ?: "O conteúdo não está presente na biblioteca local.",
+                message = state.error ?: stringResource(R.string.flow_content_missing),
                 modifier = Modifier.fillMaxSize(),
             )
 
             ReiAnixDetailsLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                 title = stringResource(R.string.ui_details_error),
-                message = state.error ?: "Não foi possível carregar os detalhes.",
+                message = state.error ?: stringResource(R.string.more_details_load_error),
                 onRetry = onRetry,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -749,7 +749,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 contentType = "details-episode-heading",
             ) {
                 DetailsSectionHeader(
-                    title = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) "Conteúdo" else "Episódios",
+                    title = stringResource(if (anime.mediaKind == ReiAnixMediaKind.MOVIE) R.string.flow_content else R.string.ui_episodes),
                     subtitle = episodeCountLabel(season.episodes.size),
                 )
             }
@@ -794,7 +794,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 contentType = "details-media-files-heading",
             ) {
                 DetailsSectionHeader(
-                    title = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) "Filmes" else "Conteúdo",
+                    title = stringResource(if (anime.mediaKind == ReiAnixMediaKind.MOVIE) R.string.ui_movies else R.string.flow_content),
                     subtitle = episodeCountLabel(anime.mediaFiles.size),
                 )
             }
@@ -879,7 +879,7 @@ internal fun DetailsOverflowActions(
         ReiAnixTraceMoeIdentificationStatus.SUCCESS -> "Identificar novamente"
         ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
         ReiAnixTraceMoeIdentificationStatus.FAILED,
-        ReiAnixTraceMoeIdentificationStatus.CANCELLED -> "Tentar novamente"
+        ReiAnixTraceMoeIdentificationStatus.CANCELLED -> stringResource(R.string.ui_retry)
     }
 
     Box {
@@ -902,7 +902,7 @@ internal fun DetailsOverflowActions(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             DropdownMenuItem(
-                text = { Text(if (pinned) "Desafixar" else "Fixar") },
+                text = { Text(stringResource(if (pinned) R.string.flow_unpin else R.string.flow_pin)) },
                 leadingIcon = {
                     Icon(
                         imageVector = if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
@@ -961,7 +961,7 @@ internal fun DetailsAniListAction(
     modifier: Modifier = Modifier,
 ) {
     ReiAnixDetailsQuickAction(
-        label = if (running) "Verificando…" else "AniList",
+        label = if (running) stringResource(R.string.flow_checking) else "AniList",
         icon = ReiAnixDetailsShortcutIcons.AniList,
         onClick = onRepair,
         enabled = !running,
@@ -1005,10 +1005,12 @@ private fun DetailsHero(
     val posterPath = anime.artwork?.localPath?.takeIf { it.isNotBlank() }
     val target = anime.playbackTargetEpisode
 
+    val localizedStatus = anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { statusLabel(it) }
+    val localizedFormat = anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { formatLabel(it) }
     val metadata = buildList {
         anime.year?.let { add(it.toString()) }
-        anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { add(statusLabel(it)) }
-        anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { add(formatLabel(it)) }
+        localizedStatus?.let { add(it) }
+        localizedFormat?.let { add(it) }
         anime.episodeCount?.takeIf { it > 0 }?.let { count ->
             add(if (count == 1) "Biblioteca: 1 episódio local" else "Biblioteca: $count episódios locais")
         }
@@ -1327,12 +1329,12 @@ private fun DetailsHero(
                             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                         ) {
                             Text(
-                                text = traceMoeState.currentEpisodeLabel ?: "Thumbnail atual",
+                                text = traceMoeState.currentEpisodeLabel ?: stringResource(R.string.flow_thumbnail_current),
                                 style = ReiAnixTokens.TypographyTokens.itemTitle,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "${traceMoeState.validResponses.coerceIn(0, 3)} de 3 respostas válidas",
+                                text = stringResource(R.string.flow_trace_valid, traceMoeState.validResponses.coerceIn(0, 3)),
                                 style = ReiAnixTokens.TypographyTokens.metadata,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -1351,7 +1353,7 @@ private fun DetailsHero(
         }
         if (anime.userTags.isNotEmpty()) {
             Text(
-                text = "Tags: " + anime.userTags.joinToString(" • "),
+                text = stringResource(R.string.flow_tags, anime.userTags.joinToString(" • ")),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = responsive.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1376,7 +1378,7 @@ private fun DetailsHero(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             ReiAnixPrimaryButton(
-                text = if (target?.isPlayable == true) target.playbackActionLabel else "Reprodução indisponível",
+                text = if (target?.isPlayable == true) target.playbackActionLabel else stringResource(R.string.flow_playback_unavailable),
                 onClick = { target?.takeIf { it.isPlayable }?.let { onWatch(it.id) } },
                 enabled = target?.isPlayable == true,
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-play-action"),
@@ -1410,7 +1412,7 @@ private fun DetailsHero(
                 },
                 confirmButton = {
                     ReiAnixPrimaryButton(
-                        text = if (tagsSaving) "Salvando…" else "Salvar",
+                        text = stringResource(if (tagsSaving) R.string.flow_saving else R.string.pref_save),
                         enabled = !tagsSaving,
                         onClick = {
                             if (!tagsSaving) {
@@ -1584,12 +1586,13 @@ private fun DetailsSeasonCard(
             responsive.horizontalPadding
         ).coerceAtLeast(ReiAnixTokens.Dimensions.detailsSeasonCardMinWidth)
     val title = season.title.ifBlank {
-        season.number?.let { "Temporada $it" } ?: "Temporada"
+        season.number?.let { stringResource(R.string.flow_season_number, it) } ?: stringResource(R.string.ui_season)
     }
+    val episodeCountText = episodeCountLabel(season.episodes.size)
     val subtitle = buildString {
         season.number?.let { append(it) }
         if (season.number != null && season.episodes.isNotEmpty()) append(" • ")
-        append(episodeCountLabel(season.episodes.size))
+        append(episodeCountText)
     }
 
     Surface(
@@ -1599,7 +1602,7 @@ private fun DetailsSeasonCard(
             .semantics {
                 role = Role.RadioButton
                 this.selected = selected
-                contentDescription = title + ", " + episodeCountLabel(season.episodes.size)
+                contentDescription = title + ", " + episodeCountText
                 stateDescription = if (selected) "Selecionada" else "Não selecionada"
             },
         shape = ReiAnixTokens.Shapes.card,
@@ -1770,7 +1773,7 @@ private fun DetailsEpisodeItem(
             onDismissRequest = { deletePath = null },
             title = { Text(stringResource(R.string.ui_delete_episode)) },
             text = {
-                Text("O arquivo \""+episode.fileName+"\" será excluído permanentemente do dispositivo. O registro e o progresso deste episódio também serão removidos da biblioteca. Essa ação não pode ser desfeita.")
+                Text(stringResource(R.string.flow_delete_episode_warning, episode.fileName))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -1804,7 +1807,7 @@ private fun DetailsEpisodeItem(
                     )
                     Box {
                         ReiAnixSecondaryButton(
-                            text = "Tipo: $typeInput",
+                            text = stringResource(R.string.flow_type, typeInput),
                             onClick = { typeMenuExpanded = true },
                         )
                         DropdownMenu(
@@ -1832,7 +1835,7 @@ private fun DetailsEpisodeItem(
             },
             confirmButton = {
                 ReiAnixPrimaryButton(
-                    text = if (identificationSaving) "Salvando…" else "Salvar",
+                    text = stringResource(if (identificationSaving) R.string.flow_saving else R.string.pref_save),
                     enabled = !identificationSaving,
                     onClick = {
                         if (!identificationSaving) {
@@ -1891,8 +1894,9 @@ private fun DetailsMetaText(text: String) {
     )
 }
 
+@Composable
 private fun episodeCountLabel(count: Int): String =
-    if (count == 1) "1 episódio" else "$count episódios"
+    androidx.compose.ui.res.pluralStringResource(R.plurals.flow_episode_count, count, count)
 
 private fun formatEpisodeNumber(number: Double?): String {
     val value = number?.takeIf { it.isFinite() } ?: return "Episódio"
@@ -1910,29 +1914,32 @@ private fun formatScore(value: Double): String =
         (value / 10.0).coerceIn(0.0, 10.0),
     )
 
+@Composable
 private fun formatLabel(raw: String): String = when (raw.trim().uppercase(Locale.ROOT)) {
     "TV" -> "TV"
-    "TV_SHORT" -> "TV curta"
-    "MOVIE" -> "Filme"
+    "TV_SHORT" -> stringResource(R.string.flow_tv_short)
+    "MOVIE" -> stringResource(R.string.flow_movie)
     "OVA" -> "OVA"
     "ONA" -> "ONA"
-    "SPECIAL" -> "Especial"
+    "SPECIAL" -> stringResource(R.string.flow_special)
     else -> raw.trim()
 }
 
+@Composable
 private fun statusLabel(raw: String): String = when (raw.trim().uppercase(Locale.ROOT)) {
-    "FINISHED" -> "Concluído"
-    "RELEASING", "ONGOING" -> "Em exibição"
-    "NOT_YET_RELEASED" -> "Ainda não lançado"
-    "CANCELLED", "CANCELED" -> "Cancelado"
+    "FINISHED" -> stringResource(R.string.flow_finished)
+    "RELEASING", "ONGOING" -> stringResource(R.string.flow_airing_status)
+    "NOT_YET_RELEASED" -> stringResource(R.string.flow_not_released)
+    "CANCELLED", "CANCELED" -> stringResource(R.string.flow_cancelled)
     else -> raw.trim()
 }
 
+@Composable
 private fun seasonLabel(raw: String): String = when (raw.trim().uppercase(Locale.ROOT)) {
-    "WINTER" -> "Inverno"
-    "SPRING" -> "Primavera"
-    "SUMMER" -> "Verão"
-    "FALL" -> "Outono"
+    "WINTER" -> stringResource(R.string.flow_winter)
+    "SPRING" -> stringResource(R.string.flow_spring)
+    "SUMMER" -> stringResource(R.string.flow_summer)
+    "FALL" -> stringResource(R.string.flow_fall)
     else -> raw.trim()
 }
 
@@ -2001,7 +2008,7 @@ internal fun AniListAssociationDialog(
         },
         confirmButton = {
             ReiAnixPrimaryButton(
-                text = if (saving) "Associando…" else "Associar anime",
+                text = stringResource(if (saving) R.string.flow_linking else R.string.flow_link_anime),
                 enabled = selection != null && !saving && !searching,
                 onClick = { selection?.let { onAssociate(it.id) } },
             )

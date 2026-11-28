@@ -243,7 +243,7 @@ fun ReiAnixNativePlayerTopControls(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = state.episodeLabel.ifBlank { "Episódio" },
+                text = state.episodeLabel.ifBlank { stringResource(R.string.flow_episode) },
                 style = ReiAnixTokens.TypographyTokens.playerTopLabel.copy(fontSize = 15.sp, lineHeight = 18.sp),
                 color = ReiAnixTokens.Colors.playerControl,
                 maxLines = 1,
@@ -257,7 +257,7 @@ fun ReiAnixNativePlayerTopControls(
                 )
             }
             Text(
-                text = state.title.ifBlank { "Episódio" },
+                text = state.title.ifBlank { stringResource(R.string.flow_episode) },
                 style = ReiAnixTokens.TypographyTokens.metadata.copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.98f),
                 maxLines = 2,
@@ -319,7 +319,7 @@ fun ReiAnixNativePlayerCenterControls(
             ) {
                 PlayerSeekIconButton(
                     seconds = if (accumulatedSeekSeconds < 0) -accumulatedSeekSeconds else seekSeconds,
-                    description = "Voltar $seekSeconds segundos",
+                    description = stringResource(R.string.flow_seek_back, seekSeconds),
                     forward = false,
                     iconSize = seekSize,
                     touchSize = seekTouchSize,
@@ -408,7 +408,7 @@ fun ReiAnixNativePlayerCenterControls(
             ) {
                 PlayerSeekIconButton(
                     seconds = if (accumulatedSeekSeconds > 0) accumulatedSeekSeconds else seekSeconds,
-                    description = "Avançar $seekSeconds segundos",
+                    description = stringResource(R.string.flow_seek_forward, seekSeconds),
                     forward = true,
                     iconSize = seekSize,
                     touchSize = seekTouchSize,
@@ -1024,7 +1024,7 @@ fun ReiAnixNativePlayerBottomControls(
                             icon = Icons.Filled.AspectRatio,
                             label = stringResource(R.string.ui_aspect),
                             showLabel = !landscape,
-                            contentDescription = "Alternar entre ajustar, esticar e zoom. Atual: " + state.aspectLabel,
+                            contentDescription = stringResource(R.string.flow_aspect_current, state.aspectLabel),
                             // Normalize the wider rectangular artwork in portrait only.
                             // Keep the same centered 48dp hit target and weighted slot.
                             iconVisualScale = (if (fiveShortcuts) 0.88f else 1f) *

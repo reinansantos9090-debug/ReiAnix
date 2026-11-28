@@ -462,7 +462,7 @@ private fun ReiAnixLibraryPresentationScreen(
 
                 ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                     title = stringResource(R.string.ui_library_error),
-                    message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                    message = state.error ?: stringResource(R.string.ui_load_library),
                     onRetry = onRefresh,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -472,14 +472,14 @@ private fun ReiAnixLibraryPresentationScreen(
                 ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                     title = stringResource(R.string.ui_local_unavailable),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Configure uma pasta local para acessar sua biblioteca."
+                        stringResource(R.string.flow_library_open_folder)
                     } else {
-                        "A fonte local configurada não está disponível agora."
+                        stringResource(R.string.ui_source_unavailable)
                     },
                     actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Selecionar pasta"
+                        stringResource(R.string.flow_select_folder)
                     } else {
-                        "Atualizar"
+                        stringResource(R.string.more_refresh)
                     },
                     onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         onSelectSource
@@ -495,14 +495,14 @@ private fun ReiAnixLibraryPresentationScreen(
                     transparentOnWallpaper = true,
                     title = stringResource(R.string.ui_library_empty),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Configure uma pasta de mídia para começar."
+                        stringResource(R.string.flow_library_media_folder)
                     } else {
-                        "Adicione uma pasta de mídia para começar."
+                        stringResource(R.string.flow_library_add_folder)
                     },
                     actionLabel = when {
-                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> "Selecionar pasta"
-                        onOpenStorage != null -> "Adicionar pasta"
-                        else -> "Atualizar biblioteca"
+                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> stringResource(R.string.flow_select_folder)
+                        onOpenStorage != null -> stringResource(R.string.extra_storage_add)
+                        else -> stringResource(R.string.extra_refresh_library)
                     },
                     onAction = when {
                         state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> onSelectSource
@@ -945,7 +945,7 @@ private fun ColumnScope.LibraryReadyContent(
                 ReiAnixSearchField(
                     value = filters.query,
                     onValueChange = onQueryChange,
-                    accessibilityLabel = "Pesquisar na biblioteca",
+                    accessibilityLabel = stringResource(R.string.flow_search_local_label),
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text(stringResource(R.string.ui_title_genre)) },
                     leadingIcon = {
@@ -1086,14 +1086,14 @@ private fun ColumnScope.LibraryReadyContent(
                 ) {
                     ReiAnixEmptyLibraryState(
                         title = if (filters.hasAnyFilter) {
-                            "Nenhum resultado"
+                            stringResource(R.string.flow_library_no_results)
                         } else {
-                            "Nenhum conteúdo"
+                            stringResource(R.string.flow_library_no_visible)
                         },
                         message = if (filters.hasAnyFilter) {
-                            "Nenhum título corresponde aos filtros atuais."
+                            stringResource(R.string.flow_library_filters_none)
                         } else {
-                            "A biblioteca local ainda não possui conteúdo visível."
+                            stringResource(R.string.flow_library_no_visible_desc)
                         },
                         actionLabel = if (filters.hasAnyFilter) "Limpar filtros" else null,
                         onAction = if (filters.hasAnyFilter) onClearFilters else null,
@@ -1202,7 +1202,7 @@ private fun LibrarySourceSummaryCard(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 ReiAnixBadge(
-                    text = if (sourceAvailable) "Funciona offline" else "Fonte indisponível",
+                    text = if (sourceAvailable) "Funciona offline" else stringResource(R.string.flow_source_unavailable),
                     tone = if (sourceAvailable) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
                 )
             }

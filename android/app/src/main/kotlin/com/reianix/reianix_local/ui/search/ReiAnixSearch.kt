@@ -299,7 +299,7 @@ fun ReiAnixSearchScreen(
         ReiAnixSearchField(
             value = searchQuery,
             onValueChange = onQueryChange,
-            accessibilityLabel = if (source == "anilist") "Pesquisar animes no AniList" else "Pesquisar na biblioteca",
+            accessibilityLabel = stringResource(if (source == "anilist") R.string.flow_search_anilist_label else R.string.flow_search_local_label),
             modifier = Modifier
                 .padding(
                     horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding,
@@ -309,9 +309,9 @@ fun ReiAnixSearchScreen(
             placeholder = {
                 Text(
                     if (source == "anilist") {
-                        "Descubra animes pelo título no AniList..."
+                        stringResource(R.string.flow_search_anilist_placeholder)
                     } else {
-                        "Digite o nome do anime, gênero ou estúdio..."
+                        stringResource(R.string.flow_search_local_placeholder)
                     },
                 )
             },
@@ -344,9 +344,9 @@ fun ReiAnixSearchScreen(
                             onClick = onOpenFilters,
                             modifier = Modifier.semantics {
                                 contentDescription = if (searchState.filters.hasAnyFilter) {
-                                    "Filtros ativos"
+                                    stringResource(R.string.flow_filters_active)
                                 } else {
-                                    "Abrir filtros"
+                                    stringResource(R.string.flow_filters_open)
                                 }
                                 role = Role.Button
                             },
@@ -428,22 +428,22 @@ fun ReiAnixSearchScreen(
                             ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                                 title = stringResource(R.string.ui_search_error),
                                 message = libraryState.error
-                                    ?: "A biblioteca local retornou um erro.",
+                                    ?: stringResource(R.string.flow_library_return_error),
                                 onRetry = onRefresh,
                                 modifier = Modifier.fillMaxSize(),
-                                retryLabel = "Atualizar",
+                                retryLabel = stringResource(R.string.more_refresh),
                             )
                             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                                 title = stringResource(R.string.ui_local_unavailable),
                                 message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                                    "Configure uma pasta local para pesquisar sua biblioteca."
+                                    stringResource(R.string.flow_search_folder)
                                 } else {
-                                    "A fonte local configurada não está disponível agora."
+                                    stringResource(R.string.ui_source_unavailable)
                                 },
                                 actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                                    "Selecionar pasta"
+                                    stringResource(R.string.flow_select_folder)
                                 } else {
-                                    "Atualizar"
+                                    stringResource(R.string.more_refresh)
                                 },
                                 onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                                     onSelectSource
@@ -457,14 +457,14 @@ fun ReiAnixSearchScreen(
                             -> ReiAnixEmptyLibraryState(
                                 transparentOnWallpaper = true,
                                 message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                                    "Configure uma pasta local para pesquisar sua biblioteca."
+                                    stringResource(R.string.flow_search_folder)
                                 } else {
-                                    "Nenhum conteúdo local disponível para pesquisa."
+                                    stringResource(R.string.flow_search_empty)
                                 },
                                 actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                                    "Selecionar pasta"
+                                    stringResource(R.string.flow_select_folder)
                                 } else {
-                                    "Atualizar"
+                                    stringResource(R.string.more_refresh)
                                 },
                                 onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                                     onSelectSource
@@ -476,9 +476,9 @@ fun ReiAnixSearchScreen(
                             ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
                                 title = stringResource(R.string.ui_search_loading),
                                 message = if (libraryState.scanInProgress) {
-                                    "Carregando enquanto a varredura continua…"
+                                    stringResource(R.string.flow_search_scan_loading)
                                 } else {
-                                    "Lendo a biblioteca local…"
+                                    stringResource(R.string.flow_library_reading)
                                 },
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -490,22 +490,22 @@ fun ReiAnixSearchScreen(
                     ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
                         title = stringResource(R.string.ui_search_error),
                         message = libraryState.error
-                            ?: "A biblioteca local retornou um erro.",
+                            ?: stringResource(R.string.flow_library_return_error),
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxSize(),
-                        retryLabel = "Atualizar",
+                        retryLabel = stringResource(R.string.more_refresh),
                     )
                     ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
                         title = stringResource(R.string.ui_local_unavailable),
                         message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                            "Configure uma pasta local para pesquisar sua biblioteca."
+                            stringResource(R.string.flow_search_folder)
                         } else {
-                            "A fonte local configurada não está disponível agora."
+                            stringResource(R.string.ui_source_unavailable)
                         },
                         actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                            "Selecionar pasta"
+                            stringResource(R.string.flow_select_folder)
                         } else {
-                            "Atualizar"
+                            stringResource(R.string.more_refresh)
                         },
                         onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                             onSelectSource
@@ -519,14 +519,14 @@ fun ReiAnixSearchScreen(
                     -> ReiAnixEmptyLibraryState(
                         transparentOnWallpaper = true,
                         message = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                            "Configure uma pasta local para pesquisar sua biblioteca."
+                            stringResource(R.string.flow_search_folder)
                         } else {
-                            "Nenhum conteúdo local disponível para pesquisa."
+                            stringResource(R.string.flow_search_empty)
                         },
                         actionLabel = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                            "Selecionar pasta"
+                            stringResource(R.string.flow_select_folder)
                         } else {
-                            "Atualizar"
+                            stringResource(R.string.more_refresh)
                         },
                         onAction = if (libraryState.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                             onSelectSource
@@ -538,9 +538,9 @@ fun ReiAnixSearchScreen(
                     ReiAnixLibraryLoadStatus.LOADING -> ReiAnixLoadingState(
                         title = stringResource(R.string.ui_search_loading),
                         message = if (libraryState.scanInProgress) {
-                            "Carregando enquanto a varredura continua…"
+                            stringResource(R.string.flow_search_scan_loading)
                         } else {
-                            "Lendo a biblioteca local…"
+                            stringResource(R.string.flow_library_reading)
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -788,11 +788,9 @@ private fun SearchEmptyQueryState(
     ReiAnixEmptyState(
         title = stringResource(R.string.ui_search_library_hint),
         message = if (librarySize == 0) {
-            "Digite o nome do anime para pesquisar no conteúdo local."
+            stringResource(R.string.flow_search_input_hint)
         } else {
-            "Digite o nome do anime para pesquisar entre " +
-                librarySize.toString() +
-                if (librarySize == 1) " título local." else " títulos locais."
+            androidx.compose.ui.res.pluralStringResource(R.plurals.flow_search_titles, librarySize, librarySize)
         },
         modifier = Modifier
             .fillMaxSize()
@@ -808,11 +806,9 @@ private fun SearchNoResultsState(
     ReiAnixEmptyState(
         title = stringResource(R.string.ui_anime_not_found),
         message = if (filtersActive) {
-            "Nenhum conteúdo local corresponde à busca: " +
-                query.trim() +
-                " com os filtros atuais."
+            stringResource(R.string.flow_search_no_match_filters, query.trim())
         } else {
-            "Nenhum conteúdo local corresponde à busca: " + query.trim()
+            stringResource(R.string.flow_search_no_match, query.trim())
         },
         modifier = Modifier
             .fillMaxSize()
@@ -867,7 +863,7 @@ private fun SearchActiveFilters(
                 ReiAnixChip(
                     text = genres.firstOrNull {
                         it.stableKey == filters.selectedGenreKey
-                    }?.name ?: "Gênero selecionado",
+                    }?.name ?: stringResource(R.string.flow_genre_selected),
                     selected = true,
                     onClick = onClear,
                 )
@@ -994,14 +990,14 @@ private fun ReiAnixSearchFilterSheet(
 
             Box {
                 ReiAnixChip(
-                    text = filters.sort ?: "Ordenar",
+                    text = filters.sort ?: stringResource(R.string.flow_sort),
                     selected = !filters.sort.isNullOrBlank(),
                     onClick = { sortMenuExpanded = true },
                     modifier = Modifier.semantics {
                         contentDescription = if (filters.sort.isNullOrBlank()) {
-                            "Ordenar resultados"
+                            stringResource(R.string.flow_sort_results)
                         } else {
-                            "Ordenação atual: " + filters.sort
+                            stringResource(R.string.flow_sort_current, filters.sort.orEmpty())
                         }
                     },
                 )
@@ -1042,9 +1038,9 @@ private fun ReiAnixSearchFilterSheet(
 
             Text(
                 text = if (filters.hasAnyFilter) {
-                    "Os filtros refinam os resultados locais da busca."
+                    stringResource(R.string.flow_filters_refine)
                 } else {
-                    "Use filtros somente quando precisar refinar a busca."
+                    stringResource(R.string.flow_filters_optional)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

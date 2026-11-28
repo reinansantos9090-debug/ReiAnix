@@ -206,12 +206,12 @@ private fun ReiAnixHomeObservedScreen(
         !state.error.isNullOrBlank()
     val operationalNotice = when {
         hasPreviousContent && hasOperationalError ->
-            "A atualização da biblioteca falhou. Os dados locais já carregados foram preservados." +
+            stringResource(R.string.flow_library_refresh_failed) +
                 state.error?.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
         hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.LOADING ->
-            "Atualizando a biblioteca local…"
+            stringResource(R.string.flow_library_refreshing)
         hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
-            "A fonte local está indisponível. O conteúdo já carregado continua disponível."
+            stringResource(R.string.flow_library_source_preserved)
         else -> null
     }
     val overlayHeader = hasPreviousContent &&
@@ -293,7 +293,7 @@ private fun ReiAnixHomeObservedScreen(
                 } else {
                     ReiAnixRecoverableErrorState(
                         title = stringResource(R.string.ui_load_library),
-                        message = state.error ?: "A biblioteca local retornou um erro.",
+                        message = state.error ?: stringResource(R.string.flow_library_return_error),
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -319,7 +319,7 @@ private fun ReiAnixHomeObservedScreen(
                     ReiAnixSourceUnavailableState(
                         title = stringResource(R.string.ui_local_unavailable),
                         message = stringResource(R.string.ui_source_unavailable),
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -330,7 +330,7 @@ private fun ReiAnixHomeObservedScreen(
                     ReiAnixEmptyLibraryState(
                         transparentOnWallpaper = true,
                         message = stringResource(R.string.ui_setup_folder),
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -338,7 +338,7 @@ private fun ReiAnixHomeObservedScreen(
                     ReiAnixEmptyLibraryState(
                         transparentOnWallpaper = true,
                         message = stringResource(R.string.ui_no_videos),
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -379,6 +379,8 @@ private fun ColumnScope.HomeObservedContent(
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
+    val inListLabel = stringResource(R.string.flow_in_my_list)
+    val addListLabel = stringResource(R.string.flow_add_my_list)
     HomeReadyContent(
         animes = state.animes,
         scrollHeaderState = scrollHeaderState,
@@ -391,7 +393,7 @@ private fun ColumnScope.HomeObservedContent(
         onWatch = onWatch,
         onHeroSecondaryAction = { featured -> onToggleFavorite(featured.id) },
         heroSecondaryLabel = { anime ->
-            if (anime.favorite) "✓ Na Minha Lista" else "+ Minha Lista"
+            if (anime.favorite) inListLabel else addListLabel
         },
         onOpenMyList = onOpenMyList,
         onOpenLibrary = onOpenLibrary,
@@ -458,7 +460,7 @@ fun ReiAnixHomeScreen(
                     )
                 } else {
                     HomeError(
-                        message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                        message = state.error ?: stringResource(R.string.ui_load_library),
                         onRefresh = onRefresh,
                     )
                 }
@@ -480,7 +482,7 @@ fun ReiAnixHomeScreen(
                     HomeMessage(
                         title = stringResource(R.string.ui_local_unavailable),
                         message = stringResource(R.string.ui_source_unavailable),
-                        actionLabel = "Selecionar pasta",
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                     )
                 }
@@ -488,19 +490,19 @@ fun ReiAnixHomeScreen(
             ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
                 transparentOnWallpaper = true,
                 title = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Configure sua biblioteca"
+                    stringResource(R.string.flow_library_setup)
                 } else {
-                    "Nenhum conteúdo disponível"
+                    stringResource(R.string.flow_library_no_content)
                 },
                 message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecione uma pasta da biblioteca para começar."
+                    stringResource(R.string.flow_library_choose_folder)
                 } else {
-                    "Nenhum vídeo compatível foi encontrado nas fontes configuradas."
+                    stringResource(R.string.ui_no_videos)
                 },
                 actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecionar pasta"
+                    stringResource(R.string.flow_select_folder)
                 } else {
-                    "Atualizar"
+                    stringResource(R.string.more_refresh)
                 },
                 onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     onSelectSource
@@ -644,6 +646,7 @@ private fun ColumnScope.HomeContent(
         ReiAnixHomeLibraryUiState.from(state)
     }
 
+    val detailsLabel = stringResource(R.string.ui_details)
     HomeReadyContent(
         animes = homeState.animes,
         heroHeader = heroHeader,
@@ -653,7 +656,7 @@ private fun ColumnScope.HomeContent(
                     onOpenDetails = onOpenDetails,
         onWatch = onWatch,
         onHeroSecondaryAction = { featured -> onOpenDetails(featured.id) },
-        heroSecondaryLabel = { "Detalhes" },
+        heroSecondaryLabel = { detailsLabel },
         onOpenMyList = onOpenMyList,
         onOpenLibrary = onOpenLibrary,
     )
@@ -732,7 +735,7 @@ private fun ColumnScope.HomeReadyContent(
     if (expandedSection != null) {
         val isContinue = expandedSection == "continue"
         ReiAnixTopBar(
-            title = if (isContinue) "Continuar assistindo" else "Novos episódios",
+            title = stringResource(if (isContinue) R.string.ui_continue_watching else R.string.ui_new_episodes),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
             onNavigationClick = { expandedSection = null },
         )
@@ -852,13 +855,13 @@ private fun ColumnScope.HomeReadyContent(
             }
         }
         listOf(
-            Triple("airing", "Animes em lançamento", airing),
-            Triple("rated", "Mais bem avaliados", topRated),
-            Triple("recommended", "Recomendações para você", recommended),
+            Triple("airing", R.string.flow_airing, airing),
+            Triple("rated", R.string.flow_top_rated, topRated),
+            Triple("recommended", R.string.more_recommendations, recommended),
         ).forEach { (key, title, cards) ->
             if (cards.isNotEmpty()) {
                 item(key = "home-section-" + key) {
-                    HomeMediaSection(title, cards, posterCardWidth, onOpenDetails, "Home " + title)
+                    HomeMediaSection(stringResource(title), cards, posterCardWidth, onOpenDetails, "Home " + stringResource(title))
                 }
             }
         }
@@ -1239,12 +1242,13 @@ private fun HomeSectionHeader(
         )
 
         if (onSeeAll != null) {
+            val seeAllDescription = stringResource(R.string.flow_see_all_title, title)
             ReiAnixCompactButton(
                 text = stringResource(R.string.ui_see_all),
                 onClick = onSeeAll,
                 modifier = Modifier.semantics {
                     role = Role.Button
-                    contentDescription = "Ver tudo: " + title
+                    contentDescription = seeAllDescription
                 },
             )
         }

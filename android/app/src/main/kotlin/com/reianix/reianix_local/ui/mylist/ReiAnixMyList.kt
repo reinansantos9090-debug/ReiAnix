@@ -119,7 +119,7 @@ fun ReiAnixMyListRoute(
                     totalSaved = totalSaved,
                     filter = filter,
                     isRefreshing = isRefreshing,
-                    errorMessage = mutationError ?: state.error ?: "A biblioteca local retornou um erro.",
+                    errorMessage = mutationError ?: state.error ?: stringResource(R.string.flow_library_return_error),
                     onFilterChange = viewModel::setMyListFilter,
                     onOpenDetails = { animeId ->
                         navController.navigateToDetails(
@@ -137,7 +137,7 @@ fun ReiAnixMyListRoute(
             } else {
                 ReiAnixRecoverableErrorState(
                     title = stringResource(R.string.ui_my_list_failed),
-                    message = state.error ?: "A biblioteca local retornou um erro.",
+                    message = state.error ?: stringResource(R.string.flow_library_return_error),
                     onRetry = viewModel::refresh,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -152,7 +152,7 @@ fun ReiAnixMyListRoute(
                     totalSaved = totalSaved,
                     filter = filter,
                     isRefreshing = isRefreshing,
-                    errorMessage = mutationError ?: "A fonte local configurada não está disponível agora.",
+                    errorMessage = mutationError ?: stringResource(R.string.ui_source_unavailable),
                     onFilterChange = viewModel::setMyListFilter,
                     onOpenDetails = { animeId ->
                         navController.navigateToDetails(
@@ -171,14 +171,14 @@ fun ReiAnixMyListRoute(
                 ReiAnixSourceUnavailableState(
                     title = stringResource(R.string.ui_my_list_unavailable),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Configure uma pasta local para carregar os títulos salvos."
+                        stringResource(R.string.flow_mylist_folder)
                     } else {
-                        "A fonte local configurada não está disponível agora."
+                        stringResource(R.string.ui_source_unavailable)
                     },
                     actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Selecionar pasta"
+                        stringResource(R.string.flow_select_folder)
                     } else {
-                        "Atualizar"
+                        stringResource(R.string.more_refresh)
                     },
                     onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         viewModel::selectSafTree
@@ -194,7 +194,7 @@ fun ReiAnixMyListRoute(
             ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyState(
                 title = stringResource(R.string.ui_my_list_empty),
                 message = stringResource(R.string.ui_my_list_hint),
-                actionLabel = "Abrir Biblioteca",
+                actionLabel = stringResource(R.string.flow_open_library),
                 onAction = { navController.navigateToTopLevel(ReiAnixRoutes.LIBRARY) },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -324,14 +324,14 @@ private fun ReiAnixMyListReadyContent(
                     ) {
                         ReiAnixEmptyState(
                             title = if (totalSaved == 0) {
-                                "Minha Lista está vazia"
+                                stringResource(R.string.ui_my_list_empty)
                             } else {
-                                "Nenhum título neste filtro"
+                                stringResource(R.string.flow_mylist_empty_filter)
                             },
                             message = if (totalSaved == 0) {
-                                "Adicione títulos à Minha Lista para encontrá-los aqui."
+                                stringResource(R.string.ui_my_list_hint)
                             } else {
-                                "Nenhum título salvo corresponde a \"" + filter.label + "\"."
+                                stringResource(R.string.flow_mylist_filter_none, filter.label)
                             },
                             actionLabel = if (totalSaved == 0) "Abrir Biblioteca" else null,
                             onAction = if (totalSaved == 0) onOpenLibrary else null,
