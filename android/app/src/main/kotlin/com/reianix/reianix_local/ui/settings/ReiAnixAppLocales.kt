@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.LocaleList
 import androidx.annotation.RequiresApi
 import com.reianix.reianix_local.MainActivity
+import java.util.Locale
 
 internal object ReiAnixAppLocales {
     private const val PREFS = "reianix_app_locale"
@@ -18,7 +19,7 @@ internal object ReiAnixAppLocales {
 
     fun selected(context: Context): String =
         if (Build.VERSION.SDK_INT >= 33) {
-            PlatformLocales.selected(context).takeIf { it in supported } ?: DEFAULT_LOCALE
+            supportedTag(PlatformLocales.selected(context))
         } else legacySelection(context)
 
     fun initializeDefault(context: Context) {
@@ -28,8 +29,15 @@ internal object ReiAnixAppLocales {
     }
 
     private fun legacySelection(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY, DEFAULT_LOCALE)?.takeIf { it in supported } ?: DEFAULT_LOCALE
+        supportedTag(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null))
+
+    private fun supportedTag(tag: String?): String {
+        val locale = Locale.forLanguageTag(tag.orEmpty())
+        val canonicalTag = locale.toLanguageTag()
+        return canonicalTag.takeIf { it in supported }
+            ?: supported.firstOrNull { it.substringBefore('-') == locale.language }
+            ?: DEFAULT_LOCALE
+    }
 
     fun localizedContext(context: Context): Context {
         if (Build.VERSION.SDK_INT >= 33) return context
