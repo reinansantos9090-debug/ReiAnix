@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -167,7 +171,7 @@ fun ReiAnixScannerInProgressState(
             ReiAnixLoadingIndicator()
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Varredura em andamento",
+                    text = stringResource(R.string.extra_scan_running),
                     style = ReiAnixTokens.TypographyTokens.itemTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -180,7 +184,7 @@ fun ReiAnixScannerInProgressState(
         }
     } else {
         ReiAnixLoadingState(
-            title = "Varredura em andamento",
+            title = stringResource(R.string.extra_scan_running),
             message = normalizedState,
             modifier = modifier,
         )

@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.storage
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.layout.Arrangement
@@ -227,7 +231,7 @@ private fun ReiAnixLibraryFoldersSection(
                 if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR ||
                     nativeFolders.status == ReiAnixNativeFoldersStatus.NOT_FOUND) {
                     item(key = "folders-error") {
-                        Text("Não foi possível consultar as pastas cadastradas.", modifier = Modifier.padding(20.dp))
+                        Text(stringResource(R.string.extra_storage_read_error), modifier = Modifier.padding(20.dp))
                         ReiAnixSecondaryButton("Tentar novamente", onRefreshNativeFolders)
                     }
                 }
@@ -238,7 +242,7 @@ private fun ReiAnixLibraryFoldersSection(
                 .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(24.dp))
-                Text("Adicionar pasta", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.extra_storage_add), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -248,7 +252,7 @@ private fun ReiAnixLibraryFoldersSection(
         AlertDialog(
             onDismissRequest = { pendingRemoval = null },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            title = { Text("Remover pasta da biblioteca?") },
+            title = { Text(stringResource(R.string.extra_storage_remove_question)) },
             text = {
                 Text(
                     "“$sourceName” será removida somente da configuração da biblioteca. "
@@ -257,7 +261,7 @@ private fun ReiAnixLibraryFoldersSection(
             },
             confirmButton = {
                 ReiAnixCompactButton(
-                    text = "Remover",
+                    text = stringResource(R.string.extra_remove),
                     onClick = {
                         pendingRemoval = null
                         onRemoveSaf(source.reference)
@@ -270,7 +274,7 @@ private fun ReiAnixLibraryFoldersSection(
             },
             dismissButton = {
                 ReiAnixCompactButton(
-                    text = "Cancelar",
+                    text = stringResource(R.string.locale_cancel),
                     onClick = { pendingRemoval = null },
                 )
             },
@@ -289,20 +293,20 @@ private fun NativeSqliteFoldersSection(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
         StorageSectionTitle(
-            title = "Registros persistidos no SQLite",
-            description = "Consulta somente leitura do banco canônico. As permissões e alterações de pastas continuam sendo gerenciadas pelo fluxo atual.",
+            title = stringResource(R.string.extra_storage_records),
+            description = stringResource(R.string.extra_storage_records_desc),
         )
         when (state.status) {
             ReiAnixNativeFoldersStatus.IDLE -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "A consulta nativa ainda não foi executada.",
+                    text = stringResource(R.string.extra_storage_not_queried),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             ReiAnixNativeFoldersStatus.LOADING -> ReiAnixLoadingState(
-                title = "Consultando pastas persistidas",
-                message = "Lendo os registros locais do SQLite…",
+                title = stringResource(R.string.extra_storage_querying),
+                message = stringResource(R.string.extra_storage_reading),
                 modifier = Modifier.fillMaxWidth(),
             )
             ReiAnixNativeFoldersStatus.READY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
@@ -330,26 +334,26 @@ private fun NativeSqliteFoldersSection(
             }
             ReiAnixNativeFoldersStatus.EMPTY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Nenhuma pasta registrada no banco SQLite.",
+                    text = stringResource(R.string.extra_storage_no_records),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             ReiAnixNativeFoldersStatus.NOT_FOUND -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "A consulta nativa retornou uma referência inexistente.",
+                    text = stringResource(R.string.extra_storage_invalid_ref),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
-                ReiAnixSecondaryButton(text = "Consultar novamente", onClick = onRetry)
+                ReiAnixSecondaryButton(text = stringResource(R.string.extra_storage_query_again), onClick = onRetry)
             }
             ReiAnixNativeFoldersStatus.ERROR -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Não foi possível consultar as pastas persistidas. Os registros configurados continuam preservados.",
+                    text = stringResource(R.string.extra_storage_read_failed),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
-                ReiAnixSecondaryButton(text = "Tentar novamente", onClick = onRetry)
+                ReiAnixSecondaryButton(text = stringResource(R.string.ui_retry), onClick = onRetry)
             }
         }
     }
@@ -423,7 +427,7 @@ private fun SafSourceCard(
                 )
                 if (available) {
                     Text(
-                        text = "Pasta local da biblioteca",
+                        text = stringResource(R.string.extra_storage_local_folder),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -463,7 +467,7 @@ private fun SafSourceCard(
                 modifier = Modifier.weight(1f),
             )
             ReiAnixSecondaryButton(
-                text = "Remover",
+                text = stringResource(R.string.extra_remove),
                 onClick = onRemove,
                 enabled = !removeBusy && !selectionBusy,
                 leadingIcon = Icons.Filled.Delete,
@@ -575,7 +579,7 @@ private fun ConfiguredSourceCard(
         if (!available && onAction != null) {
             Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
             ReiAnixSecondaryButton(
-                text = "Verificar acesso",
+                text = stringResource(R.string.extra_storage_verify),
                 onClick = onAction,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -593,7 +597,7 @@ private fun StorageScanCard(
 
     ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Atualização da biblioteca",
+            text = stringResource(R.string.extra_storage_refresh),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -619,13 +623,13 @@ private fun StorageScanCard(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             ReiAnixSecondaryButton(
-                text = "Verificar acesso",
+                text = stringResource(R.string.extra_storage_verify),
                 onClick = onCheckAccess,
                 enabled = !state.scanInProgress,
                 modifier = Modifier.weight(1f),
             )
             ReiAnixPrimaryButton(
-                text = "Atualizar biblioteca",
+                text = stringResource(R.string.extra_refresh_library),
                 onClick = onRefreshLibrary,
                 enabled = !state.scanInProgress,
                 leadingIcon = Icons.Filled.Refresh,

@@ -718,6 +718,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_reset),
+                                    iconKey = "Restaurar",
                                     onClick = { requestDestructiveAction("reset_player") },
                                     enabled = !actionBusy("reset_player"),
                                     modifier = Modifier.align(Alignment.End),
@@ -799,6 +800,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_cache_clear),
+                                    iconKey = "Limpar cache de capas",
                                     onClick = { requestDestructiveAction("clear_anilist_cache") },
                                     enabled = !actionBusy("clear_anilist_cache"),
                                     modifier = Modifier.fillMaxWidth(),
@@ -1260,12 +1262,14 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             ) {
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_export),
+                                    iconKey = "Exportar configurações",
                                     onClick = { onAction("settings_export") },
                                     enabled = !actionBusy("settings_export"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_import),
+                                    iconKey = "Importar configurações",
                                     onClick = { requestDestructiveAction("settings_import") },
                                     enabled = !actionBusy("settings_import"),
                                     modifier = Modifier.fillMaxWidth(),
@@ -1273,6 +1277,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
 
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_reset_settings),
+                                    iconKey = "Restaurar configurações",
                                     onClick = { requestDestructiveAction("reset_all_settings") },
                                     enabled = !actionBusy("reset_all_settings"),
                                     modifier = Modifier.fillMaxWidth(),
@@ -1292,30 +1297,35 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             ) {
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_backup),
+                                    iconKey = "Fazer backup",
                                     onClick = { onAction("backup_create") },
                                     enabled = !actionBusy("backup_create"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_protected_backup),
+                                    iconKey = "Backup protegido",
                                     onClick = { onOpenSubmenu("Backup protegido") },
                                     enabled = android.os.Build.VERSION.SDK_INT >= 26,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_restore_backup),
+                                    iconKey = "Restaurar backup",
                                     onClick = { requestDestructiveAction("backup_restore") },
                                     enabled = !actionBusy("backup_restore"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_integrity),
+                                    iconKey = "Verificar integridade",
                                     onClick = { onAction("backup_integrity") },
                                     enabled = !actionBusy("backup_integrity"),
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 SettingsActionRow(
                                     text = stringResource(R.string.pref_reconcile),
+                                    iconKey = "Reconciliar arquivos",
                                     onClick = { requestDestructiveAction("backup_reconcile") },
                                     enabled = !actionBusy("backup_reconcile"),
                                     modifier = Modifier.fillMaxWidth(),
@@ -1915,6 +1925,7 @@ private fun SettingsActionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    iconKey: String = text,
 ) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 50.dp)
@@ -1923,7 +1934,7 @@ private fun SettingsActionRow(
             .semantics { stateDescription = if (enabled) "Habilitado" else "Desabilitado" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsLeadingIcon(text, Modifier.padding(end = 16.dp))
+        SettingsLeadingIcon(iconKey, Modifier.padding(end = 16.dp))
         Text(text, style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
     }

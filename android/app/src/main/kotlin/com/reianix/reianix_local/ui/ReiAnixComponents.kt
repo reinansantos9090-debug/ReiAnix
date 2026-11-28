@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
 
 import com.reianix.reianix_local.ui.theme.reiAnixContentTint
@@ -1278,7 +1282,7 @@ fun ReiAnixArtwork(
             )
         } else {
             Text(
-                text = "Sem arte",
+                text = stringResource(R.string.extra_art_missing),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

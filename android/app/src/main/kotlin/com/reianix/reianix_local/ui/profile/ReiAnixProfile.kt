@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.profile
 
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
@@ -367,7 +369,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
         ReiAnixTopBar(title = title, navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = goBack)
         if (error != null) {
             Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
-            TextButton(onClick = { retry++ }) { Text("Tentar novamente") }
+            TextButton(onClick = { retry++ }) { Text(stringResource(R.string.ui_retry)) }
         }
         when (section) {
             "profile" -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
@@ -381,7 +383,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                         OutlinedButton(onClick = { section = "edit" }, border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF454545))) {
                             Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp), tint = Color.White)
                             Spacer(Modifier.width(8.dp))
-                            Text("Editar perfil", color = Color.White)
+                            Text(stringResource(R.string.extra_profile_edit), color = Color.White)
                         }
                         Spacer(Modifier.height(10.dp))
                         Row(Modifier.fillMaxWidth()) {
@@ -392,7 +394,7 @@ private fun ProfileContent(navController: NavHostController, viewModel: ReiAnixL
                         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                         val featured = records.firstOrNull { it.id == profile.featuredAnimeId && it.favorite == true }
                         if (featured != null) {
-                            Text("Anime em destaque", color = Color(0xFFAAAAAA), style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.extra_profile_featured), color = Color(0xFFAAAAAA), style = MaterialTheme.typography.labelMedium)
                             AnimeProfileRow(featured, onClick = { openAnime(featured.id) })
                         }
                         Spacer(Modifier.height(10.dp))
@@ -430,13 +432,13 @@ private fun ProfileNumber(value: String, label: String, color: Color, modifier: 
 internal fun ProfileStatisticsContent(stats: ProfileStats?, loading: Boolean) {
     if (stats == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (loading) CircularProgressIndicator() else Text("Estatísticas indisponíveis.")
+            if (loading) CircularProgressIndicator() else Text(stringResource(R.string.extra_profile_stats_unavailable))
         }
         return
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Resumo da biblioteca", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.extra_profile_summary), style = MaterialTheme.typography.titleMedium)
         val metrics = listOf(
             Triple(Icons.Outlined.VideoLibrary, stats.animeCount.toString(), "Animes na biblioteca"),
             Triple(Icons.Outlined.Movie, stats.episodeCount.toString(), "Episódios disponíveis"),
@@ -460,7 +462,7 @@ internal fun ProfileStatisticsContent(stats: ProfileStats?, loading: Boolean) {
                 }
             }
         }
-        Text("Progresso da biblioteca", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.extra_profile_progress), style = MaterialTheme.typography.titleMedium)
         // The existing completed count may include episodes no longer present.
         // Use the same available-library denominator, avoiding impossible percentages.
         val availableCompleted = stats.availableCompletedEpisodes.coerceIn(0, stats.episodeCount.coerceAtLeast(0))
@@ -468,15 +470,15 @@ internal fun ProfileStatisticsContent(stats: ProfileStats?, loading: Boolean) {
         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
         Text("$availableCompleted de ${stats.episodeCount} episódios concluídos · ${(progress * 100).toInt()}%",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Tempo estimado pelo progresso salvo, sem contar reassistidas separadamente.",
+        Text(stringResource(R.string.extra_profile_progress_desc),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
-        Text("Gêneros mais assistidos", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.extra_profile_top_genres), style = MaterialTheme.typography.titleMedium)
         if (stats.genres.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Outlined.BarChart, null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Seu histórico de gêneros aparecerá aqui.", style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(R.string.extra_profile_genres_hint), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         } else {
@@ -699,7 +701,7 @@ internal fun ProfileCustomization(
             // Favorites can be large; do not compose all thumbnails at once.
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
                 item {
-                    Text("Escolha um anime favorito para destacar no perfil.",
+                    Text(stringResource(R.string.extra_profile_featured_hint),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     ProfileFeaturedChoice("Nenhum", profile.featuredAnimeId == null, !busy) {
                         saveChange { it.copy(featuredAnimeId = null) }
@@ -719,8 +721,8 @@ internal fun ProfileCustomization(
                         ProfileAvatar(profile, store, 112.dp)
                         if (profile.photo != null) TextButton(enabled = !busy, onClick = {
                             saveChange { it.copy(photo = null) }
-                        }) { Text("Remover foto") }
-                        Text("Escolha um avatar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                        }) { Text(stringResource(R.string.extra_profile_remove_photo)) }
+                        Text(stringResource(R.string.extra_profile_avatar), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                         val selectedAvatarId = avatarPresetFor(profile.avatar).id
                         presets.chunked(4).forEach { group ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -798,11 +800,11 @@ internal fun ProfileCustomization(
                                 }
                             },
                         )
-                        Text("Prévia do perfil", style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.extra_profile_preview), style = MaterialTheme.typography.labelLarge)
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it.take(40); scheduleTextSave() },
-                            label = { Text("Nome do usuário") },
+                            label = { Text(stringResource(R.string.extra_profile_username)) },
                             singleLine = true,
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
@@ -810,7 +812,7 @@ internal fun ProfileCustomization(
                         OutlinedTextField(
                             value = bio,
                             onValueChange = { bio = it.take(160); scheduleTextSave() },
-                            label = { Text("Biografia") },
+                            label = { Text(stringResource(R.string.extra_profile_bio)) },
                             maxLines = 4,
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
@@ -953,14 +955,14 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(sceneTime(note.timestampMs) + (note.clipEndMs?.let { " – " + sceneTime(it) } ?: " · Marcador"),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (episode == null) Text("Arquivo original indisponível", style = MaterialTheme.typography.labelSmall)
+                            if (episode == null) Text(stringResource(R.string.extra_profile_original_unavailable), style = MaterialTheme.typography.labelSmall)
                         }
                         Box {
                             IconButton(onClick = { menu = true }, enabled = !saving) { Icon(Icons.Outlined.MoreVert, "Opções da cena") }
                             DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text("Editar") }, enabled = episode != null && note.clipEndMs != null,
+                                DropdownMenuItem(text = { Text(stringResource(R.string.extra_edit)) }, enabled = episode != null && note.clipEndMs != null,
                                     onClick = { menu = false; edit = scene })
-                                DropdownMenuItem(text = { Text("Excluir") }, onClick = { menu = false; delete = scene })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.ui_delete)) }, onClick = { menu = false; delete = scene })
                             }
                         }
                     }
@@ -978,12 +980,12 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
         val end = to.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 && it <= Long.MAX_VALUE / 1000.0 }?.let { (it * 1000).toLong() }
         val duration = episode?.duration?.takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() }
             ?: note.clipEndMs ?: 0L
-        AlertDialog(onDismissRequest = { if (!saving) edit = null }, title = { Text("Editar cena") },
+        AlertDialog(onDismissRequest = { if (!saving) edit = null }, title = { Text(stringResource(R.string.extra_profile_edit_scene)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Nome da cena") })
-                    OutlinedTextField(from, { from = it }, singleLine = true, label = { Text("Início (segundos)") })
-                    OutlinedTextField(to, { to = it }, singleLine = true, label = { Text("Fim (segundos)") })
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(stringResource(R.string.extra_profile_scene_name)) })
+                    OutlinedTextField(from, { from = it }, singleLine = true, label = { Text(stringResource(R.string.extra_profile_start_seconds)) })
+                    OutlinedTextField(to, { to = it }, singleLine = true, label = { Text(stringResource(R.string.extra_profile_end_seconds)) })
                     Text("Duração disponível: " + sceneTime(duration), style = MaterialTheme.typography.bodySmall)
                 }
             },
@@ -1003,12 +1005,12 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
                         catch (_: Exception) { error = "Não foi possível editar a cena."; edit = null }
                         finally { saving = false }
                     }
-                }) { Text("Salvar") } },
-            dismissButton = { TextButton(enabled = !saving, onClick = { edit = null }) { Text("Cancelar") } })
+                }) { Text(stringResource(R.string.pref_save)) } },
+            dismissButton = { TextButton(enabled = !saving, onClick = { edit = null }) { Text(stringResource(R.string.locale_cancel)) } })
     }
     delete?.let { scene ->
-        AlertDialog(onDismissRequest = { delete = null }, title = { Text("Excluir cena?") },
-            text = { Text("O vídeo original será preservado.") },
+        AlertDialog(onDismissRequest = { delete = null }, title = { Text(stringResource(R.string.extra_profile_delete_scene)) },
+            text = { Text(stringResource(R.string.extra_profile_preserve_video)) },
             confirmButton = { TextButton(onClick = {
                 delete = null
                 scope.launch {
@@ -1016,7 +1018,7 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { error = "Não foi possível excluir a cena." }
                 }
-            }) { Text("Excluir") } },
-            dismissButton = { TextButton(onClick = { delete = null }) { Text("Cancelar") } })
+            }) { Text(stringResource(R.string.ui_delete)) } },
+            dismissButton = { TextButton(onClick = { delete = null }) { Text(stringResource(R.string.locale_cancel)) } })
     }
 }

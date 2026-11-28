@@ -23,7 +23,7 @@ internal object ReiAnixAppLocales {
         if (Build.VERSION.SDK_INT >= 33) return context
         val tag = selected(context)
         if (tag.isEmpty()) return context
-        val configuration = Configuration(context.resources.configuration)
+        val configuration = Configuration()
         configuration.setLocales(LocaleList.forLanguageTags(tag))
         return context.createConfigurationContext(configuration)
     }
