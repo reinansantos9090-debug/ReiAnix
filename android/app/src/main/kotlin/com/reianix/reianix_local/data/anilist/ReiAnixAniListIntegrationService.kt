@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.data.anilist
 
+import com.reianix.reianix_local.data.media.LocalCatalogLookup
+import com.reianix.reianix_local.data.media.LocalCatalogLookupPolicy
+import com.reianix.reianix_local.data.sqlite.localCatalogLookup
+
 import com.reianix.reianix_local.data.organize.ReiAnixGenreRegistry
 import com.reianix.reianix_local.data.artwork.ReiAnixArtworkCandidate
 import com.reianix.reianix_local.data.artwork.ReiAnixPreparedRepairArtwork
@@ -1134,6 +1138,8 @@ class ReiAnixAniListIntegrationService(
         if (local.anilistId != null) {
             return AniListResult.Success(AniListAutoMatchResult.AlreadyMatched(local.anilistId))
         }
+        val lookupMode = library.localCatalogLookup(local)
+        if (lookupMode == LocalCatalogLookup.PERSONAL) return AniListResult.Success(AniListAutoMatchResult.NoMatch)
         val now = System.currentTimeMillis()
         val previousAttempt = autoMatchAttempts[animeId]
         if (previousAttempt != null && now - previousAttempt < AUTO_MATCH_COOLDOWN_MS) {
@@ -1216,7 +1222,8 @@ class ReiAnixAniListIntegrationService(
                     return searchResult
                 }
             }
-            found.forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
+            found.filter { allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, it) }
+                .forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
             ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
 
             // Preserve the fast path for an already-unambiguous primary-title result.
@@ -1315,7 +1322,14 @@ class ReiAnixAniListIntegrationService(
      * is not consulted when deciding which returned images may be published.
      * A failed alias request does not discard results already obtained from other aliases.
      */
+    private fun allowsLocalCatalogCandidate(mode: LocalCatalogLookup, title: String, remote: AniListAnime): Boolean =
+        mode == LocalCatalogLookup.NORMAL || LocalCatalogLookupPolicy.allowsCandidate(
+            mode, title, listOf(remote.titleRomaji, remote.titleEnglish, remote.titleNative) + remote.synonyms,
+        )
+
     private suspend fun discoverArtworkCandidates(local: ReiAnixAnimeRecord): List<AniListAnime> {
+        val lookupMode = library.localCatalogLookup(local)
+        if (lookupMode == LocalCatalogLookup.PERSONAL) return emptyList()
         val titleCandidates = buildList {
             add(local.title)
             add(local.lookupTitle)
@@ -1344,7 +1358,9 @@ class ReiAnixAniListIntegrationService(
                 continue
             }) {
                 is AniListResult.Success -> result.value.forEach { remote ->
-                    if (remote.id > 0) candidatesById.putIfAbsent(remote.id, remote)
+                    if (remote.id > 0 && allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, remote)) {
+                        candidatesById.putIfAbsent(remote.id, remote)
+                    }
                 }
                 is AniListResult.Failure -> Log.w(
                     TAG,
@@ -1443,6 +1459,7 @@ class ReiAnixAniListIntegrationService(
                 currentCoroutineContext().ensureActive()
                 if (local.id <= 0L) continue
                 lastVisitedCursor = local.id
+                if (library.localCatalogLookup(local) == LocalCatalogLookup.PERSONAL) continue
                 val cachedPath = local.coverCache?.trim().orEmpty()
                 val usableLocalCover = cachedPath.isNotEmpty() && runCatching {
                     val file = File(cachedPath)
@@ -1565,6 +1582,8 @@ class ReiAnixAniListIntegrationService(
             if (attemptedAt != null && now - attemptedAt < AUTO_MATCH_COOLDOWN_MS / 1_000.0) continue
 
             val local = library.getAnime(target.animeId) ?: continue
+            val lookupMode = library.localCatalogLookup(local)
+            if (lookupMode == LocalCatalogLookup.PERSONAL) continue
             val knownId = local.anilistId?.takeIf { it in 1L..Int.MAX_VALUE.toLong() }
             val candidate = if (knownId != null) {
                 when (val result = client.getAnime(knownId.toInt())) {
@@ -1574,7 +1593,9 @@ class ReiAnixAniListIntegrationService(
             } else {
                 when (val result = client.searchAnime(target.title, 10)) {
                     is AniListResult.Success -> {
-                        val options = result.value
+                        val options = result.value.filter {
+                            allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, it)
+                        }
                         options.firstOrNull {
                             target.posterUrl != null &&
                                 (it.coverExtraLargeUrl == target.posterUrl ||

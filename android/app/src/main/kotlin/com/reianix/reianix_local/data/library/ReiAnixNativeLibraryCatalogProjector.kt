@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.data.library
 
+import com.reianix.reianix_local.data.media.LocalCatalogLookup
+import com.reianix.reianix_local.data.media.LocalCatalogLookupPolicy
+import com.reianix.reianix_local.data.sqlite.localCatalogLookup
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 import com.reianix.reianix_local.data.organize.ReiAnixGenreNames
 import com.reianix.reianix_local.data.organize.parseReiAnixGenreNames
@@ -101,15 +105,26 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         val regularEpisodes = orderedEpisodes.filter {
             it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
         }
-        val legacyGenres = parseReiAnixGenreNames(anime.genresJson)
+        // Reuse the episodes already loaded by this background projection. Existing
+        // automatic remote artwork on a personal capture is hidden, not deleted.
+        val personalVideo = LocalCatalogLookupPolicy.needsEvidence(anime.lookupTitle, anime.mediaKind) &&
+            anime.localCatalogLookup(orderedEpisodes.take(8).map { it.fileName }) == LocalCatalogLookup.PERSONAL
+        val legacyGenres = parseReiAnixGenreNames(anime.genresJson).takeUnless { personalVideo }.orEmpty()
         val preservedGenres = ReiAnixGenreNames.preserveMetadataGenres(
-            row.genres.map { ReiAnixGenreUiModel(it.id, it.name) },
+            row.genres.takeUnless { personalVideo }.orEmpty().map { ReiAnixGenreUiModel(it.id, it.name) },
             legacyGenres,
         )
         val genreNames = preservedGenres.map { it.name }
         val adultArtwork = ReiAnixAdultArtworkPolicy.blocked(genreNames) ||
-            ReiAnixAdultArtworkPolicy.blocked(legacyGenres) || ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson)
-        val animeArtwork = if (adultArtwork) emptyList() else row.animeArtwork
+            ReiAnixAdultArtworkPolicy.blocked(legacyGenres) || (!personalVideo && ReiAnixAdultArtworkPolicy.blockedJson(anime.genresJson))
+        val animeArtwork = if (adultArtwork) emptyList() else row.animeArtwork.filter {
+            !personalVideo || it.manual == true || it.source.equals("manual", true) ||
+                (it.externalUrl.isNullOrBlank() && !it.source.equals("anilist", true) && !it.source.equals("kitsu", true))
+        }
+        val localVideoPoster = if (personalVideo) orderedEpisodes.firstNotNullOfOrNull {
+            row.episodeArtwork[it.id]?.localPath?.takeIf(::hasReadableArtworkFile)
+        } else null
+        val showRemoteMetadata = !personalVideo && !adultArtwork
         val backdrop = animeArtwork.firstOrNull {
             it.artworkType.equals("backdrop", ignoreCase = true) ||
                 it.artworkType.equals("banner", ignoreCase = true)
@@ -125,31 +140,32 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 it.localPath?.let(::hasReadableArtworkFile) == true
         }
         val primaryLocalArtwork = manualPoster?.localPath
-            ?: anime.coverCache?.takeUnless { adultArtwork }?.takeIf(::hasReadableArtworkFile)
+            ?: anime.coverCache?.takeIf { showRemoteMetadata }?.takeIf(::hasReadableArtworkFile)
             ?: posterCandidates.mapNotNull { it.localPath }.firstOrNull(::hasReadableArtworkFile)
+            ?: localVideoPoster
         val selectedPoster = posterCandidates.firstOrNull { it.localPath == primaryLocalArtwork && primaryLocalArtwork != null }
         val primaryExternalArtwork = selectedPoster?.externalUrl
-            ?: anime.coverUrl?.takeUnless { adultArtwork }?.takeIf(String::isNotBlank)
+            ?: anime.coverUrl?.takeIf { showRemoteMetadata }?.takeIf(String::isNotBlank)
             ?: posterCandidates.firstOrNull { !it.externalUrl.isNullOrBlank() }?.externalUrl
         val meta = linkedMapOf<String, Any?>(
             "title" to anime.title,
-            "romaji" to anime.romaji,
-            "english" to anime.english,
-            "native" to anime.nativeTitle,
-            "aliases" to parseStringArray(anime.aliasesJson),
-            "description" to anime.description.takeUnless { adultArtwork },
-            "cover_url" to anime.coverUrl.takeUnless { adultArtwork },
-            "cover_cache" to anime.coverCache.takeUnless { adultArtwork },
-            "banner_url" to anime.bannerUrl.takeUnless { adultArtwork },
+            "romaji" to anime.romaji.takeUnless { personalVideo },
+            "english" to anime.english.takeUnless { personalVideo },
+            "native" to anime.nativeTitle.takeUnless { personalVideo },
+            "aliases" to parseStringArray(anime.aliasesJson).takeUnless { personalVideo }.orEmpty(),
+            "description" to anime.description.takeIf { showRemoteMetadata },
+            "cover_url" to anime.coverUrl.takeIf { showRemoteMetadata },
+            "cover_cache" to anime.coverCache.takeIf { showRemoteMetadata },
+            "banner_url" to anime.bannerUrl.takeIf { showRemoteMetadata },
             "genres" to genreNames,
-            "year" to anime.year,
-            "season" to anime.season,
-            "status" to anime.status,
-            "episodes_count" to anime.episodesCount,
-            "duration" to anime.duration,
-            "score" to anime.score?.toDouble(),
-            "format" to anime.format,
-            "studio" to anime.studio,
+            "year" to anime.year.takeUnless { personalVideo },
+            "season" to anime.season.takeUnless { personalVideo },
+            "status" to anime.status.takeUnless { personalVideo },
+            "episodes_count" to anime.episodesCount.takeUnless { personalVideo },
+            "duration" to anime.duration.takeUnless { personalVideo },
+            "score" to anime.score?.takeUnless { personalVideo }?.toDouble(),
+            "format" to anime.format.takeUnless { personalVideo },
+            "studio" to anime.studio.takeUnless { personalVideo },
             "metadata_status" to anime.metadataStatus,
             "anilist_id" to anime.anilistId?.toString(),
             "favorite" to anime.favorite,
@@ -192,15 +208,15 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             // File metadata is captured with the background catalog projection,
             // never during Compose composition. Preserve same-path regeneration keys.
             "artwork_source_revisions" to (animeArtwork.mapNotNull { it.localPath } +
-                listOfNotNull(anime.coverCache.takeUnless { adultArtwork })).distinct().associateWith(::localArtworkSourceRevision),
-            "artwork_available" to (!adultArtwork && (!primaryLocalArtwork.isNullOrBlank() || !anime.coverCache.isNullOrBlank())),
+                listOfNotNull(anime.coverCache.takeIf { showRemoteMetadata }, localVideoPoster)).distinct().associateWith(::localArtworkSourceRevision),
+            "artwork_available" to (!adultArtwork && (!primaryLocalArtwork.isNullOrBlank() || (showRemoteMetadata && !anime.coverCache.isNullOrBlank()))),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
             "artwork_backdrop_local_path" to backdrop?.localPath,
             "backdrop_external_url" to backdrop?.externalUrl,
             "playback_target_episode_id" to target?.id,
-            "score" to anime.score?.toDouble(),
-            "year" to anime.year,
+            "score" to anime.score?.takeUnless { personalVideo }?.toDouble(),
+            "year" to anime.year.takeUnless { personalVideo },
             "added_at" to anime.addedAt,
             "last_played_at" to lastPlayed,
             "media_kind" to anime.mediaKind,
