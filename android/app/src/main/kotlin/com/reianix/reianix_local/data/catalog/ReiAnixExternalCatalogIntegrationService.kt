@@ -168,7 +168,7 @@ class ReiAnixExternalCatalogIntegrationService(
             }
             when (result) {
                 is ReiAnixCatalogResult.Success -> {
-                    val candidates = result.value.filter {
+                    val candidates = if (lookupMode == LocalCatalogLookup.NORMAL) result.value else result.value.filter {
                         allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, it)
                     }
                     val candidate = candidates.firstOrNull {

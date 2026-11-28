@@ -1222,8 +1222,11 @@ class ReiAnixAniListIntegrationService(
                     return searchResult
                 }
             }
-            found.filter { allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, it) }
-                .forEach { candidate -> candidatesById.putIfAbsent(candidate.id, candidate) }
+            found.forEach { candidate ->
+                if (allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, candidate)) {
+                    candidatesById.putIfAbsent(candidate.id, candidate)
+                }
+            }
             ranked = rankCandidates(candidatesById.values, searchTerms.take(termIndex + 1))
 
             // Preserve the fast path for an already-unambiguous primary-title result.
@@ -1593,7 +1596,7 @@ class ReiAnixAniListIntegrationService(
             } else {
                 when (val result = client.searchAnime(target.title, 10)) {
                     is AniListResult.Success -> {
-                        val options = result.value.filter {
+                        val options = if (lookupMode == LocalCatalogLookup.NORMAL) result.value else result.value.filter {
                             allowsLocalCatalogCandidate(lookupMode, local.lookupTitle, it)
                         }
                         options.firstOrNull {

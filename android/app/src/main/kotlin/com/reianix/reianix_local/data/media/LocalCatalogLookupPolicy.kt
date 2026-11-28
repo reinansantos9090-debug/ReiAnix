@@ -23,7 +23,7 @@ internal object LocalCatalogLookupPolicy {
     private fun stem(name: String): String =
         name.substringAfterLast('/').substringBeforeLast('.', name.substringAfterLast('/')).trim()
 
-    private fun isCapture(name: String): Boolean = captureName.matches(stem(name))
+    private fun isCapture(name: String): Boolean = captureName.matches(name.trim()) || captureName.matches(stem(name))
 
     fun needsEvidence(title: String, mediaKind: String?): Boolean =
         mediaKind.equals("movie", true) || isCapture(title) ||
