@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -143,7 +147,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
     if (confirmRemove) {
         AlertDialog(onDismissRequest = { confirmRemove = false },
             title = { Text(if (banner) "Remover banner?" else "Remover papel de parede?") },
-            text = { Text("O aplicativo voltará ao fundo padrão nesta opção.") },
+            text = { Text(stringResource(R.string.tail_wallpaper_default)) },
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     confirmRemove = false
@@ -155,8 +159,8 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                         catch (_: Exception) { error = "Não foi possível remover a arte." }
                         finally { busy = false }
                     }
-                }) { Text("Remover") }
+                }) { Text(stringResource(R.string.extra_remove)) }
             },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancelar") } })
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.locale_cancel)) } })
     }
 }

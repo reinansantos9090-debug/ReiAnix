@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
@@ -86,7 +90,7 @@ internal fun ReiAnixAvatarEditor(
                 enabled = !busy,
                 modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("avatar-editor-cancel"),
             ) {
-                Text("Cancelar", color = Color.White, fontSize = 18.sp)
+                Text(stringResource(R.string.locale_cancel), color = Color.White, fontSize = 18.sp)
             }
             TextButton(
                 onClick = {
@@ -95,7 +99,7 @@ internal fun ReiAnixAvatarEditor(
                 enabled = !busy && bitmap != null,
                 modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("avatar-editor-save"),
             ) {
-                Text("Salvar", color = Color.White, fontSize = 18.sp)
+                Text(stringResource(R.string.pref_save), color = Color.White, fontSize = 18.sp)
             }
         }
         // Reserve the same height throughout loading, editing and saving.
@@ -190,11 +194,11 @@ internal fun ReiAnixAvatarEditor(
             } else if (loadingSelection || loaded.loading) {
                 CircularProgressIndicator(Modifier.testTag("avatar-editor-loading"))
             } else {
-                Text("Não foi possível abrir a foto. Volte e selecione outra imagem.", color = Color.White)
+                Text(stringResource(R.string.tail_avatar_open_failed), color = Color.White)
             }
         }
         if (bitmap != null) {
-            Text("Arraste a seleção ou os cantos para recortar", color = Color.White,
+            Text(stringResource(R.string.tail_avatar_crop), color = Color.White,
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp))
             Slider(value = fraction, onValueChange = { fraction = it }, valueRange = .15f..1f,
                 enabled = !busy, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))

@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 import android.content.Intent
 import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
@@ -170,8 +174,8 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Licenças de terceiros", style = MaterialTheme.typography.bodyMedium)
-                                Text("Avisos das bibliotecas incluídas na compilação", style = MaterialTheme.typography.bodySmall,
+                                Text(stringResource(R.string.tail_third_party_licenses), style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.tail_library_notices), style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))

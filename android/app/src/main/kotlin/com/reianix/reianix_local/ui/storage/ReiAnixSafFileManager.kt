@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.storage
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import android.net.Uri
@@ -117,7 +121,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                     if (movingTarget != null) movingTarget = null
                     else if (parents.isNotEmpty()) { currentText = parents.last(); parents = parents.dropLast(1) }
                     else onBack()
-                }) { Icon(Icons.Default.ArrowBack, contentDescription = "Voltar") }
+                }) { Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.ui_back)) }
                 Column(Modifier.weight(1f)) {
                     Text(if (movingTarget == null) "Gerenciar arquivos" else "Mover: ${movingTarget?.name}", style = MaterialTheme.typography.titleLarge)
                     Text(
@@ -129,7 +133,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                 }
                 if (movingTarget == null) {
                     IconButton(enabled = !busy && current != null, onClick = { createDialog = true }) {
-                        Icon(Icons.Default.CreateNewFolder, contentDescription = "Criar pasta")
+                        Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.tail_create_folder))
                     }
                 } else {
                     Button(enabled = !busy && current != null, onClick = {
@@ -144,11 +148,11 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                                 finish(result, "Movimentação")
                             }
                         }
-                    }) { Text("Mover para cá") }
+                    }) { Text(stringResource(R.string.tail_move_here)) }
                 }
             }
             if (roots.size > 1) {
-                Text("Fontes autorizadas", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.tail_authorized_sources), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     roots.forEachIndexed { index, root ->
                         OutlinedButton(onClick = {
@@ -162,10 +166,10 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
             if (loading || busy) {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (roots.isEmpty()) {
-                Text("Autorize uma pasta pelo fluxo de armazenamento existente.")
-                Button(onClick = onBack) { Text("Voltar e adicionar pasta") }
+                Text(stringResource(R.string.tail_authorize_folder_hint))
+                Button(onClick = onBack) { Text(stringResource(R.string.tail_back_add_folder)) }
             } else if (items.isEmpty() && error == null) {
-                Text("Esta pasta está vazia.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.tail_folder_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(items, key = { it.uri.toString() }) { item ->
@@ -198,8 +202,8 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
 
     if (createDialog) AlertDialog(
         onDismissRequest = { if (!busy) createDialog = false },
-        title = { Text("Criar pasta") },
-        text = { OutlinedTextField(createName, { createName = it }, label = { Text("Nome da pasta") }, singleLine = true) },
+        title = { Text(stringResource(R.string.tail_create_folder)) },
+        text = { OutlinedTextField(createName, { createName = it }, label = { Text(stringResource(R.string.tail_folder_name)) }, singleLine = true) },
         confirmButton = { TextButton(enabled = !busy && createName.isNotBlank() && current != null, onClick = {
             val parent = current ?: return@TextButton
             busy = true
@@ -208,18 +212,18 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                 busy = false; createDialog = false; createName = ""
                 finish(result, "Criação de pasta")
             }
-        }) { Text("Criar") } },
-        dismissButton = { TextButton(onClick = { createDialog = false }) { Text("Cancelar") } },
+        }) { Text(stringResource(R.string.tail_create)) } },
+        dismissButton = { TextButton(onClick = { createDialog = false }) { Text(stringResource(R.string.locale_cancel)) } },
     )
 
     renameTarget?.let { target -> AlertDialog(
         onDismissRequest = { if (!busy) renameTarget = null },
-        title = { Text("Renomear item") },
+        title = { Text(stringResource(R.string.tail_rename_item)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(renameName, { renameName = it }, label = { Text("Novo nome") }, singleLine = true)
+                OutlinedTextField(renameName, { renameName = it }, label = { Text(stringResource(R.string.tail_new_name)) }, singleLine = true)
                 Text(
-                    "Renomear pode alterar a identidade usada na biblioteca. A atualização será solicitada, mas a preservação de histórico e progresso não está garantida.",
+                    stringResource(R.string.tail_rename_warning),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -232,8 +236,8 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                 busy = false; renameTarget = null
                 finish(result, "Renomeação")
             }
-        }) { Text("Renomear") } },
-        dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancelar") } },
+        }) { Text(stringResource(R.string.more_rename)) } },
+        dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(stringResource(R.string.locale_cancel)) } },
     ) }
 
     actionTarget?.let { target -> AlertDialog(
@@ -241,14 +245,14 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
         title = { Text(target.name) },
         text = { Text(if (target.isDirectory) "Pasta" else target.mimeType ?: "Tipo não informado") },
         confirmButton = { TextButton(onClick = { actionTarget = null; renameTarget = target; renameName = target.name }) {
-            Icon(Icons.Default.Edit, contentDescription = null); Text("Renomear")
+            Icon(Icons.Default.Edit, contentDescription = null); Text(stringResource(R.string.more_rename))
         } },
         dismissButton = { Row {
             TextButton(onClick = { actionTarget = null; movingTarget = target }) {
-                Icon(Icons.Default.DriveFileMove, contentDescription = null); Text("Mover")
+                Icon(Icons.Default.DriveFileMove, contentDescription = null); Text(stringResource(R.string.tail_move))
             }
             TextButton(onClick = { actionTarget = null; deleteTarget = target }) {
-                Icon(Icons.Default.Delete, contentDescription = null); Text("Excluir")
+                Icon(Icons.Default.Delete, contentDescription = null); Text(stringResource(R.string.ui_delete))
             }
         } },
     ) }
@@ -264,8 +268,8 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                 busy = false; deleteTarget = null
                 finish(result, "Exclusão")
             }
-        }) { Text("Excluir") } },
-        dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancelar") } },
+        }) { Text(stringResource(R.string.ui_delete)) } },
+        dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.locale_cancel)) } },
     ) }
 }
 

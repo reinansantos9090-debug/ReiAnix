@@ -311,7 +311,7 @@ class NativePlayerActivity : FragmentActivity() {
         if (episodeChangePending || sleepTimerDialog?.isShowing == true) return
         val choices = arrayOf("15 minutos", "30 minutos", "45 minutos", "60 minutos", "90 minutos", "Personalizado", "Desativar")
         sleepTimerDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Temporizador")
+            .setTitle(getString(R.string.ui_timer))
             .setItems(choices) { _, which ->
                 when (which) {
                     in 0..4 -> setSleepTimer(listOf(15, 30, 45, 60, 90)[which])
@@ -319,7 +319,7 @@ class NativePlayerActivity : FragmentActivity() {
                     else -> setSleepTimer(null)
                 }
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
             .create().also { showPlayerMenuDialog(it) }
     }
 
@@ -333,8 +333,8 @@ class NativePlayerActivity : FragmentActivity() {
             setHintTextColor(0xFFBDBDBD.toInt())
             backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
         }
-        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme).setTitle("Temporizador").setView(input)
-            .setPositiveButton("Iniciar", null).setNegativeButton("Cancelar", null).create()
+        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme).setTitle(getString(R.string.ui_timer)).setView(input)
+            .setPositiveButton(getString(R.string.tail_start), null).setNegativeButton(getString(R.string.locale_cancel), null).create()
         sleepTimerDialog = dialog
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -2512,7 +2512,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             isIndeterminate = true
             indeterminateTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             visibility = View.VISIBLE
-            contentDescription = "Preparando vídeo"
+            contentDescription = getString(R.string.tail_prepare_video)
         }
         root.addView(
             preparingIndicator,
@@ -2590,7 +2590,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             finishPlayer("back_button")
         }
         back.tag = "reianix_back_button"
-        back.contentDescription = "Voltar"
+        back.contentDescription = getString(R.string.ui_back)
         topBar.addView(back, weightParams(44))
 
         val title = TextView(this).apply {
@@ -2602,7 +2602,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
             tag = "reianix_player_title"
-            contentDescription = "Título do episódio"
+            contentDescription = getString(R.string.ui_episode_title)
         }
         topBar.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
 
@@ -2617,7 +2617,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val moreButton = actionButton("Opções", 48) {
             toggleMorePanel()
         }
-        moreButton.contentDescription = "Mais opções"
+        moreButton.contentDescription = getString(R.string.ui_more_options)
         moreButton.tag = "reianix_more_button"
         topBar.addView(moreButton, weightParams(48))
 
@@ -2707,13 +2707,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         })
 
         val previousButton = actionButton("−10", 70, showPressFeedback = false) { seekBy(-10_000L) }.apply {
-            contentDescription = "Voltar 10 segundos"
+            contentDescription = getString(R.string.tail_rewind_10)
         }
         previousButton.tag = "reianix_seek_back"
         centerControls.addView(previousButton, weightParams(70))
 
         playPauseButton = actionButton("Reproduzir", 84) { togglePlayPause() }.apply {
-            contentDescription = "Reproduzir ou pausar"
+            contentDescription = getString(R.string.tail_play_pause)
             textSize = 26f
             tag = "reianix_play_pause"
             minHeight = dp(72)
@@ -2722,7 +2722,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         centerControls.addView(playPauseButton, weightParams(84))
 
         val nextButton = actionButton("+10", 70, showPressFeedback = false) { seekBy(10_000L) }.apply {
-            contentDescription = "Avançar 10 segundos"
+            contentDescription = getString(R.string.tail_forward_10)
         }
         nextButton.tag = "reianix_seek_forward"
         centerControls.addView(nextButton, weightParams(70))
@@ -2757,7 +2757,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         seekBar = SeekBar(this).apply {
             max = SEEK_PROGRESS_MAX
-            contentDescription = "Barra de progresso"
+            contentDescription = getString(R.string.tail_progress_bar)
             tag = "reianix_seekbar"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -2798,14 +2798,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }.apply {
             tag = "reianix_skip_opening"
             visibility = View.GONE
-            contentDescription = "Pular abertura"
+            contentDescription = getString(R.string.tail_skip_opening)
         }
         val skipEnding = actionButton("Pular encerramento", 150) {
             localMetadata.ending?.let { seekToMarker(it.endMs) }
         }.apply {
             tag = "reianix_skip_ending"
             visibility = View.GONE
-            contentDescription = "Pular encerramento"
+            contentDescription = getString(R.string.tail_skip_ending)
         }
         markerRow.addView(skipOpening, weightParams(132))
         markerRow.addView(skipEnding, weightParams(150))
@@ -2927,7 +2927,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reianix_more_dismiss_scrim"
             visibility = View.GONE
             isClickable = true
-            contentDescription = "Fechar menu do player"
+            contentDescription = getString(R.string.tail_close_player_menu)
             setOnClickListener { setMorePanelVisible(false) }
         }.also { scrim ->
             root.addView(
@@ -3675,7 +3675,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val currentIndex = speeds.indices.minByOrNull { abs(speeds[it] - player.playbackParameters.speed) } ?: 2
         touchControls()
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Velocidade")
+            .setTitle(getString(R.string.ui_speed))
             .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
                 player.setPlaybackSpeed(speeds[which])
                 persistCanonicalPlayerSetting("player.default_speed", speeds[which].toString())
@@ -3685,7 +3685,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 syncComposePlayerUiState()
                 dialog.dismiss()
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
             .create().also { showPlayerMenuDialog(it) }
     }
 
@@ -3968,9 +3968,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun showPlaybackHistory() {
         touchControls()
         val loadingDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Histórico")
-            .setMessage("Carregando histórico…")
-            .setNegativeButton("Fechar", null)
+            .setTitle(getString(R.string.ui_history))
+            .setMessage(getString(R.string.tail_history_loading))
+            .setNegativeButton(getString(R.string.ui_close), null)
             .create()
         showPlayerMenuDialog(loadingDialog)
 
@@ -4005,9 +4005,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     return@launch
                 }
                 AlertDialog.Builder(this@NativePlayerActivity, R.style.ReiAnixPlayerMenuDialogTheme)
-                    .setTitle("Histórico")
+                    .setTitle(getString(R.string.ui_history))
                     .setItems(historyItems.toTypedArray(), null)
-                    .setNegativeButton("Fechar", null)
+                    .setNegativeButton(getString(R.string.ui_close), null)
                     .create().also { showPlayerMenuDialog(it) }
             } catch (cancelled: CancellationException) {
                 if (loadingDialog.isShowing) loadingDialog.dismiss()
@@ -4026,9 +4026,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (!::player.isInitialized) return
         touchControls()
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Informações técnicas")
+            .setTitle(getString(R.string.tail_technical_info))
             .setMessage(buildTechnicalInfo())
-            .setPositiveButton("Fechar", null)
+            .setPositiveButton(getString(R.string.ui_close), null)
             .create().also { showPlayerMenuDialog(it) }
     }
     private fun showTrackSelection(trackType: Int, label: String) {
@@ -4169,7 +4169,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 }
                 dialog.dismiss()
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
             .create().also { showPlayerMenuDialog(it) }
     }
 
@@ -6592,8 +6592,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     selected(index)
                     applySubtitlePreferences()
                 }
-                .setNegativeButton("Voltar") { _, _ -> showSubtitleAppearance() }
-                .setPositiveButton("Fechar", null)
+                .setNegativeButton(getString(R.string.ui_back)) { _, _ -> showSubtitleAppearance() }
+                .setPositiveButton(getString(R.string.ui_close), null)
                 .setOnCancelListener { showSubtitleAppearance() }
                 .create()
             showPlayerMenuDialog(dialog)
@@ -6604,9 +6604,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val fonts = arrayOf("system", "sans", "serif", "mono")
 
         val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Personalizar legendas")
+            .setTitle(getString(R.string.ui_custom_subtitles))
             .setItems(arrayOf("Tamanho", "Posição vertical", "Cor do texto", "Fonte", "Estilos originais", "Restaurar padrão"), null)
-            .setNegativeButton("Fechar", null)
+            .setNegativeButton(getString(R.string.ui_close), null)
             .create()
         // Override the default item click so resetting the settings keeps this
         // page open. Entering a category dismisses only the parent dialog.
@@ -6758,7 +6758,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val endingEnd = field("Encerramento fim", localMetadata.ending?.endMs)
 
         container.addView(android.widget.TextView(this).apply {
-            text = "Marcadores locais (timestamps informados pelo usuário)"
+            text = getString(R.string.tail_local_markers)
             setTextColor(Color.WHITE)
             textSize = 13f
         })
@@ -6769,7 +6769,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         if (localMetadata.notes.any { !it.favorite }) {
             container.addView(android.widget.TextView(this).apply {
-                text = "Notas e cenas deste episódio"
+                text = getString(R.string.tail_episode_notes)
                 setTextColor(0xFFF5F5F5.toInt())
                 setPadding(0, dp(10), 0, dp(4))
             })
@@ -6796,13 +6796,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Marcadores e notas locais")
+            .setTitle(getString(R.string.tail_markers_notes))
             .setView(container)
-            .setNeutralButton("Nota no tempo atual") { _, _ ->
+            .setNeutralButton(getString(R.string.tail_note_current)) { _, _ ->
                 handler.post { showAddLocalNoteDialog() }
             }
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Salvar marcadores") { _, _ ->
+            .setNegativeButton(getString(R.string.locale_cancel), null)
+            .setPositiveButton(getString(R.string.tail_save_markers)) { _, _ ->
                 val openingStartMs = parseTimestampMs(openingStart.text?.toString())
                 val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
                 val endingStartMs = parseTimestampMs(endingStart.text?.toString())
@@ -6857,10 +6857,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setTextSize(14f)
         }
         val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Nota em " + formatTime(notePositionMs))
+            .setTitle(getString(R.string.tail_note_at, formatTime(notePositionMs)))
             .setView(input)
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Salvar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
+            .setPositiveButton(getString(R.string.pref_save), null)
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {

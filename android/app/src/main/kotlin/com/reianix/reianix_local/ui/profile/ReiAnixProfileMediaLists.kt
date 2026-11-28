@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import android.content.Context
@@ -149,7 +153,7 @@ internal fun historyGroup(timestamp: Double, now: Calendar): String {
 
 @Composable
 internal fun ProfileMediaSearch(query: String, onQuery: (String) -> Unit) {
-    OutlinedTextField(query, onQuery, singleLine = true, placeholder = { Text("Pesquisar") },
+    OutlinedTextField(query, onQuery, singleLine = true, placeholder = { Text(stringResource(R.string.ui_search)) },
         leadingIcon = { Icon(Icons.Outlined.Search, null) },
         trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Outlined.Close, "Limpar pesquisa") } },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
@@ -197,7 +201,7 @@ internal fun ProfileFavorites(
             })
         if (search) ProfileMediaSearch(query) { query = it }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!loading && visible.isEmpty()) Text("Nenhum anime encontrado.", Modifier.padding(20.dp))
+        if (!loading && visible.isEmpty()) Text(stringResource(R.string.tail_no_anime), Modifier.padding(20.dp))
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(visible, key = { it.id }) { anime ->
                 val model = catalog[anime.id]
@@ -249,7 +253,7 @@ internal fun ProfileHistory(
             actions = { IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, "Pesquisar histórico") } })
         if (search) ProfileMediaSearch(query) { query = it }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!loading && history.isEmpty()) Text("Nenhuma reprodução encontrada.", Modifier.padding(20.dp))
+        if (!loading && history.isEmpty()) Text(stringResource(R.string.tail_no_playbacks), Modifier.padding(20.dp))
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             groups.forEach { (day, rows) ->
                 item(key = "day:$day") { Text(day, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp)) }
@@ -285,7 +289,7 @@ internal fun ProfileHistory(
                                     style = MaterialTheme.typography.labelMedium, color = tint)
                                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(requireNotNull(row.lastPlayedAt).times(1000).toLong())),
                                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (!playable) Text("Arquivo indisponível", style = MaterialTheme.typography.labelSmall)
+                                if (!playable) Text(stringResource(R.string.tail_file_unavailable), style = MaterialTheme.typography.labelSmall)
                             }
                             Icon(if (completed) Icons.Outlined.CheckCircle else Icons.Outlined.PlayCircleOutline, null, tint = tint)
                         }

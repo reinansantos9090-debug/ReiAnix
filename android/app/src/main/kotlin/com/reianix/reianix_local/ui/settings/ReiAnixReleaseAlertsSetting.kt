@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -79,8 +83,7 @@ fun ReiAnixReleaseAlertsSetting() {
         }
     }
 
-    val description = "Somente animes da sua biblioteca. Consulta leve com internet, " +
-        "aproximadamente a cada 4 horas; horários não são garantidos."
+    val description = stringResource(R.string.tail_release_alerts_desc)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -96,7 +99,7 @@ fun ReiAnixReleaseAlertsSetting() {
     ) {
         SettingsLeadingIcon("releases.notifications")
         Column(modifier = Modifier.weight(1f)) {
-            Text("Avisar sobre novos episódios", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.tail_release_alerts), style = MaterialTheme.typography.bodyLarge)
             Text(
                 description,
                 style = MaterialTheme.typography.bodySmall,

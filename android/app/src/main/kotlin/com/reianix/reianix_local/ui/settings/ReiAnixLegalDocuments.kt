@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
@@ -76,7 +80,7 @@ internal fun ReiAnixLegalDocumentScreen(document: ReiAnixLegalDocument, onBack: 
                 item(key = "legal:online") {
                     ReiAnixSettingsRow(
                         icon = settingsIcon("legal:online"),
-                        title = "Abrir versão pública",
+                        title = stringResource(R.string.tail_public_version),
                         description = document.publicUrl,
                         onClick = {
                             openFailed = runCatching {
@@ -86,7 +90,7 @@ internal fun ReiAnixLegalDocumentScreen(document: ReiAnixLegalDocument, onBack: 
                     )
                 }
                 if (openFailed) item(key = "legal:error") {
-                    Text("Não foi possível abrir o navegador. O documento permanece disponível acima.",
+                    Text(stringResource(R.string.tail_browser_failed),
                         modifier = Modifier.padding(horizontal = 20.dp),
                         color = MaterialTheme.colorScheme.error)
                 }

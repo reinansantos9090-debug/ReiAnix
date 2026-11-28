@@ -31,7 +31,7 @@ internal fun TraceMoeConsentDialog(
         text = {
             Text(
                 stringResource(R.string.more_trace_consent_body) +
-                    if (savingFailed) "\n\nNão foi possível salvar a autorização. Tente novamente." else "",
+                    if (savingFailed) "\n\n" + stringResource(R.string.tail_trace_save_failed) else "",
                 color = if (savingFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },

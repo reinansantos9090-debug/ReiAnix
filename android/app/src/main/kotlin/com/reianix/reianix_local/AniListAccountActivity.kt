@@ -1,5 +1,7 @@
 package com.reianix.reianix_local
 
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import android.content.Intent
@@ -112,7 +114,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                             )
                             .verticalScroll(rememberScrollState()),
                     ) {
-                        SettingsHeader(title = "Contas e Avançado", subtitle = "", onBack = onBack)
+                        SettingsHeader(title = stringResource(R.string.settings_accounts), subtitle = "", onBack = onBack)
                         Row(
                             Modifier.fillMaxWidth()
                                 .settingsClickable(enabled = !busy, role = Role.Button, onClick = {
@@ -131,7 +133,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                             Icon(painterResource(R.drawable.ic_anilist), contentDescription = null,
                                 modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurface)
                             Text("AniList", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                            if (state.connected) Icon(Icons.Filled.CheckCircle, contentDescription = "Conta conectada",
+                            if (state.connected) Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(R.string.tail_account_connected),
                                 tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         }
                         if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error,
@@ -221,7 +223,7 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("Conectando ao AniList…")
+                        Text(stringResource(R.string.tail_account_connecting))
                         CircularProgressIndicator()
                     }
                 }
