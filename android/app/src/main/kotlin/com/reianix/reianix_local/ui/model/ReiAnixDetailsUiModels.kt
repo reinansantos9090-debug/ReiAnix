@@ -78,6 +78,12 @@ object ReiAnixDetailsUiStateProjection {
                 anime.contentEpisodes.firstOrNull { it.id == targetId }
             }
             val playableTarget = target?.takeIf { it.isPlayable }
+            val videoThumbnail = if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+                anime.contentEpisodes.firstNotNullOfOrNull { it.artwork?.takeIf { art -> !art.localPath.isNullOrBlank() } }
+            } else null
+            val detailArtwork = if (videoThumbnail != null && anime.artwork?.localPath.isNullOrBlank()) {
+                videoThumbnail.copy(backdropLocalPath = videoThumbnail.localPath)
+            } else anime.artwork
 
             return ReiAnixDetailsUiState(
                 status = ReiAnixDetailsLoadStatus.READY,
@@ -89,7 +95,7 @@ object ReiAnixDetailsUiStateProjection {
                     genres = anime.genres,
                     score = anime.score,
                     favorite = anime.favorite,
-                    artwork = anime.artwork,
+                    artwork = detailArtwork,
                     episodeCount = anime.availableContentCount.takeIf { it > 0 },
                     playbackTargetEpisodeId = playableTarget?.id,
                     shouldContinue = playableTarget?.consumptionState == ReiAnixConsumptionState.IN_PROGRESS,

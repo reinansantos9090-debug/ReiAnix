@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.formatDurationLabel
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -1357,14 +1359,14 @@ private fun ReiAnixAnimeUiModel.toLibraryCard(): LibraryCardRenderData = Library
     metadata = buildList {
         year?.let { add(it.toString()) }
         val count = availableContentCount
-        if (count > 0) add(if (count == 1) "1 episódio" else "$count episódios")
+        if (count > 0) add(localVideoDurationSeconds?.let(::formatDurationLabel) ?: episodeCountLabel)
     },
     progress = resumeProgressFraction,
     favorite = favorite,
     watching = isWatching,
     watched = hasWatchedEpisode,
     completed = isCompleted,
-    badge = presentationStateLabel(presentationState)
+    badge = if (mediaKind == ReiAnixMediaKind.VIDEO) "Vídeo" else presentationStateLabel(presentationState)
         ?: if (mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else null,
 )
 

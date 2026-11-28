@@ -12,6 +12,7 @@ import androidx.compose.runtime.Immutable
 enum class ReiAnixMediaKind {
     SERIES,
     MOVIE,
+    VIDEO,
     UNKNOWN,
 }
 
@@ -361,8 +362,14 @@ data class ReiAnixAnimeUiModel(
     val availableContentCount: Int
         get() = episodeSummary.availableCount
 
+    val localVideoDurationSeconds: Double?
+        get() = if (mediaKind == ReiAnixMediaKind.VIDEO) contentEpisodes.firstOrNull()?.durationSeconds
+            ?.takeIf { it.isFinite() && it > 0.0 } else null
+
     val episodeCountLabel: String
-        get() = when (availableContentCount) {
+        get() = if (mediaKind == ReiAnixMediaKind.VIDEO) {
+            if (availableContentCount == 1) "1 vídeo" else "$availableContentCount vídeos"
+        } else when (availableContentCount) {
             1 -> "1 episódio"
             else -> "$availableContentCount episódios"
         }
@@ -404,6 +411,7 @@ data class ReiAnixHomeAnimeUiModel(
     val format: String? = null,
     val studio: String? = null,
     val latestUnwatchedEpisodeAt: Double? = null,
+    val localVideoDurationSeconds: Double? = null,
 ) {
     val stableKey: String
         get() = "anime:" + id

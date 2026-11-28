@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalCatalogLookupPolicyTest {
+    @Test fun editedPersonalVideoNamesAreNotAnimeMovies() {
+        for (name in listOf("YouCut_20261114_235138077.mp4", "CapCut-20261128-123456.mp4", "InShot_20261128_123456.mp4")) {
+            assertEquals(LocalCatalogLookup.PERSONAL, LocalCatalogLookupPolicy.classify(name, "movie", listOf(name)))
+        }
+        assertEquals(LocalCatalogLookup.UNCERTAIN, LocalCatalogLookupPolicy.classify("Look Back", "movie", listOf("Look Back.mp4")))
+    }
+
     @Test fun personalCaptureNamesAreLocalOnly() {
         for ((title, name) in listOf(
             "line" to "line_123456.mp4",
