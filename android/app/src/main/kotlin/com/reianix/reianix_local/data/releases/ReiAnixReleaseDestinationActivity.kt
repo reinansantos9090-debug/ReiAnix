@@ -32,6 +32,10 @@ import com.reianix.reianix_local.ui.theme.ReiAnixComposeTheme
 
 /** Shown only on notification tap. No permanent calendar tab is created. */
 class ReiAnixReleaseDestinationActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
 
     override fun onResume() {

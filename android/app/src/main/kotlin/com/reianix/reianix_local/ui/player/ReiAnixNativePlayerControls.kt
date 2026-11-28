@@ -224,7 +224,7 @@ fun ReiAnixNativePlayerTopControls(
                 .size(48.dp)
                 .align(Alignment.TopStart)
                 .semantics {
-                    contentDescription = stringResource(R.string.ui_back)
+                    contentDescription = "Voltar"
                     role = Role.Button
                 },
         ) {
@@ -588,7 +588,7 @@ fun ReiAnixNativePlayerBottomControls(
                                             shape = androidx.compose.foundation.shape.CircleShape,
                                         )
                                         .semantics {
-                                            contentDescription = stringResource(R.string.ui_unlock_controls)
+                                            contentDescription = "Desbloquear controles"
                                             role = Role.Button
                                         },
                                 ) {
@@ -884,7 +884,7 @@ fun ReiAnixNativePlayerBottomControls(
                             }
                         }
                         .semantics {
-                            contentDescription = stringResource(R.string.ui_video_progress)
+                            contentDescription = "Barra de progresso do vídeo"
                             stateDescription = if (duration > 0L) {
                                 PlayerTimeFormatter.format(displayPosition) +
                                     " de " + PlayerTimeFormatter.format(duration)

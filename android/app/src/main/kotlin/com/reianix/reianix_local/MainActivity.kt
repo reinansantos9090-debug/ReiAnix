@@ -94,6 +94,10 @@ data class ReiAnixWelcomeFolderPaths(
 )
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val tag = "[REIANIX][ANDROID]"
     // Opt-in only: set via 'adb shell setprop log.tag.ReiAnixJank DEBUG'
     // before starting the app. Normal releases do not collect frames.

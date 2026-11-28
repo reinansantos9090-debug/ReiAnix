@@ -25,6 +25,10 @@ import java.util.UUID
  * player with a temporary Android read grant; no scan/import is started.
  */
 class ExternalVideoActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

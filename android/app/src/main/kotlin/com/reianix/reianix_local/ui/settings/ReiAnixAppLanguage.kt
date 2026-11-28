@@ -1,8 +1,5 @@
 package com.reianix.reianix_local.ui.settings
 
-import android.app.LocaleManager
-import android.os.LocaleList
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,15 +49,13 @@ internal fun localizedSettingsDescription(value: String): String = when (value) 
     else -> value
 }
 
-@RequiresApi(33)
 @Composable
 internal fun ReiAnixAppLanguageRow() {
     val context = LocalContext.current
-    val localeManager = context.getSystemService(LocaleManager::class.java) ?: return
     // Read configuration so changes from Android Settings invalidate the UI.
     val configuration = LocalConfiguration.current
     val selected = remember(configuration) {
-        localeManager.applicationLocales.toLanguageTags()
+        ReiAnixAppLocales.selected(context)
     }
     val options = listOf(
         "" to R.string.locale_system,
@@ -94,7 +89,7 @@ internal fun ReiAnixAppLanguageRow() {
                                     onClick = {
                                         showDialog = false
                                         if (tag != selected) {
-                                            localeManager.applicationLocales = LocaleList.forLanguageTags(tag)
+                                            ReiAnixAppLocales.change(context, tag)
                                         }
                                     },
                                 ),

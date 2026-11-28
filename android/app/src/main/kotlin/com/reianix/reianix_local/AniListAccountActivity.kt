@@ -39,6 +39,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class AniListAccountActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
 
     override fun onResume() {
@@ -195,6 +199,10 @@ private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Uni
 
 /** Dedicated callback: OAuth fragments never enter the player/diagnostic intent handlers. */
 class AniListOAuthCallbackActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
 
     override fun onResume() {

@@ -539,7 +539,7 @@ private fun LibraryHeader(
                 onClick = onRetryMissingArtwork,
                 enabled = !missingArtworkRetryState.isRunning,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = stringResource(R.string.ui_missing_covers)
+                    contentDescription = "Baixar capas que faltam"
                 },
             ) {
                 if (missingArtworkRetryState.isRunning) {
@@ -573,7 +573,7 @@ private fun LibraryHeader(
             IconButton(
                 onClick = onFilters,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = stringResource(R.string.ui_library_filters)
+                    contentDescription = "Filtros da biblioteca"
                 },
             ) {
                 Canvas(Modifier.size(ReiAnixTokens.Dimensions.iconMedium)) {
@@ -959,7 +959,7 @@ private fun ColumnScope.LibraryReadyContent(
                             IconButton(
                                 onClick = { onQueryChange("") },
                                 modifier = Modifier.semantics {
-                                    contentDescription = stringResource(R.string.ui_clear_search)
+                                    contentDescription = "Limpar pesquisa"
                                 },
                             ) {
                                 Icon(
@@ -1055,7 +1055,7 @@ private fun ColumnScope.LibraryReadyContent(
                             text = stringResource(R.string.ui_clear),
                             onClick = onClearFilters,
                             modifier = Modifier.semantics {
-                                contentDescription = stringResource(R.string.ui_clear_filters)
+                                contentDescription = "Limpar filtros"
                             },
                         )
                     }

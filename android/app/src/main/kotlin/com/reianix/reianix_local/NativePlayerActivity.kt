@@ -140,6 +140,10 @@ import kotlin.math.roundToLong
 /** Full-screen Media3 player for one persisted local, SAF, or MediaStore URI. */
 @OptIn(UnstableApi::class)
 class NativePlayerActivity : FragmentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val traceId = UUID.randomUUID().toString()
     private val activityInstanceId = UUID.randomUUID().toString()
     private lateinit var player: ExoPlayer

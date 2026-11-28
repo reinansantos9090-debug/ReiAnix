@@ -329,7 +329,7 @@ fun ReiAnixSearchScreen(
                         IconButton(
                             onClick = { onQueryChange("") },
                             modifier = Modifier.semantics {
-                                contentDescription = stringResource(R.string.ui_clear_query)
+                                contentDescription = "Limpar busca"
                                 role = Role.Button
                             },
                         ) {

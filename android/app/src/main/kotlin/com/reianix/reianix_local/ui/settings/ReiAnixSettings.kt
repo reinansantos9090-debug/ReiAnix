@@ -411,9 +411,7 @@ fun ReiAnixSettingsScreen(
                             SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
                         }
 
-                        if (android.os.Build.VERSION.SDK_INT >= 33) {
-                            item(key = "settings:language") { ReiAnixAppLanguageRow() }
-                        }
+                        item(key = "settings:language") { ReiAnixAppLanguageRow() }
 
                         item(key = "settings:footer") {
                             Column(

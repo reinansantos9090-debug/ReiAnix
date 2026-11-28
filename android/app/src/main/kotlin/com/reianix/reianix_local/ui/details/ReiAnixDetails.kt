@@ -1542,7 +1542,7 @@ private fun DetailsSeasonsSection(
                     text = stringResource(R.string.ui_see_seasons),
                     onClick = onViewEpisodes,
                     modifier = Modifier.semantics {
-                        contentDescription = stringResource(R.string.ui_see_episodes)
+                        contentDescription = "Ver todos os episódios"
                     },
                 )
             }
