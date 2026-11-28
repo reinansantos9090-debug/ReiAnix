@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.mylist
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -331,9 +335,9 @@ private fun ReiAnixMyListReadyContent(
                             message = if (totalSaved == 0) {
                                 stringResource(R.string.ui_my_list_hint)
                             } else {
-                                stringResource(R.string.flow_mylist_filter_none, filter.label)
+                                stringResource(R.string.flow_mylist_filter_none, localizedUiLabel(filter.label))
                             },
-                            actionLabel = if (totalSaved == 0) "Abrir Biblioteca" else null,
+                            actionLabel = if (totalSaved == 0) stringResource(R.string.flow_open_library) else null,
                             onAction = if (totalSaved == 0) onOpenLibrary else null,
                         )
                     }
@@ -368,7 +372,7 @@ private fun MyListFilters(
         ReiAnixMyListFilter.entries.forEach { option ->
             item(key = "filter-" + option.name) {
                 ReiAnixChip(
-                    text = option.label,
+                    text = localizedUiLabel(option.label),
                     selected = option == selected,
                     onClick = { onSelected(option) },
                 )

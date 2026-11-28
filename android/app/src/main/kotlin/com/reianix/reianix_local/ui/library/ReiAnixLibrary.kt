@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -535,11 +539,13 @@ private fun LibraryHeader(
     ReiAnixTopBar(
         title = stringResource(R.string.nav_library),
         actions = {
+            val missingCoversDescription = stringResource(R.string.ui_missing_covers)
+            val libraryFiltersDescription = stringResource(R.string.ui_library_filters)
             IconButton(
                 onClick = onRetryMissingArtwork,
                 enabled = !missingArtworkRetryState.isRunning,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = "Baixar capas que faltam"
+                    contentDescription = missingCoversDescription
                 },
             ) {
                 if (missingArtworkRetryState.isRunning) {
@@ -565,15 +571,15 @@ private fun LibraryHeader(
                 }
             }
             if (onOpenCollections != null) {
-                LibraryWhiteIconButton(Icons.Outlined.Folder, "Coleções", onOpenCollections)
+                LibraryWhiteIconButton(Icons.Outlined.Folder, stringResource(R.string.common_collections), onOpenCollections)
             }
             if (onSearch != null) {
-                LibraryWhiteIconButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+                LibraryWhiteIconButton(Icons.Filled.Search, stringResource(R.string.flow_search_local_label), onSearch)
             }
             IconButton(
                 onClick = onFilters,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = "Filtros da biblioteca"
+                    contentDescription = libraryFiltersDescription
                 },
             ) {
                 Canvas(Modifier.size(ReiAnixTokens.Dimensions.iconMedium)) {
@@ -693,10 +699,11 @@ private fun LibraryFiltersDialog(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                val refreshDescription = stringResource(R.string.extra_refresh_library)
                 IconButton(
                     enabled = !isRefreshing && !closing,
                     onClick = { closeThen(onRefresh) },
-                    modifier = Modifier.semantics { contentDescription = "Atualizar biblioteca" },
+                    modifier = Modifier.semantics { contentDescription = refreshDescription },
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null)
                 }
@@ -705,6 +712,7 @@ private fun LibraryFiltersDialog(
             Row(Modifier.fillMaxWidth().selectableGroup()) {
                 tabs.forEachIndexed { index, title ->
                     val active = index == tab
+                    val tabLabel = localizedUiLabel(title)
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -714,7 +722,7 @@ private fun LibraryFiltersDialog(
                                 role = Role.Tab,
                                 onClick = { tab = index },
                             )
-                            .semantics { contentDescription = title },
+                            .semantics { contentDescription = tabLabel },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
@@ -722,7 +730,7 @@ private fun LibraryFiltersDialog(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                title,
+                                tabLabel,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = if (active) accent else colors.onSurfaceVariant,
                                 maxLines = 1,
@@ -750,6 +758,7 @@ private fun LibraryFiltersDialog(
                 ) {
                     items(options, key = { it.first ?: "__all_genres__" }) { (value, title) ->
                         val selected = value == selectedKey
+                        val optionLabel = if (tab == 1 && value != null) localizedGenreLabel(title) else localizedUiLabel(title)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -796,8 +805,7 @@ private fun LibraryFiltersDialog(
                                     )
                                 }
                             }
-                            Text(
-                                title,
+                            Text(optionLabel,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                 color = if (selected) colors.onBackground else colors.onBackground.copy(alpha = 0.65f),
@@ -1095,7 +1103,7 @@ private fun ColumnScope.LibraryReadyContent(
                         } else {
                             stringResource(R.string.flow_library_no_visible_desc)
                         },
-                        actionLabel = if (filters.hasAnyFilter) "Limpar filtros" else null,
+                        actionLabel = if (filters.hasAnyFilter) stringResource(R.string.ui_clear_filters) else null,
                         onAction = if (filters.hasAnyFilter) onClearFilters else null,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1116,6 +1124,7 @@ private fun ColumnScope.LibraryReadyContent(
                     ) {
                         LibraryAnimeCard(
                             card = card,
+                            availableContentCount = anime.availableContentCount,
                             onClick = remember(onOpenDetails, animeId) { { onOpenDetails(animeId) } },
                             onToggleFavorite = remember(onToggleFavorite, animeId) { { onToggleFavorite(animeId) } },
                             maxDimensionPx = posterRequestDimensionPx,
@@ -1202,7 +1211,7 @@ private fun LibrarySourceSummaryCard(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 ReiAnixBadge(
-                    text = if (sourceAvailable) "Funciona offline" else stringResource(R.string.flow_source_unavailable),
+                    text = stringResource(if (sourceAvailable) R.string.common_offline else R.string.flow_source_unavailable),
                     tone = if (sourceAvailable) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
                 )
             }
@@ -1217,10 +1226,9 @@ private fun LibrarySourceSummaryCard(
     }
 }
 
+@Composable
 private fun librarySourceCountLabel(animeCount: Int, episodeCount: Int): String =
-    animeCount.toString() + " " + if (animeCount == 1) "anime" else "animes" +
-        " • " + episodeCount.toString() + " " +
-        if (episodeCount == 1) "episódio" else "episódios"
+    androidx.compose.ui.res.pluralStringResource(R.plurals.common_anime_count, animeCount, animeCount) + " • " + localizedEpisodeCount(episodeCount)
 
 @Composable
 private fun LibraryLoadingGrid(
@@ -1314,6 +1322,7 @@ private fun libraryFilterTabOptions(
 @Composable
 private fun LibraryAnimeCard(
     card: LibraryCardRenderData,
+    availableContentCount: Int,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     maxDimensionPx: Int,
@@ -1325,7 +1334,7 @@ private fun LibraryAnimeCard(
         artworkExternalUrl = card.artwork?.externalUrl,
         artworkIdentity = card.artworkIdentity,
         artworkSourceRevisions = card.artwork?.sourceRevisions.orEmpty(),
-        metadata = card.metadata,
+        metadata = if (availableContentCount > 0) card.metadata.dropLast(1) + localizedEpisodeCount(availableContentCount) else card.metadata,
         progress = card.progress,
         favorite = card.favorite,
         watching = card.watching,
@@ -1372,5 +1381,6 @@ private fun ReiAnixAnimeUiModel.toLibraryCard(): LibraryCardRenderData = Library
         ?: if (mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else null,
 )
 
+@Composable
 private fun libraryResultLabel(count: Int): String =
-    count.toString() + " " + if (count == 1) "resultado" else "resultados"
+    androidx.compose.ui.res.pluralStringResource(R.plurals.common_result_count, count, count)

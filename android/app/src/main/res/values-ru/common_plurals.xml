@@ -1,0 +1,11 @@
+<resources>
+    <plurals name="common_anime_count">
+        <item quantity="other">%1$d аниме</item>
+    </plurals>
+    <plurals name="common_result_count">
+        <item quantity="one">%1$d результат</item>
+        <item quantity="few">%1$d результата</item>
+        <item quantity="many">%1$d результатов</item>
+        <item quantity="other">%1$d результата</item>
+    </plurals>
+</resources>

@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.home
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -868,7 +872,7 @@ private fun ColumnScope.HomeReadyContent(
         genreSections.forEach { section ->
             item(key = "home-section-genre:" + section.key) {
                 HomeMediaSection(
-                    title = section.title,
+                    title = localizedGenreLabel(section.title),
                     items = section.items,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
@@ -1020,7 +1024,7 @@ private fun HomeHero(
                     ) {
                         anime.playbackTargetEpisodeId?.let { episodeId ->
                             ReiAnixPrimaryButton(
-                                text = anime.playbackActionLabel,
+                                text = localizedUiLabel(anime.playbackActionLabel),
                                 enabled = anime.playbackActionLabel != "Indisponível",
                                 onClick = { onWatch(episodeId, anime.id) },
                                 modifier = Modifier.weight(1f),

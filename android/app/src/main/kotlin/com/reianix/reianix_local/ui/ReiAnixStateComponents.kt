@@ -48,8 +48,8 @@ fun ReiAnixLoadingIndicator(
 
 @Composable
 fun ReiAnixLoadingState(
-    title: String = "Carregando",
-    message: String = "Carregando…",
+    title: String = stringResource(R.string.common_loading),
+    message: String = stringResource(R.string.common_loading_ellipsis),
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -132,8 +132,8 @@ fun ReiAnixEmptyState(
 
 @Composable
 fun ReiAnixEmptyLibraryState(
-    title: String = "Biblioteca vazia",
-    message: String = "Nenhum conteúdo local disponível.",
+    title: String = stringResource(R.string.ui_library_empty),
+    message: String = stringResource(R.string.common_no_local_content),
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
@@ -193,10 +193,10 @@ fun ReiAnixScannerInProgressState(
 
 @Composable
 fun ReiAnixSourceUnavailableState(
-    title: String = "Fonte local indisponível",
+    title: String = stringResource(R.string.common_local_source_unavailable),
     message: String,
     modifier: Modifier = Modifier,
-    actionLabel: String? = "Verificar acesso",
+    actionLabel: String? = stringResource(R.string.extra_storage_verify),
     onAction: (() -> Unit)? = null,
 ) {
     ReiAnixEmptyState(
@@ -210,7 +210,7 @@ fun ReiAnixSourceUnavailableState(
 
 @Composable
 fun ReiAnixFileUnavailableState(
-    title: String = "Arquivo indisponível",
+    title: String = stringResource(R.string.tail_file_unavailable),
     message: String,
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
@@ -255,7 +255,7 @@ fun ReiAnixFileUnavailableState(
 
 @Composable
 fun ReiAnixArtworkMissingState(
-    label: String = "Sem arte",
+    label: String = stringResource(R.string.extra_art_missing),
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -276,7 +276,7 @@ fun ReiAnixRecoverableErrorState(
     message: String,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
-    retryLabel: String = "Tentar novamente",
+    retryLabel: String = stringResource(R.string.ui_retry),
     icon: ImageVector? = Icons.Filled.Info,
 ) {
     Column(

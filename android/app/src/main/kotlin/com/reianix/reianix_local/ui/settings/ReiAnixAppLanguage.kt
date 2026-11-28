@@ -69,8 +69,8 @@ internal fun ReiAnixAppLanguageRow() {
     val context = LocalContext.current
     // Read configuration so changes from Android Settings invalidate the UI.
     val configuration = LocalConfiguration.current
-    val selected = remember(configuration) {
-        ReiAnixAppLocales.selected(context)
+    var selected by remember(configuration) {
+        mutableStateOf(ReiAnixAppLocales.selected(context))
     }
     val options = listOf(
         "" to R.string.locale_system,
@@ -105,6 +105,7 @@ internal fun ReiAnixAppLanguageRow() {
                                         showDialog = false
                                         if (tag != selected) {
                                             ReiAnixAppLocales.change(context, tag)
+                                            selected = ReiAnixAppLocales.selected(context)
                                         }
                                     },
                                 ),

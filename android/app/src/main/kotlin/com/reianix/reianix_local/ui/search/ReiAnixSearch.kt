@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.search
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -326,10 +330,11 @@ fun ReiAnixSearchScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (searchQuery.isNotBlank()) {
+                        val clearSearchDescription = stringResource(R.string.ui_clear_query)
                         IconButton(
                             onClick = { onQueryChange("") },
                             modifier = Modifier.semantics {
-                                contentDescription = "Limpar busca"
+                                contentDescription = clearSearchDescription
                                 role = Role.Button
                             },
                         ) {
@@ -340,14 +345,11 @@ fun ReiAnixSearchScreen(
                         }
                     }
                     if (source == "local") {
+                        val filterDescription = stringResource(if (searchState.filters.hasAnyFilter) R.string.flow_filters_active else R.string.flow_filters_open)
                         IconButton(
                             onClick = onOpenFilters,
                             modifier = Modifier.semantics {
-                                contentDescription = if (searchState.filters.hasAnyFilter) {
-                                    stringResource(R.string.flow_filters_active)
-                                } else {
-                                    stringResource(R.string.flow_filters_open)
-                                }
+                                contentDescription = filterDescription
                                 role = Role.Button
                             },
                         ) {
@@ -973,7 +975,7 @@ private fun ReiAnixSearchFilterSheet(
                     genres.forEach { genre ->
                         item(key = "search-genre-" + genre.stableKey) {
                             ReiAnixChip(
-                                text = genre.name,
+                                text = localizedGenreLabel(genre.name),
                                 selected = filters.selectedGenreKey == genre.stableKey,
                                 onClick = {
                                     onGenreSelected(
@@ -989,16 +991,14 @@ private fun ReiAnixSearchFilterSheet(
             }
 
             Box {
+                val sortText = filters.sort?.let { localizedUiLabel(it) }
+                val sortDescription = if (sortText.isNullOrBlank()) stringResource(R.string.flow_sort_results) else stringResource(R.string.flow_sort_current, sortText)
                 ReiAnixChip(
-                    text = filters.sort ?: stringResource(R.string.flow_sort),
+                    text = sortText ?: stringResource(R.string.flow_sort),
                     selected = !filters.sort.isNullOrBlank(),
                     onClick = { sortMenuExpanded = true },
                     modifier = Modifier.semantics {
-                        contentDescription = if (filters.sort.isNullOrBlank()) {
-                            stringResource(R.string.flow_sort_results)
-                        } else {
-                            stringResource(R.string.flow_sort_current, filters.sort.orEmpty())
-                        }
+                        contentDescription = sortDescription
                     },
                 )
                 DropdownMenu(
@@ -1015,7 +1015,7 @@ private fun ReiAnixSearchFilterSheet(
                     )
                     ReiAnixLibrarySort.OPTIONS.forEach { option ->
                         DropdownMenuItem(
-                            text = { Text(option.label) },
+                            text = { Text(localizedUiLabel(option.label)) },
                             onClick = {
                                 sortMenuExpanded = false
                                 onSortSelected(option.label)

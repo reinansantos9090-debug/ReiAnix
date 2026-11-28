@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -1170,7 +1174,7 @@ private fun DetailsHero(
                 horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
             ) {
                 ReiAnixBadge(
-                    text = stateLabel,
+                    text = localizedUiLabel(stateLabel),
                     tone = when (anime.presentationState) {
                         com.reianix.reianix_local.ui.model.ReiAnixPresentationState.ARTWORK_FAILED ->
                             ReiAnixBadgeTone.Warning
@@ -1267,7 +1271,7 @@ private fun DetailsHero(
             ) {
                 anime.genres.distinctBy { ReiAnixGenreNames.key(it.name) }.forEach { genre ->
                     Text(
-                        text = genre.name,
+                        text = localizedGenreLabel(genre.name),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White,
                         maxLines = 1,
@@ -1378,7 +1382,7 @@ private fun DetailsHero(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             ReiAnixPrimaryButton(
-                text = if (target?.isPlayable == true) target.playbackActionLabel else stringResource(R.string.flow_playback_unavailable),
+                text = if (target?.isPlayable == true) localizedUiLabel(target.playbackActionLabel) else stringResource(R.string.flow_playback_unavailable),
                 onClick = { target?.takeIf { it.isPlayable }?.let { onWatch(it.id) } },
                 enabled = target?.isPlayable == true,
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-play-action"),
