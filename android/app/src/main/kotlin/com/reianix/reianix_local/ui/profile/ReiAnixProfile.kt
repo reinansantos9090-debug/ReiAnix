@@ -916,7 +916,7 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
             .any { it.contains(query.trim(), ignoreCase = true) }
     }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
-        ReiAnixTopBar(stringResource(R.string.aux_favorite_scenes), subtitle = "${scenes.size} cenas salvas",
+        ReiAnixTopBar(stringResource(R.string.aux_favorite_scenes), subtitle = androidx.compose.ui.res.pluralStringResource(R.plurals.aux_saved_scenes, scenes.size, scenes.size),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack, actions = {
                 IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, "Pesquisar cenas") }
             })
