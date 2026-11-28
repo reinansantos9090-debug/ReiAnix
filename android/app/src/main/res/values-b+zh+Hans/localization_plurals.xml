@@ -1,0 +1,8 @@
+<resources>
+  <plurals name="flow_episode_count">
+    <item quantity="other">%1$d 集</item>
+  </plurals>
+  <plurals name="flow_search_titles">
+    <item quantity="other">输入动漫标题，在本地的 %1$d 部作品中搜索。</item>
+  </plurals>
+</resources>

@@ -1,0 +1,8 @@
+<resources>
+  <plurals name="flow_episode_count">
+    <item quantity="other">에피소드 %1$d개</item>
+  </plurals>
+  <plurals name="flow_search_titles">
+    <item quantity="other">애니메이션 제목을 입력하여 로컬 작품 %1$d개를 검색하세요.</item>
+  </plurals>
+</resources>

@@ -1,0 +1,5 @@
+<resources>
+  <plurals name="aux_saved_scenes">
+    <item quantity="other">저장한 장면 %1$d개</item>
+  </plurals>
+</resources>
