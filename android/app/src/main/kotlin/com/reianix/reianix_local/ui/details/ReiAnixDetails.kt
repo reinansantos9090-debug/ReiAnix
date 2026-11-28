@@ -708,7 +708,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
         }
 
         // Recommendations replace Sobre/Episódios and Informações, just below playback.
-        item(
+        if (anime.mediaKind != ReiAnixMediaKind.VIDEO) item(
             key = "details-recommendations:" + anime.stableKey,
             contentType = "details-recommendations",
         ) {
@@ -779,7 +779,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onWatch = onWatch,
                     onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
-                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE && anime.mediaKind != ReiAnixMediaKind.VIDEO,
                 )
             }
         }
@@ -790,8 +790,14 @@ private fun ColumnScope.ReiAnixDetailsReady(
                 contentType = "details-media-files-heading",
             ) {
                 DetailsSectionHeader(
-                    title = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) "Filmes" else "Conteúdo",
-                    subtitle = episodeCountLabel(anime.mediaFiles.size),
+                    title = when (anime.mediaKind) {
+                        ReiAnixMediaKind.VIDEO -> "Vídeos"
+                        ReiAnixMediaKind.MOVIE -> "Filmes"
+                        else -> "Conteúdo"
+                    },
+                    subtitle = if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+                        if (anime.mediaFiles.size == 1) "1 vídeo" else "${anime.mediaFiles.size} vídeos"
+                    } else episodeCountLabel(anime.mediaFiles.size),
                 )
             }
             items(
@@ -807,7 +813,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onWatch = onWatch,
                     onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
-                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE && anime.mediaKind != ReiAnixMediaKind.VIDEO,
                 )
             }
         }
@@ -835,7 +841,7 @@ private fun ColumnScope.ReiAnixDetailsReady(
                     onWatch = onWatch,
                     onDeleteEpisode = onDeleteEpisode,
                     onSetEpisodeIdentification = onSetEpisodeIdentification,
-                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE,
+                    allowEpisodeIdentification = anime.mediaKind != ReiAnixMediaKind.MOVIE && anime.mediaKind != ReiAnixMediaKind.VIDEO,
                 )
             }
         }
@@ -1005,7 +1011,11 @@ private fun DetailsHero(
         anime.year?.let { add(it.toString()) }
         anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { add(statusLabel(it)) }
         anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { add(formatLabel(it)) }
-        anime.episodeCount?.takeIf { it > 0 }?.let { count ->
+        if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+            add("Vídeo local")
+            (target ?: anime.mediaFiles.firstOrNull())?.durationSeconds
+                ?.takeIf { it.isFinite() && it > 0.0 }?.let { add(formatDurationLabel(it)) }
+        } else anime.episodeCount?.takeIf { it > 0 }?.let { count ->
             add(if (count == 1) "Biblioteca: 1 episódio local" else "Biblioteca: $count episódios locais")
         }
         anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { count ->
@@ -1190,7 +1200,7 @@ private fun DetailsHero(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            DetailsAniListAction(
+            if (anime.mediaKind != ReiAnixMediaKind.VIDEO) DetailsAniListAction(
                 running = aniListRepairRunning,
                 onRepair = onManageAniList,
                 modifier = Modifier.weight(1f).testTag("details-quick-anilist"),
@@ -1378,7 +1388,7 @@ private fun DetailsHero(
                 modifier = Modifier.weight(1f).fillMaxHeight().testTag("details-play-action"),
                 leadingIcon = Icons.Filled.PlayArrow,
             )
-            ReiAnixSecondaryButton(
+            if (anime.mediaKind != ReiAnixMediaKind.VIDEO) ReiAnixSecondaryButton(
                 text = "Maratona",
                 onClick = onOpenMarathon,
                 enabled = hasMarathonContent,
@@ -1732,7 +1742,7 @@ private fun DetailsEpisodeItem(
         modifier = Modifier.padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
         onPlay = { onWatch(episode.id) }, trailingContent = {
             Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.semantics { contentDescription = "Ações do episódio " + episode.displayTitle }) {
+                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.semantics { contentDescription = (if (episode.episodeType == "video") "Ações do vídeo " else "Ações do episódio ") + episode.displayTitle }) {
                     Icon(imageVector = Icons.Filled.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -1764,7 +1774,7 @@ private fun DetailsEpisodeItem(
     deletePath?.let { path ->
         AlertDialog(
             onDismissRequest = { deletePath = null },
-            title = { Text("Excluir episódio?") },
+            title = { Text(if (episode.episodeType == "video") "Excluir vídeo?" else "Excluir episódio?") },
             text = {
                 Text("O arquivo \""+episode.fileName+"\" será excluído permanentemente do dispositivo. O registro e o progresso deste episódio também serão removidos da biblioteca. Essa ação não pode ser desfeita.")
             },

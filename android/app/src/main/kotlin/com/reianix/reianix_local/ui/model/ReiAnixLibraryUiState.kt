@@ -115,7 +115,8 @@ data class ReiAnixHomeLibraryUiState(
                         status = anime.status,
                         format = anime.format,
                         studio = anime.studio,
-                        latestUnwatchedEpisodeAt = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) null else
+                        localVideoDurationSeconds = anime.localVideoDurationSeconds,
+                        latestUnwatchedEpisodeAt = if (anime.mediaKind == ReiAnixMediaKind.MOVIE || anime.mediaKind == ReiAnixMediaKind.VIDEO) null else
                             anime.seasons.asSequence().flatMap { it.episodes.asSequence() }
                                 .filter { it.media.availability == ReiAnixMediaAvailability.AVAILABLE && !it.isWatched }
                                 .mapNotNull { it.modifiedAt?.takeIf { time -> time.isFinite() && time > 0.0 } }

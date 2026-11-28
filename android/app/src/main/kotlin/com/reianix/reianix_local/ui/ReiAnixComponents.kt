@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui
 
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+
 import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
 
 import com.reianix.reianix_local.ui.theme.reiAnixContentTint
@@ -674,7 +676,8 @@ fun ReiAnixAnimeCard(
         artworkSourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
-            anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
+            (anime.localVideoDurationSeconds?.let(::formatDurationLabel) ?: anime.episodeCountLabel)
+                .takeIf { anime.availableContentCount > 0 }?.let(::add)
         },
         // This summary is already cached per immutable anime. Rewalking every
         // episode while a lazy grid card enters composition adds work on the UI thread.
@@ -688,7 +691,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
+        bottomBadgeText = bottomBadgeText ?: if (anime.mediaKind == ReiAnixMediaKind.VIDEO) "Vídeo" else presentationStateLabel(anime.presentationState),
     )
 }
 
@@ -709,7 +712,9 @@ fun ReiAnixAnimeCard(
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
             anime.availableContentCount.takeIf { it > 0 }?.let {
-                add(if (it == 1) "1 episódio" else "$it episódios")
+                add(if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+                    anime.localVideoDurationSeconds?.let(::formatDurationLabel) ?: if (it == 1) "1 vídeo" else "$it vídeos"
+                } else if (it == 1) "1 episódio" else "$it episódios")
             }
         },
         progress = null,
@@ -722,7 +727,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
+        bottomBadgeText = bottomBadgeText ?: if (anime.mediaKind == ReiAnixMediaKind.VIDEO) "Vídeo" else presentationStateLabel(anime.presentationState),
     )
 }
 
@@ -1126,7 +1131,7 @@ fun ReiAnixEpisodeCard(
                     announceProgress = false,
                 )
                 Text(
-                    text = if (episode.isPlayable) "Episódio local" else "Arquivo indisponível",
+                    text = if (!episode.isPlayable) "Arquivo indisponível" else if (episode.episodeType == "video") "Vídeo local" else "Episódio local",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (episode.isPlayable) {
                         MaterialTheme.colorScheme.onSurfaceVariant

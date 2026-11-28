@@ -235,6 +235,7 @@ object LibraryUiMappers {
     private fun mediaKind(value: String?): ReiAnixMediaKind = when (value?.lowercase()) {
         "series", "anime" -> ReiAnixMediaKind.SERIES
         "movie", "film" -> ReiAnixMediaKind.MOVIE
+        "video" -> ReiAnixMediaKind.VIDEO
         else -> ReiAnixMediaKind.UNKNOWN
     }
 
