@@ -411,7 +411,6 @@ fun ReiAnixSettingsScreen(
                             SettingsFlatCategoryRow(category = category, onClick = { onOpenCategory(category.label) })
                         }
 
-                        item(key = "settings:language") { ReiAnixAppLanguageRow() }
 
                         item(key = "settings:footer") {
                             Column(
@@ -589,6 +588,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                     subtitle = settingsDestination(category)?.parent?.takeIf { it.isNotBlank() } ?: settingsCategoryDescription(category),
                     onBack = onBack,
                 )
+            }
+            if (category == "Geral") {
+                item(key = "settings:language") { ReiAnixAppLanguageRow() }
             }
             item(key = "operation-error") {
                 latestOperationError?.let { operation ->
