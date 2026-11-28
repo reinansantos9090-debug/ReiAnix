@@ -1,6 +1,5 @@
 <resources>
     <string name="locale_title">言語</string>
-    <string name="locale_system">システムのデフォルト</string>
     <string name="locale_cancel">キャンセル</string>
     <string name="nav_home">ホーム</string>
     <string name="nav_library">ライブラリ</string>

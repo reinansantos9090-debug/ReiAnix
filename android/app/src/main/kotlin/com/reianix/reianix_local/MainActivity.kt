@@ -4872,6 +4872,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        ReiAnixAppLocales.initializeDefault(this)
         Log.i(tag, "CONFIGURATION_CHANGED orientation=${newConfig.orientation}")
         applyApplicationSystemUi()
     }

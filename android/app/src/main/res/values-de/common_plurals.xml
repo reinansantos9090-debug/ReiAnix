@@ -1,0 +1,10 @@
+<resources>
+  <plurals name="common_anime_count">
+    <item quantity="one">%1$d Anime</item>
+    <item quantity="other">%1$d Anime</item>
+  </plurals>
+  <plurals name="common_result_count">
+    <item quantity="one">%1$d Ergebnis</item>
+    <item quantity="other">%1$d Ergebnisse</item>
+  </plurals>
+</resources>

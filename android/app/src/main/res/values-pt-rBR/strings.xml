@@ -1,6 +1,5 @@
 <resources>
     <string name="locale_title">Idioma</string>
-    <string name="locale_system">Padrão do sistema</string>
     <string name="locale_cancel">Cancelar</string>
     <string name="nav_home">Início</string>
     <string name="nav_library">Biblioteca</string>

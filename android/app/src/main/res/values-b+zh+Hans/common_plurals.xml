@@ -1,0 +1,8 @@
+<resources>
+  <plurals name="common_anime_count">
+    <item quantity="other">%1$d 部动漫</item>
+  </plurals>
+  <plurals name="common_result_count">
+    <item quantity="other">%1$d 条结果</item>
+  </plurals>
+</resources>

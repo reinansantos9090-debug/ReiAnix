@@ -1,6 +1,5 @@
 <resources>
     <string name="locale_title">Язык</string>
-    <string name="locale_system">Системный язык</string>
     <string name="locale_cancel">Отмена</string>
     <string name="nav_home">Главная</string>
     <string name="nav_library">Библиотека</string>

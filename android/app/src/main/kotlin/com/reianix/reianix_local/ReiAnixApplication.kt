@@ -8,6 +8,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.reianix.reianix_local.ui.artwork.ReiAnixArtworkRequestInterceptor
+import com.reianix.reianix_local.ui.settings.ReiAnixAppLocales
 
 /**
  * Native process Application and single owner of the existing Kotlin dependency
@@ -55,6 +56,7 @@ class ReiAnixApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        ReiAnixAppLocales.initializeDefault(this)
         // Remove historical manual diagnostic reports without touching backups or library.
         runCatching { deleteSharedPreferences("reianix_manual_diagnostics_v1") }
         runCatching { ReiAnixLegacyStorageMigration.migrate(this) }

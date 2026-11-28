@@ -1,0 +1,8 @@
+<resources>
+  <plurals name="common_anime_count">
+    <item quantity="other">애니메이션 %1$d개</item>
+  </plurals>
+  <plurals name="common_result_count">
+    <item quantity="other">검색 결과 %1$d개</item>
+  </plurals>
+</resources>

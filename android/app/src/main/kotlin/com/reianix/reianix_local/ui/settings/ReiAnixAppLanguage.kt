@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.settings
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.reianix.reianix_local.R
+import java.util.Locale
 
 // Resolve only display strings; route keys and stored preferences stay unchanged.
 @Composable
@@ -72,21 +75,17 @@ internal fun ReiAnixAppLanguageRow() {
     var selected by remember(configuration) {
         mutableStateOf(ReiAnixAppLocales.selected(context))
     }
-    val options = listOf(
-        "" to R.string.locale_system,
-        "pt-BR" to R.string.locale_pt,
-        "en" to R.string.locale_en,
-        "es" to R.string.locale_es,
-        "ru" to R.string.locale_ru,
-        "ja" to R.string.locale_ja,
-    )
-    val current = options.firstOrNull { it.first == selected }
-        ?: options.firstOrNull { it.first == selected.substringBefore('-') }
-    val summary = current?.let { stringResource(it.second) } ?: selected
+    val displayLocale = Locale.forLanguageTag(selected)
+    val names = remember(displayLocale) {
+        ReiAnixAppLocales.supported.associateWith { tag ->
+            Locale.forLanguageTag(tag).getDisplayName(displayLocale)
+                .replaceFirstChar { it.titlecase(displayLocale) }
+        }
+    }
     var showDialog by remember { mutableStateOf(false) }
     SettingsLanguageRowContent(
         label = stringResource(R.string.locale_title),
-        summary = summary,
+        summary = names.getValue(selected),
         onClick = { showDialog = true },
     )
     if (showDialog) {
@@ -94,12 +93,14 @@ internal fun ReiAnixAppLanguageRow() {
             onDismissRequest = { showDialog = false },
             title = { Text(stringResource(R.string.locale_title)) },
             text = {
-                Column(Modifier.selectableGroup()) {
-                    options.forEach { (tag, label) ->
+                Column(
+                    Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()).selectableGroup(),
+                ) {
+                    names.forEach { (tag, label) ->
                         Row(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                                 .selectable(
-                                    selected = current?.first == tag,
+                                    selected = selected == tag,
                                     role = Role.RadioButton,
                                     onClick = {
                                         showDialog = false
@@ -111,8 +112,8 @@ internal fun ReiAnixAppLanguageRow() {
                                 ),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            RadioButton(selected = current?.first == tag, onClick = null)
-                            Text(stringResource(label), Modifier.padding(start = 12.dp))
+                            RadioButton(selected = selected == tag, onClick = null)
+                            Text(label, Modifier.padding(start = 12.dp))
                         }
                     }
                 }
