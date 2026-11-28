@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui
 
+import com.reianix.reianix_local.ui.model.ReiAnixMediaKind
+
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
@@ -672,7 +674,11 @@ fun ReiAnixAnimeCard(
     bottomBadgeText: String? = null,
     onFavoriteClick: (() -> Unit)? = null,
 ) {
-    val countLabel = anime.availableContentCount.takeIf { it > 0 }?.let { localizedEpisodeCount(it) }
+    val countLabel = anime.availableContentCount.takeIf { it > 0 }?.let {
+        if (anime.mediaKind == ReiAnixMediaKind.VIDEO) anime.localVideoDurationSeconds?.let(::formatDurationLabel)
+            ?: androidx.compose.ui.res.pluralStringResource(R.plurals.local_video_count, it, it)
+        else localizedEpisodeCount(it)
+    }
     ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
@@ -694,7 +700,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
+        bottomBadgeText = bottomBadgeText ?: if (anime.mediaKind == ReiAnixMediaKind.VIDEO) stringResource(R.string.local_video_badge) else presentationStateLabel(anime.presentationState),
     )
 }
 
@@ -707,7 +713,11 @@ fun ReiAnixAnimeCard(
     bottomBadgeText: String? = null,
     onFavoriteClick: (() -> Unit)? = null,
 ) {
-    val countLabel = anime.availableContentCount.takeIf { it > 0 }?.let { localizedEpisodeCount(it) }
+    val countLabel = anime.availableContentCount.takeIf { it > 0 }?.let {
+        if (anime.mediaKind == ReiAnixMediaKind.VIDEO) anime.localVideoDurationSeconds?.let(::formatDurationLabel)
+            ?: androidx.compose.ui.res.pluralStringResource(R.plurals.local_video_count, it, it)
+        else localizedEpisodeCount(it)
+    }
     ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
@@ -727,7 +737,7 @@ fun ReiAnixAnimeCard(
         onFavoriteClick = onFavoriteClick,
         maxDimensionPx = maxDimensionPx,
         artworkIdentity = anime.stableKey,
-        bottomBadgeText = bottomBadgeText ?: presentationStateLabel(anime.presentationState),
+        bottomBadgeText = bottomBadgeText ?: if (anime.mediaKind == ReiAnixMediaKind.VIDEO) stringResource(R.string.local_video_badge) else presentationStateLabel(anime.presentationState),
     )
 }
 
@@ -1125,7 +1135,11 @@ fun ReiAnixEpisodeCard(
                     announceProgress = false,
                 )
                 Text(
-                    text = stringResource(if (episode.isPlayable) R.string.common_local_episode else R.string.tail_file_unavailable),
+                    text = stringResource(when {
+                        !episode.isPlayable -> R.string.tail_file_unavailable
+                        episode.episodeType == "video" -> R.string.local_video_label
+                        else -> R.string.common_local_episode
+                    }),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (episode.isPlayable) {
                         MaterialTheme.colorScheme.onSurfaceVariant

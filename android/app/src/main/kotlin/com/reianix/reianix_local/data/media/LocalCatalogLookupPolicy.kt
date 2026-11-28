@@ -8,13 +8,13 @@ internal enum class LocalCatalogLookup { NORMAL, PERSONAL, UNCERTAIN }
 
 internal object LocalCatalogLookupPolicy {
     private val captureName = Regex(
-        """^(?:(?:vid|video|img|pxl|mvi|dsc|mvimg|line|whatsapp(?:[ _.-]+video)?|screen[ _.-]*record(?:ing|er)?|recording|gravacao|gravação)[ _.-]*\d{3,}.*|(?:\d{8}|\d{4}[-_]\d{2}[-_]\d{2})[ _.-]+\d{4,}.*)$""",
+        """^(?:(?:vid|video|img|pxl|mvi|dsc|mvimg|line|youcut|capcut|inshot|vivavideo|kinemaster|xrecorder|az[ _.-]*screen[ _.-]*recorder|mobizen|whatsapp(?:[ _.-]+video)?|screen[ _.-]*record(?:ing|er)?|recording|gravacao|gravação)[ _.-]*\d{3,}.*|(?:\d{8}|\d{4}[-_]\d{2}[-_]\d{2})[ _.-]+\d{4,}.*)$""",
         RegexOption.IGNORE_CASE,
     )
     private val generic = setOf(
         "line", "vid", "video", "videos", "img", "pxl", "mvi", "dsc",
         "whatsapp", "whatsapp video", "screen recording", "screen recorder",
-        "recording", "gravacao", "gravação", "arquivo não identificado",
+        "recording", "gravacao", "gravação", "youcut", "capcut", "inshot", "vivavideo", "kinemaster", "xrecorder", "mobizen", "arquivo não identificado",
     )
     private val episodeMarker = Regex(
         """(?i)(?:\bS\d{1,3}[ ._-]*E\d{1,4}\b|\b(?:EP|EPISODE|EPISÓDIO|EPISODIO)[ ._-]*\d{1,4}\b)""",

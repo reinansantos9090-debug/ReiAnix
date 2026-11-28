@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Vídeo</string>
+    <string name="local_video_section">Vídeos</string>
+    <string name="local_video_label">Vídeo local</string>
+    <string name="local_video_actions">Ações do vídeo %1$s</string>
+    <string name="local_video_delete">Excluir vídeo?</string>
+    <string name="local_video_delete_warning">O arquivo “%1$s” será excluído permanentemente do dispositivo. O registro e o progresso deste vídeo também serão removidos da biblioteca. Essa ação não pode ser desfeita.</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d vídeo</item>
+        <item quantity="other">%d vídeos</item>
+    </plurals>
+</resources>

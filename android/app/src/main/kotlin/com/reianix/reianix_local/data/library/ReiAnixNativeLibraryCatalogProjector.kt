@@ -56,7 +56,9 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             .associate { it.id to (it.lastPlayedAt ?: 0.0) }
         val continueWatching = buildList {
             for (anime in animes) {
-                val playable = if (anime.mediaKind == ReiAnixMediaKind.MOVIE) {
+                val playable = if (anime.mediaKind == ReiAnixMediaKind.VIDEO) {
+                    anime.contentEpisodes
+                } else if (anime.mediaKind == ReiAnixMediaKind.MOVIE) {
                     anime.mediaFiles
                 } else {
                     anime.seasons.flatMap { it.episodes }
@@ -100,15 +102,18 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                 .thenBy { it.fileName.lowercase() }
                 .thenBy { it.path.lowercase() },
         )
-        val specialEpisodes = orderedEpisodes.filter { it.episodeType?.lowercase() in specialTypes }
-        val movieEpisodes = orderedEpisodes.filter { it.episodeType?.lowercase() == "movie" }
-        val regularEpisodes = orderedEpisodes.filter {
-            it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
-        }
         // Reuse the episodes already loaded by this background projection. Existing
         // automatic remote artwork on a personal capture is hidden, not deleted.
         val personalVideo = LocalCatalogLookupPolicy.needsEvidence(anime.lookupTitle, anime.mediaKind) &&
             anime.localCatalogLookup(row.episodes.sortedBy { it.id }.take(8).map { it.fileName }) == LocalCatalogLookup.PERSONAL
+        // Presentation-only category: retain persisted episode IDs, file paths and
+        // playback bookkeeping; do not migrate or re-index the library.
+        val displayKind = if (personalVideo) "video" else anime.mediaKind
+        val specialEpisodes = if (personalVideo) emptyList() else orderedEpisodes.filter { it.episodeType?.lowercase() in specialTypes }
+        val movieEpisodes = if (personalVideo) orderedEpisodes else orderedEpisodes.filter { it.episodeType?.lowercase() == "movie" }
+        val regularEpisodes = if (personalVideo) emptyList() else orderedEpisodes.filter {
+            it.episodeType?.lowercase() !in specialTypes && it.episodeType?.lowercase() != "movie"
+        }
         val personalManualFields = if (personalVideo) parseStringArray(anime.metadataManualFieldsJson).toSet() else emptySet()
         fun visibleField(field: String): Boolean = !personalVideo || field in personalManualFields
         val legacyGenres = parseReiAnixGenreNames(anime.genresJson)
@@ -179,7 +184,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "favorite" to anime.favorite,
             "is_pinned" to anime.isPinned,
             "added_at" to anime.addedAt,
-            "media_kind" to anime.mediaKind,
+            "media_kind" to displayKind,
         )
         val seasonGroups = regularEpisodes.groupBy { it.season }.toSortedMap().map { (season, episodes) ->
             mapOf(
@@ -190,7 +195,7 @@ internal object ReiAnixNativeLibraryCatalogProjector {
         }
         val lastPlayed = row.episodes.mapNotNull { it.lastPlayedAt }.maxOrNull()
         val availableEpisodes = row.episodes.filter(::isAvailable)
-        val target = playbackTarget(anime.mediaKind, availableEpisodes)
+        val target = playbackTarget(if (personalVideo) "movie" else anime.mediaKind, availableEpisodes)
 
         val projection = linkedMapOf<String, Any?>(
             "id" to anime.id,
@@ -212,7 +217,10 @@ internal object ReiAnixNativeLibraryCatalogProjector {
                     "episodes" to specialEpisodes.map { episodeMap(it, anime.id, row, adultArtwork) },
                 ),
             ),
-            "media_files" to movieEpisodes.map { episodeMap(it, anime.id, row, adultArtwork) },
+            "media_files" to movieEpisodes.map {
+                val mapped = episodeMap(it, anime.id, row, adultArtwork)
+                if (personalVideo) mapped + mapOf("episode_type" to "video", "number" to null, "season" to null) else mapped
+            },
             // File metadata is captured with the background catalog projection,
             // never during Compose composition. Preserve same-path regeneration keys.
             "artwork_source_revisions" to (animeArtwork.mapNotNull { it.localPath } +
@@ -220,14 +228,14 @@ internal object ReiAnixNativeLibraryCatalogProjector {
             "artwork_available" to (!adultArtwork && (!primaryLocalArtwork.isNullOrBlank() || (showCoverCache && !anime.coverCache.isNullOrBlank()))),
             "artwork_local_path" to primaryLocalArtwork,
             "artwork_external_url" to primaryExternalArtwork,
-            "artwork_backdrop_local_path" to backdrop?.localPath,
+            "artwork_backdrop_local_path" to (backdrop?.localPath ?: localVideoPoster),
             "backdrop_external_url" to backdrop?.externalUrl,
             "playback_target_episode_id" to target?.id,
             "score" to anime.score?.takeIf { visibleField("score") }?.toDouble(),
             "year" to anime.year.takeIf { visibleField("year") },
             "added_at" to anime.addedAt,
             "last_played_at" to lastPlayed,
-            "media_kind" to anime.mediaKind,
+            "media_kind" to displayKind,
             "metadata_status" to anime.metadataStatus,
             "presentation_state" to null,
         )
