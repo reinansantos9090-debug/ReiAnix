@@ -218,13 +218,14 @@ fun ReiAnixNativePlayerTopControls(
             ),
     ) {
         // The top overlay contains only Back and the centered episode title.
+        val backDescription = stringResource(R.string.ui_back)
         PlayerIconButton(
             onClick = onBack,
             modifier = Modifier
                 .size(48.dp)
                 .align(Alignment.TopStart)
                 .semantics {
-                    contentDescription = "Voltar"
+                    contentDescription = backDescription
                     role = Role.Button
                 },
         ) {
@@ -339,18 +340,19 @@ fun ReiAnixNativePlayerCenterControls(
                     modifier = Modifier.size(maxOf(dimensions.centerButtonContainerSize, playTouchSize)),
                     contentAlignment = Alignment.Center,
                 ) {
+                    val playDescription = stringResource(when {
+                        state.episodeTransitionInProgress -> R.string.polish_wait_episode
+                        state.ended -> R.string.polish_replay
+                        state.isPlaying -> R.string.aux_pause
+                        else -> R.string.aux_play
+                    })
                     PlayerIconButton(
                         onClick = onPlayPause,
                         enabled = !state.episodeTransitionInProgress,
                         modifier = Modifier
                             .size(maxOf(dimensions.centerButtonSize, playTouchSize))
                             .semantics {
-                                contentDescription = when {
-                                    state.episodeTransitionInProgress -> "Aguarde a troca de episódio"
-                                    state.ended -> "Reproduzir novamente"
-                                    state.isPlaying -> "Pausar"
-                                    else -> "Reproduzir"
-                                }
+                                contentDescription = playDescription
                                 role = Role.Button
                             },
                     ) {
@@ -973,17 +975,11 @@ fun ReiAnixNativePlayerBottomControls(
                             icon = Icons.Filled.MoreVert,
                             label = stringResource(R.string.ui_options),
                             showLabel = !landscape,
-                            contentDescription = buildString {
-                                append("Mais opções do player")
-                                state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let {
-                                    append(". Velocidade ")
-                                    append(String.format(java.util.Locale.ROOT, "%.2gx", it))
-                                }
-                                if (state.aspectLabel.isNotBlank()) {
-                                    append(". Proporção ")
-                                    append(state.aspectLabel)
-                                }
-                            },
+                            contentDescription = listOfNotNull(
+                                stringResource(R.string.polish_player_options),
+                                state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let { stringResource(R.string.polish_speed, String.format(java.util.Locale.ROOT, "%.2gx", it)) },
+                                state.aspectLabel.takeIf { it.isNotBlank() }?.let { stringResource(R.string.polish_aspect, it) },
+                            ).joinToString(". "),
                             onClick = onSource,
                             enabled = !state.episodeTransitionInProgress,
                         )

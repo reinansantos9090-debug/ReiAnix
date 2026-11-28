@@ -423,6 +423,7 @@ fun ReiAnixChip(
     enabled: Boolean = true,
     selected: Boolean = false,
 ) {
+    val selectedDescription = stringResource(if (selected) R.string.nav_selected else R.string.nav_not_selected)
     FilterChip(
         selected = selected,
         onClick = onClick,
@@ -430,7 +431,7 @@ fun ReiAnixChip(
         modifier = modifier
             .heightIn(min = ReiAnixTokens.Dimensions.chipMinHeight)
             .semantics {
-                stateDescription = if (selected) "Selecionado" else "Não selecionado"
+                stateDescription = selectedDescription
             },
         label = {
             Text(
@@ -601,7 +602,7 @@ fun ReiAnixTopBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     navigationIcon: ImageVector? = null,
-    navigationContentDescription: String = "Voltar",
+    navigationContentDescription: String = stringResource(R.string.ui_back),
     onNavigationClick: (() -> Unit)? = null,
     titleStyle: TextStyle = ReiAnixTokens.TypographyTokens.screenTitle,
     titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
@@ -1296,6 +1297,8 @@ fun ReiAnixProgressIndicator(
     } else {
         0f
     }
+    val progressDescription = if (announceProgress && visible) stringResource(R.string.common_progress) else ""
+    val watchedDescription = if (announceProgress && visible) stringResource(R.string.common_watched_percent, (clampedProgress * 100f).roundToInt()) else ""
     LinearProgressIndicator(
         progress = { clampedProgress },
         modifier = modifier
@@ -1304,13 +1307,13 @@ fun ReiAnixProgressIndicator(
             .then(
                 if (announceProgress && visible) {
                     Modifier.semantics {
-                        contentDescription = "Progresso"
+                        contentDescription = progressDescription
                         progressBarRangeInfo = ProgressBarRangeInfo(
                             current = clampedProgress,
                             range = 0f..1f,
                             steps = 0,
                         )
-                        stateDescription = ((clampedProgress * 100f).roundToInt()).toString() + "% assistido"
+                        stateDescription = watchedDescription
                     }
                 } else {
                     Modifier

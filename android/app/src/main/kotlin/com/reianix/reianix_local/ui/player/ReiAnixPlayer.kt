@@ -148,7 +148,7 @@ fun ReiAnixPlayerRoute(
             PlayerHandoffMessage(
                 title = stringResource(R.string.more_episode_open_failed),
                 message = libraryState.lastCommandError
-                    ?: "A mídia local não pôde ser enviada ao player.",
+                    ?: stringResource(R.string.polish_handoff_error),
                 onRetry = {
                     launchRequestId = viewModel.openEpisode(
                         episodeId,
@@ -222,6 +222,7 @@ internal fun rememberEpisodeLauncher(viewModel: ReiAnixLibraryViewModel): (Long,
         }
     }
 
+    val handoffError = stringResource(R.string.polish_handoff_error)
     val activeRequest = requestId
     if (activeRequest != null) {
         BackHandler { /* Keep the current screen while native launch is pending. */ }
@@ -231,7 +232,7 @@ internal fun rememberEpisodeLauncher(viewModel: ReiAnixLibraryViewModel): (Long,
         LaunchedEffect(viewModel, activeRequest) {
             val result = viewModel.uiState.first { state -> state.lastCommandId == activeRequest }
             if (result.lastCommandStatus == "FAILED") {
-                launchError = result.lastCommandError ?: "A mídia local não pôde ser enviada ao player."
+                launchError = result.lastCommandError ?: handoffError
             }
             requestId = null
         }
