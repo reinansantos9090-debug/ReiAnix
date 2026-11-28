@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.host
 
+import android.content.res.Configuration
+import android.os.Build
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
@@ -7,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -15,7 +18,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -368,6 +375,7 @@ class ReiAnixComposeLibraryHost(
                 }
             }
 
+            ProvideLegacyAppLocale {
             ReiAnixComposeRoot(
                 themeMode = themeMode,
             ) {
@@ -526,7 +534,7 @@ class ReiAnixComposeLibraryHost(
                         storage = {
                             ReiAnixStorageRoute(
                                 viewModel = libraryViewModel,
-                                title = "Pasta da biblioteca",
+                                title = androidx.compose.ui.res.stringResource(com.reianix.reianix_local.R.string.storage_library_folder),
                                 onBack = {
                                     if (!navController.popBackStack()) {
                                         handleBack()
@@ -562,6 +570,7 @@ class ReiAnixComposeLibraryHost(
                 }
                 }
             }
+            }
         } else {
             navigateToRequestedDestination(
                 route = startDestination,
@@ -570,6 +579,30 @@ class ReiAnixComposeLibraryHost(
         }
 
         view.visibility = View.VISIBLE
+    }
+
+    @Composable
+    private fun ProvideLegacyAppLocale(content: @Composable () -> Unit) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            content()
+            return
+        }
+        val systemConfiguration = LocalConfiguration.current
+        val resources = activity.resources
+        val configuration = remember(resources, systemConfiguration) {
+            Configuration(resources.configuration)
+        }
+        val direction = if (configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+            LayoutDirection.Rtl
+        } else {
+            LayoutDirection.Ltr
+        }
+        CompositionLocalProvider(
+            LocalConfiguration provides configuration,
+            LocalResources provides resources,
+            LocalLayoutDirection provides direction,
+            content = content,
+        )
     }
 
     fun hide() {

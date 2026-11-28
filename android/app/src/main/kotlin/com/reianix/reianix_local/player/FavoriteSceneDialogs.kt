@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.player
 
+import com.reianix.reianix_local.R
+
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -104,7 +106,7 @@ internal class FavoriteSceneDialogs(
         val layer = FrameLayout(activity).apply {
             isClickable = true
             isFocusable = true
-            addView(ProgressBar(activity).apply { contentDescription = "Carregando cena" },
+            addView(ProgressBar(activity).apply { contentDescription = activity.getString(R.string.aux_scene_loading) },
                 FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER))
         }
         busyLayer = layer
@@ -146,7 +148,7 @@ internal class FavoriteSceneDialogs(
     private fun thumbnail() = ImageView(activity).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(0xFF303034.toInt())
-        contentDescription = "Miniatura da cena"
+        contentDescription = activity.getString(R.string.aux_scene_thumbnail)
     }
 
     fun dismiss() {
@@ -173,7 +175,7 @@ internal class FavoriteSceneDialogs(
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(action("‹") { if (busyLayer == null) onBack() }.apply {
-                    contentDescription = "Voltar"
+                    contentDescription = activity.getString(R.string.ui_back)
                     textSize = 28f
                     setTextColor(Color.WHITE)
                 }, LinearLayout.LayoutParams(dp(52), dp(52)))
@@ -319,11 +321,11 @@ internal class FavoriteSceneDialogs(
         val orderedScenes = scenes.sortedByDescending { it.note.createdAtMs }.toMutableList()
         var sortIndex = 0
         var galleryAdapter: BaseAdapter? = null
-        val sortLabels = listOf("Mais recentes", "Mais antigas", "Nome (A–Z)", "Maior duração")
+        val sortLabels = listOf(activity.getString(R.string.choice_recent), activity.getString(R.string.aux_oldest), activity.getString(R.string.aux_name_az), activity.getString(R.string.aux_longest))
 
         fun play(scene: PlayerLocalMetadataStore.FavoriteScene) {
             if (scene.note.clipEndMs != null) onPlay(scene)
-            else report("Use Editar para definir o trecho desta cena.")
+            else report(activity.getString(R.string.aux_scene_edit_hint))
         }
 
         if (scenes.isEmpty()) {
@@ -337,16 +339,16 @@ internal class FavoriteSceneDialogs(
                     background = null
                     alpha = 0.55f
                 }, LinearLayout.LayoutParams(dp(56), dp(56)))
-                addView(label("Nenhuma cena favorita", 20f).apply {
+                addView(label(activity.getString(R.string.aux_no_favorite_scene), 20f).apply {
                     gravity = Gravity.CENTER
                     setTypeface(typeface, Typeface.BOLD)
                 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-                addView(label(if (canCreate) "Salve seus momentos favoritos para assistir novamente quando quiser."
-                    else "Salve trechos no player do ReiAnix para encontrá-los aqui.", 14f, 0xFFAAAAAA.toInt()).apply {
+                addView(label(if (canCreate) activity.getString(R.string.aux_favorite_scene_hint)
+                    else activity.getString(R.string.aux_favorite_scene_here), 14f, 0xFFAAAAAA.toInt()).apply {
                     gravity = Gravity.CENTER
                     setLineSpacing(dp(3).toFloat(), 1f)
                 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-                if (canCreate) addView(action("+  Salvar cena", onCreate).apply {
+                if (canCreate) addView(action(activity.getString(R.string.aux_add_scene), onCreate).apply {
                     setTextColor(Color.WHITE)
                     background = galleryRipple(0xFF202020.toInt())
                     setPadding(dp(22), 0, dp(22), 0)
@@ -354,7 +356,7 @@ internal class FavoriteSceneDialogs(
             }
             content.addView(empty, LinearLayout.LayoutParams(-1, 0, 1f))
         } else {
-            content.addView(label(if (scenes.size == 1) "1 cena salva" else "${scenes.size} cenas salvas",
+            content.addView(label(activity.resources.getQuantityString(R.plurals.aux_saved_scenes, scenes.size, scenes.size),
                 13f, 0xFFAAAAAA.toInt()).apply {
                 setPadding(dp(4), dp(4), dp(4), dp(8))
             })
@@ -402,7 +404,7 @@ internal class FavoriteSceneDialogs(
                                     setPadding(0, dp(4), 0, 0)
                                 })
                             }, LinearLayout.LayoutParams(0, -2, 1f))
-                            addView(galleryIcon(GalleryIcon.MORE, "Opções da cena"),
+                            addView(galleryIcon(GalleryIcon.MORE, activity.getString(R.string.aux_scene_options)),
                                 LinearLayout.LayoutParams(dp(48), dp(48)))
                         }
                         jobs.remove(row)?.cancel()
@@ -414,12 +416,12 @@ internal class FavoriteSceneDialogs(
                         val textColumn = row.getChildAt(1) as LinearLayout
                         val more = row.getChildAt(2) as ImageButton
                         row.setOnClickListener { play(scene) }
-                        more.contentDescription = "Opções de ${note.text}"
+                        more.contentDescription = activity.getString(R.string.aux_options_for, note.text)
                         more.setOnClickListener { anchor ->
                             val popup = PopupMenu(ContextThemeWrapper(activity,
                                 android.R.style.Theme_Material_NoActionBar_Fullscreen), anchor)
-                            popup.menu.add(0, 1, 0, "Editar")
-                            popup.menu.add(0, 2, 1, "Excluir")
+                            popup.menu.add(0, 1, 0, activity.getString(R.string.extra_edit))
+                            popup.menu.add(0, 2, 1, activity.getString(R.string.ui_delete))
                             popup.setOnMenuItemClickListener { item ->
                                 when (item.itemId) {
                                     1 -> { onEdit(scene); true }
@@ -432,13 +434,13 @@ internal class FavoriteSceneDialogs(
                         (textColumn.getChildAt(0) as TextView).text = note.text
                         (textColumn.getChildAt(1) as TextView).text =
                             listOf(note.animeTitle, note.episodeLabel).filter(String::isNotBlank)
-                                .distinct().joinToString(" • ").ifBlank { "Episódio local" }
+                                .distinct().joinToString(" • ").ifBlank { activity.getString(R.string.common_local_episode) }
                         (textColumn.getChildAt(2) as TextView).text = note.clipEndMs?.let {
                             format(note.timestampMs) + " – " + format(it)
-                        } ?: ("Marcador antigo • " + format(note.timestampMs))
+                        } ?: activity.getString(R.string.aux_old_marker, format(note.timestampMs))
                         duration.text = note.clipEndMs?.let {
-                            "Duração: " + format(it - note.timestampMs)
-                        } ?: "Sem trecho"
+                            activity.getString(R.string.aux_duration_value, format(it - note.timestampMs))
+                        } ?: activity.getString(R.string.aux_no_clip)
                         val cached = thumbnails.get("${scene.mediaId}@${note.timestampMs}")
                         image.setImageBitmap(cached)
                         if (cached == null) jobs[row] = activity.lifecycleScope.launch {
@@ -451,11 +453,11 @@ internal class FavoriteSceneDialogs(
             }
             content.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        fullScreen("Cenas favoritas", onBack = onBack, body = {
+        fullScreen(activity.getString(R.string.aux_favorite_scenes), onBack = onBack, body = {
             addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
         }, onClose = { jobs.values.forEach { it.cancel() }; jobs.clear() }, headerActions = {
             if (scenes.isNotEmpty()) {
-                addView(galleryIcon(GalleryIcon.SORT, "Ordenar cenas").apply {
+                addView(galleryIcon(GalleryIcon.SORT, activity.getString(R.string.aux_sort_scenes)).apply {
                     setOnClickListener { anchor ->
                         val popup = PopupMenu(ContextThemeWrapper(activity,
                             android.R.style.Theme_Material_NoActionBar_Fullscreen), anchor)
@@ -483,7 +485,7 @@ internal class FavoriteSceneDialogs(
                 }, LinearLayout.LayoutParams(dp(48), dp(48)))
             }
             if (canCreate) {
-                addView(galleryIcon(GalleryIcon.ADD, "Salvar cena").apply {
+                addView(galleryIcon(GalleryIcon.ADD, activity.getString(R.string.ui_save_scene)).apply {
                     setOnClickListener { onCreate() }
                 }, LinearLayout.LayoutParams(dp(48), dp(48)))
             }
@@ -491,12 +493,12 @@ internal class FavoriteSceneDialogs(
     }
 
     fun confirmDelete(name: String, onCancel: () -> Unit, onDelete: () -> Unit) {
-        fullScreen("Excluir cena favorita?", onBack = onCancel, body = {
-            addView(label(name + "\nO arquivo original não será alterado.").apply {
+        fullScreen(activity.getString(R.string.aux_delete_favorite_scene), onBack = onCancel, body = {
+            addView(label(name + "\n" + activity.getString(R.string.aux_original_unchanged)).apply {
                 setPadding(dp(20), dp(20), dp(20), dp(20))
             })
-            addView(action("Excluir") { onDelete() })
-            addView(action("Cancelar") { onCancel() })
+            addView(action(activity.getString(R.string.ui_delete)) { onDelete() })
+            addView(action(activity.getString(R.string.locale_cancel)) { onCancel() })
         })
     }
 
@@ -512,7 +514,7 @@ internal class FavoriteSceneDialogs(
         onBack: () -> Unit,
         initialFrame: Bitmap? = null,
     ) {
-        if (durationMs <= 0L) { report("Duração indisponível para criar um clipe"); return }
+        if (durationMs <= 0L) { report(activity.getString(R.string.aux_clip_duration_unavailable)); return }
         if (activity.isFinishing || activity.isDestroyed) return
         val editor = FavoriteClipEditor(
             host = activity,

@@ -1,5 +1,12 @@
 package com.reianix.reianix_local.ui.collections
 
+import androidx.compose.ui.platform.LocalContext
+
+import com.reianix.reianix_local.R
+import com.reianix.reianix_local.ui.localizedGenreLabel
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -121,6 +128,7 @@ fun ReiAnixCollectionsScreen(
     onOpenTracking: () -> Unit = {},
     onAddFolder: () -> Unit = viewModel::selectSafTree,
 ) {
+    val context = LocalContext.current
     val repository = viewModel.personalCollectionsRepository
     val scope = rememberCoroutineScope()
     var collections by remember(repository) { mutableStateOf<List<ReiAnixPersonalCollection>>(emptyList()) }
@@ -148,7 +156,7 @@ fun ReiAnixCollectionsScreen(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            error = failure.message ?: "Falha ao carregar coleções."
+            error = failure.message ?: context.getString(R.string.finish_collection_load)
         } finally {
             loading = false
         }
@@ -169,7 +177,7 @@ fun ReiAnixCollectionsScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = failure.message ?: "Não foi possível salvar a coleção."
+                error = failure.message ?: context.getString(R.string.finish_collection_save)
             } finally {
                 busy = false
             }
@@ -191,7 +199,7 @@ fun ReiAnixCollectionsScreen(
                 throw cancelled
             } catch (failure: Exception) {
                 // Removing the optimistic state restores the last confirmed checkbox.
-                error = failure.message ?: "Não foi possível salvar o anime na coleção."
+                error = failure.message ?: context.getString(R.string.finish_collection_member_save)
             } finally {
                 pendingMembership = pendingMembership - key
             }
@@ -254,8 +262,8 @@ fun ReiAnixCollectionsScreen(
             modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()).reiAnixScreenFade(selectedId),
         ) {
             ReiAnixTopBar(
-                title = if (selected == null) "Coleções" else selected.name,
-                subtitle = if (selected == null) "Organize seus animes" else "${selected.animeIds.size} anime(s)",
+                title = if (selected == null) stringResource(R.string.common_collections) else selected.name,
+                subtitle = if (selected == null) stringResource(R.string.finish_collection_organize) else androidx.compose.ui.res.pluralStringResource(R.plurals.common_anime_count, selected.animeIds.size, selected.animeIds.size),
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onNavigationClick = goBack,
                 actions = {
@@ -280,11 +288,11 @@ fun ReiAnixCollectionsScreen(
                 ).padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (loading) Text("Carregando coleções…")
+                if (loading) Text(stringResource(R.string.more_collections_loading))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 if (selected == null) {
                     if (!loading && error != null) {
-                        TextButton(onClick = { retryToken++ }) { Text("Tentar novamente") }
+                        TextButton(onClick = { retryToken++ }) { Text(stringResource(R.string.ui_retry)) }
                     }
                     val createCollection = {
                         editingNameId = null
@@ -312,9 +320,9 @@ fun ReiAnixCollectionsScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(64.dp),
                                 )
-                                Text("Suas coleções", style = MaterialTheme.typography.headlineSmall)
+                                Text(stringResource(R.string.more_collections_yours), style = MaterialTheme.typography.headlineSmall)
                                 Text(
-                                    "Organize seus animes do seu jeito.",
+                                    stringResource(R.string.more_collections_organize),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center,
@@ -357,7 +365,7 @@ fun ReiAnixCollectionsScreen(
                                 }
                                 item(key = "collection-heading") {
                                     Text(
-                                        "Suas coleções",
+                                        stringResource(R.string.more_collections_yours),
                                         style = MaterialTheme.typography.titleLarge,
                                         modifier = Modifier.padding(top = 12.dp),
                                     )
@@ -430,7 +438,7 @@ fun ReiAnixCollectionsScreen(
                                 modifier = Modifier.size(20.dp),
                             )
                             Text(
-                                if (adding) "Voltar aos animes" else "Adicionar animes",
+                                if (adding) stringResource(R.string.finish_collection_back) else stringResource(R.string.finish_collection_add),
                                 modifier = Modifier.padding(start = 8.dp),
                             )
                         }
@@ -439,7 +447,7 @@ fun ReiAnixCollectionsScreen(
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it.take(80) },
-                            label = { Text("Buscar na biblioteca") },
+                            label = { Text(stringResource(R.string.more_collections_search)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -487,7 +495,7 @@ fun ReiAnixCollectionsScreen(
                         }
                     } else {
                         if (selected.animeIds.isEmpty()) {
-                            Text("Esta coleção está vazia. Toque em Adicionar animes.")
+                            Text(stringResource(R.string.more_collection_empty))
                         } else {
                             ReiAnixCollectionReorderList(
                                 collection = selected,
@@ -516,8 +524,8 @@ fun ReiAnixCollectionsScreen(
         val id = pendingDeleteId!!
         AlertDialog(
             onDismissRequest = { if (!busy) pendingDeleteId = null },
-            title = { Text("Excluir coleção?") },
-            text = { Text("A coleção será apagada, mas nenhum vídeo ou anime será excluído.") },
+            title = { Text(stringResource(R.string.more_collection_delete)) },
+            text = { Text(stringResource(R.string.more_collection_delete_desc)) },
             confirmButton = {
                 Button(
                     enabled = !busy,
@@ -527,10 +535,10 @@ fun ReiAnixCollectionsScreen(
                             onSaved = { selectedId = null; pendingDeleteId = null },
                         )
                     },
-                ) { Text("Excluir") }
+                ) { Text(stringResource(R.string.ui_delete)) }
             },
             dismissButton = {
-                TextButton(enabled = !busy, onClick = { pendingDeleteId = null }) { Text("Cancelar") }
+                TextButton(enabled = !busy, onClick = { pendingDeleteId = null }) { Text(stringResource(R.string.locale_cancel)) }
             },
         )
     }
@@ -546,16 +554,16 @@ internal fun CollectionOptionsMenu(
     var expanded by remember(collectionId) { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }, enabled = enabled) {
-            Icon(Icons.Filled.MoreVert, contentDescription = "Opções da coleção")
+            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.finish_collection_options))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("Renomear") },
+                text = { Text(stringResource(R.string.more_rename)) },
                 enabled = enabled,
                 onClick = { expanded = false; onRename() },
             )
             DropdownMenuItem(
-                text = { Text("Excluir") },
+                text = { Text(stringResource(R.string.ui_delete)) },
                 enabled = enabled,
                 onClick = { expanded = false; onDelete() },
             )
@@ -574,15 +582,15 @@ internal fun CollectionsPrimaryActions(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CollectionActionCard(
-            title = "Nova coleção",
-            description = "Agrupe seus animes favoritos.",
+            title = stringResource(R.string.more_collection_new),
+            description = stringResource(R.string.more_collection_group),
             icon = Icons.Outlined.CreateNewFolder,
             enabled = enabled,
             onClick = onCreate,
         )
         CollectionActionCard(
-            title = "Adicionar pasta",
-            description = "Importe animes do armazenamento.",
+            title = stringResource(R.string.extra_storage_add),
+            description = stringResource(R.string.more_collection_import),
             icon = Icons.Outlined.FolderOpen,
             enabled = true,
             onClick = onAddFolder,
@@ -643,7 +651,7 @@ internal fun CollectionNameScreen(
             .navigationBarsPadding(),
     ) {
         ReiAnixTopBar(
-            title = if (editing) "Renomear coleção" else "Nova coleção",
+            title = if (editing) stringResource(R.string.finish_collection_rename) else stringResource(R.string.more_collection_new),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
             onNavigationClick = onBack,
         )
@@ -666,12 +674,12 @@ internal fun CollectionNameScreen(
                     modifier = Modifier.size(64.dp),
                 )
                 Text(
-                    if (editing) "Renomeie sua coleção" else "Crie sua coleção",
+                    if (editing) stringResource(R.string.finish_collection_rename_heading) else stringResource(R.string.finish_collection_create_heading),
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    if (editing) "Escolha um novo nome." else "Organize seus animes em um só lugar.",
+                    if (editing) stringResource(R.string.finish_collection_choose_name) else stringResource(R.string.finish_collection_organize_all),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -681,7 +689,7 @@ internal fun CollectionNameScreen(
                     value = name,
                     onValueChange = { onNameChange(it.take(64)) },
                     enabled = !busy,
-                    label = { Text("Nome da coleção") },
+                    label = { Text(stringResource(R.string.more_collection_name)) },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
@@ -704,7 +712,7 @@ internal fun CollectionNameScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
-                        Text(if (editing) "Salvar nome" else "Criar coleção",
+                        Text(if (editing) stringResource(R.string.finish_collection_save_name) else stringResource(R.string.finish_collection_create),
                             style = MaterialTheme.typography.titleMedium)
                     }
                 }
@@ -773,6 +781,7 @@ private fun ReiAnixRouletteContent(
     onDismiss: () -> Unit,
     embedded: Boolean,
 ) {
+    val context = LocalContext.current
     val repository = viewModel.personalCollectionsRepository
     var collections by remember(repository) { mutableStateOf<List<ReiAnixPersonalCollection>>(emptyList()) }
     var collectionsError by remember(repository) { mutableStateOf<String?>(null) }
@@ -789,7 +798,7 @@ private fun ReiAnixRouletteContent(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            collectionsError = failure.message ?: "Não foi possível carregar coleções."
+            collectionsError = failure.message ?: context.getString(R.string.finish_collection_load)
         }
     }
     val genres = remember(animes) {
@@ -814,19 +823,23 @@ private fun ReiAnixRouletteContent(
     val rouletteBody: @Composable () -> Unit = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Não sabe o que assistir? Sorteie um anime da sua biblioteca.",
+                    stringResource(R.string.more_roulette_hint),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column {
                         TextButton(onClick = { genreExpanded = true }) {
-                            Text("Gênero: ${genre ?: "Todos"}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                stringResource(R.string.roulette_genre, genre?.let { localizedGenreLabel(it) } ?: stringResource(R.string.more_all_m)),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                         DropdownMenu(
                             expanded = genreExpanded,
                             onDismissRequest = { genreExpanded = false },
                         ) {
-                            DropdownMenuItem(text = { Text("Todos") }, onClick = {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.more_all_m)) }, onClick = {
                                 genre = null; selectedId = null; genreExpanded = false
                             })
                             genres.forEach { option ->
@@ -849,7 +862,7 @@ private fun ReiAnixRouletteContent(
                         expanded = collectionExpanded,
                         onDismissRequest = { collectionExpanded = false },
                     ) {
-                        DropdownMenuItem(text = { Text("Todas") }, onClick = {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.more_all_f)) }, onClick = {
                             collectionId = null; selectedId = null; collectionExpanded = false
                         })
                         collections.forEach { collection ->
@@ -860,7 +873,7 @@ private fun ReiAnixRouletteContent(
                     }
                 }
                 collectionsError?.let {
-                    Text("Coleções indisponíveis: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.finish_collection_unavailable, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
@@ -868,13 +881,13 @@ private fun ReiAnixRouletteContent(
                         onCheckedChange = { onlyUnwatched = it; selectedId = null },
                     )
                     Text(
-                        "Só animes não assistidos",
+                        stringResource(R.string.more_unwatched_only),
                         modifier = Modifier.clickable { onlyUnwatched = !onlyUnwatched; selectedId = null },
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
                 Text(
-                    "${candidates.size} anime(s) disponíveis para sorteio",
+                    stringResource(R.string.finish_roulette_count, candidates.size),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -887,15 +900,15 @@ private fun ReiAnixRouletteContent(
                                 it.id == selectedAnime.playbackTargetEpisodeId && it.isPlayable
                             } ?: selectedAnime.contentEpisodes.firstOrNull { it.isPlayable }
                             if (target != null) {
-                                Button(onClick = { onWatch(target.id, selectedAnime.id) }) { Text("Assistir") }
+                                Button(onClick = { onWatch(target.id, selectedAnime.id) }) { Text(stringResource(R.string.more_watch)) }
                             }
-                            TextButton(onClick = { onOpenAnime(selectedAnime.id) }) { Text("Ver detalhes") }
+                            TextButton(onClick = { onOpenAnime(selectedAnime.id) }) { Text(stringResource(R.string.more_view_details)) }
                         }
                     }
                 } else if (candidates.isEmpty()) {
-                    Text("Nenhum anime corresponde aos filtros escolhidos.")
+                    Text(stringResource(R.string.more_roulette_no_match))
                 } else {
-                    Text("Toque em Sortear para escolher um anime.")
+                    Text(stringResource(R.string.more_roulette_start))
                 }
             }
         }
@@ -909,7 +922,7 @@ private fun ReiAnixRouletteContent(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Text("Roleta de animes", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.more_roulette), style = MaterialTheme.typography.titleMedium)
             rouletteBody()
             Button(
                 enabled = candidates.isNotEmpty(),
@@ -920,7 +933,7 @@ private fun ReiAnixRouletteContent(
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Roleta de animes") },
+            title = { Text(stringResource(R.string.more_roulette)) },
             text = rouletteBody,
             confirmButton = {
                 Button(
@@ -928,7 +941,7 @@ private fun ReiAnixRouletteContent(
                     onClick = onSort,
                 ) { Text(if (selectedAnime == null) "Sortear" else "Sortear novamente") }
             },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_close)) } },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         )
     }

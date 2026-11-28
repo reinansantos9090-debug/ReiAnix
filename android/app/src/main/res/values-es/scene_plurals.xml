@@ -1,0 +1,6 @@
+<resources>
+    <plurals name="aux_saved_scenes">
+        <item quantity="one">%1$d escena guardada</item>
+        <item quantity="other">%1$d escenas guardadas</item>
+    </plurals>
+</resources>

@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.data.artwork.ReiAnixAdultArtworkPolicy
 
 import android.content.Context
@@ -106,11 +110,11 @@ internal fun ProfileVideoFrame(
     Box(modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center) {
         when {
-            frame != null -> Image(requireNotNull(frame).asImageBitmap(), "Miniatura do vídeo",
+            frame != null -> Image(requireNotNull(frame).asImageBitmap(), stringResource(R.string.profile_video_thumb),
                 Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             !exactScene && !cachedThumbnail.isNullOrBlank() ->
-                ReiAnixEpisodeThumbnail(cachedThumbnail, "Miniatura do episódio", Modifier.fillMaxSize())
-            else -> Icon(Icons.Outlined.Movie, "Miniatura indisponível", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                ReiAnixEpisodeThumbnail(cachedThumbnail, stringResource(R.string.profile_episode_thumb), Modifier.fillMaxSize())
+            else -> Icon(Icons.Outlined.Movie, stringResource(R.string.profile_thumb_unavailable), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -149,9 +153,9 @@ internal fun historyGroup(timestamp: Double, now: Calendar): String {
 
 @Composable
 internal fun ProfileMediaSearch(query: String, onQuery: (String) -> Unit) {
-    OutlinedTextField(query, onQuery, singleLine = true, placeholder = { Text("Pesquisar") },
+    OutlinedTextField(query, onQuery, singleLine = true, placeholder = { Text(stringResource(R.string.ui_search)) },
         leadingIcon = { Icon(Icons.Outlined.Search, null) },
-        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Outlined.Close, "Limpar pesquisa") } },
+        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Outlined.Close, stringResource(R.string.ui_clear_search)) } },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
 }
 
@@ -183,13 +187,13 @@ internal fun ProfileFavorites(
         }
     }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
-        ReiAnixTopBar("Favoritos", subtitle = "${favorites.size} animes", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+        ReiAnixTopBar(stringResource(R.string.ui_favorites), subtitle = androidx.compose.ui.res.pluralStringResource(R.plurals.common_anime_count, favorites.size, favorites.size), navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
             onNavigationClick = onBack, actions = {
-                IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, "Pesquisar favoritos") }
+                IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, stringResource(R.string.profile_search_favorites)) }
                 Box {
-                    IconButton(onClick = { sortOpen = true }) { Icon(Icons.Outlined.Sort, "Ordenar favoritos") }
+                    IconButton(onClick = { sortOpen = true }) { Icon(Icons.Outlined.Sort, stringResource(R.string.profile_sort_favorites)) }
                     DropdownMenu(sortOpen, { sortOpen = false }) {
-                        listOf("az" to "Nome (A–Z)", "za" to "Nome (Z–A)", "recent" to "Adicionados recentemente").forEach { (key, title) ->
+                        listOf("az" to stringResource(R.string.choice_name_asc), "za" to stringResource(R.string.choice_name_desc), "recent" to stringResource(R.string.ui_recent_added)).forEach { (key, title) ->
                             DropdownMenuItem(text = { Text(title) }, onClick = { sort = key; sortOpen = false })
                         }
                     }
@@ -197,7 +201,7 @@ internal fun ProfileFavorites(
             })
         if (search) ProfileMediaSearch(query) { query = it }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!loading && visible.isEmpty()) Text("Nenhum anime encontrado.", Modifier.padding(20.dp))
+        if (!loading && visible.isEmpty()) Text(stringResource(R.string.tail_no_anime), Modifier.padding(20.dp))
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(visible, key = { it.id }) { anime ->
                 val model = catalog[anime.id]
@@ -217,7 +221,7 @@ internal fun ProfileFavorites(
                             Text(model?.title ?: anime.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             if (genres.isNotEmpty()) Text(genres.take(3).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${counts[anime.id] ?: model?.availableContentCount ?: 0} episódios disponíveis", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.profile_available_episodes, counts[anime.id] ?: model?.availableContentCount ?: 0), style = MaterialTheme.typography.bodySmall)
                         }
                         Icon(Icons.Outlined.Favorite, null, tint = MaterialTheme.colorScheme.primary)
                     }
@@ -245,14 +249,14 @@ internal fun ProfileHistory(
     val now = remember { Calendar.getInstance() }
     val groups = remember(history, now) { history.groupBy { historyGroup(requireNotNull(it.lastPlayedAt), now) } }
     Column(Modifier.fillMaxSize().background(reiAnixScreenBackground()).navigationBarsPadding()) {
-        ReiAnixTopBar("Histórico", navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack,
-            actions = { IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, "Pesquisar histórico") } })
+        ReiAnixTopBar(stringResource(R.string.ui_history), navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = onBack,
+            actions = { IconButton(onClick = { search = !search; if (!search) query = "" }) { Icon(Icons.Outlined.Search, stringResource(R.string.profile_search_history)) } })
         if (search) ProfileMediaSearch(query) { query = it }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!loading && history.isEmpty()) Text("Nenhuma reprodução encontrada.", Modifier.padding(20.dp))
+        if (!loading && history.isEmpty()) Text(stringResource(R.string.tail_no_playbacks), Modifier.padding(20.dp))
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             groups.forEach { (day, rows) ->
-                item(key = "day:$day") { Text(day, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp)) }
+                item(key = "day:$day") { Text(when (day) { "Hoje" -> stringResource(R.string.profile_today); "Ontem" -> stringResource(R.string.profile_yesterday); else -> day }, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp)) }
                 items(rows, key = { it.id }) { row ->
                     val model = models[row.id]
                     val fallback by produceState<ReiAnixEpisodeRecord?>(null, row.id, model == null) {
@@ -281,11 +285,11 @@ internal fun ProfileHistory(
                                 Text(row.animeTitle ?: "Anime", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(profileEpisodeLabel(model?.number ?: fallback?.number, model?.title ?: fallback?.episodeTitle, model?.fileName ?: fallback?.fileName),
                                     style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(if (completed) "Concluído" else profilePlaybackTime(progress) + (duration?.let { " / " + profilePlaybackTime(it) } ?: ""),
+                                Text(if (completed) stringResource(R.string.flow_finished) else profilePlaybackTime(progress) + (duration?.let { " / " + profilePlaybackTime(it) } ?: ""),
                                     style = MaterialTheme.typography.labelMedium, color = tint)
                                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(requireNotNull(row.lastPlayedAt).times(1000).toLong())),
                                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (!playable) Text("Arquivo indisponível", style = MaterialTheme.typography.labelSmall)
+                                if (!playable) Text(stringResource(R.string.tail_file_unavailable), style = MaterialTheme.typography.labelSmall)
                             }
                             Icon(if (completed) Icons.Outlined.CheckCircle else Icons.Outlined.PlayCircleOutline, null, tint = tint)
                         }

@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.player
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,10 +35,10 @@ fun ReiAnixEpisodePlaylist(
         color = Color(0xFF161616), contentColor = Color.White) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Episódios", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = onClose) { Text("Fechar", color = Color.White) }
+                Text(stringResource(R.string.ui_episodes), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onClose) { Text(stringResource(R.string.ui_close), color = Color.White) }
             }
-            Text("${episodes.size} episódios", style = MaterialTheme.typography.labelMedium,
+            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.flow_episode_count, episodes.size, episodes.size), style = MaterialTheme.typography.labelMedium,
                 color = Color(0xFFCCCCCC))
             Spacer(Modifier.height(12.dp))
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -51,10 +55,10 @@ fun ReiAnixEpisodePlaylist(
                                 sourceRevisions = episode.artwork?.sourceRevisions.orEmpty(),
                                 modifier = Modifier.width(96.dp).aspectRatio(16f / 9f))
                             Column(Modifier.weight(1f)) {
-                                Text(episode.number?.let { "Episódio ${if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()}" }
+                                Text(episode.number?.let { stringResource(R.string.polish_episode_number, if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()) }
                                     ?: episode.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.titleSmall)
-                                Text(if (selected) "Reproduzindo agora" else episode.title ?: episode.fileName,
+                                Text(if (selected) stringResource(R.string.polish_playing_now) else episode.title ?: episode.fileName,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodySmall)
                             }

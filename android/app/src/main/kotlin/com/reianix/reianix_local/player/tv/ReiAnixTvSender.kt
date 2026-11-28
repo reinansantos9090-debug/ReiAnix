@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.player.tv
 
+import com.reianix.reianix_local.R
+
 import android.app.Activity
 import android.net.Uri
 import android.net.ConnectivityManager
@@ -113,7 +115,7 @@ internal class ReiAnixTvSender(
                     }
                     override fun onSessionStartFailed(session: CastSession, error: Int) {
                         if (connecting?.startsWith("cast:") == true) {
-                            failConnection("Não foi possível conectar à TV.")
+                            failConnection(activity.getString(R.string.aux_tv_connect_failed))
                         }
                     }
                     override fun onSessionEnding(session: CastSession) {}
@@ -122,7 +124,7 @@ internal class ReiAnixTvSender(
                             connected = null
                             releaseMediaServer()
                         } else if (connecting?.startsWith("cast:") == true) {
-                            failConnection("Conexão com a TV encerrada.")
+                            failConnection(activity.getString(R.string.aux_tv_connection_ended))
                         }
                     }
                     override fun onSessionResuming(session: CastSession, sessionId: String) {}
@@ -132,7 +134,7 @@ internal class ReiAnixTvSender(
                     }
                     override fun onSessionResumeFailed(session: CastSession, error: Int) {
                         if (connecting?.startsWith("cast:") == true) {
-                            failConnection("Não foi possível retomar a transmissão.")
+                            failConnection(activity.getString(R.string.aux_tv_resume_failed))
                         }
                     }
                     override fun onSessionSuspended(session: CastSession, reason: Int) {}
@@ -312,7 +314,7 @@ internal class ReiAnixTvSender(
         // Roku is discovered in the unified picker, but only WVC handles
         // its playback. Never launch an unused DLNA server for Roku.
         if (device.kind == ReiAnixTvKind.ROKU) {
-            onConnectionChanged(ReiAnixTvConnection.Failure("Abra o vídeo no Web Video Caster para transmitir à Roku."))
+            onConnectionChanged(ReiAnixTvConnection.Failure(activity.getString(R.string.aux_roku_handoff)))
             return
         }
         connecting = device.id
@@ -328,20 +330,20 @@ internal class ReiAnixTvSender(
                     return@post
                 }
                 val server = result.getOrElse {
-                    failConnection("Não foi possível compartilhar este vídeo.")
+                    failConnection(activity.getString(R.string.aux_tv_share_failed))
                     return@post
                 }
                 mediaServer = server
                 when (device.kind) {
                     // Already rejected above: this sender controls native Cast/DLNA.
                     ReiAnixTvKind.ROKU -> {
-                        failConnection("Use Web Video Caster para a Roku.")
+                        failConnection(activity.getString(R.string.aux_roku_use_wvc))
                     }
                     ReiAnixTvKind.CAST -> {
                         val route = routes[device.id]
                         val session = cast?.sessionManager?.currentCastSession
                         if (route == null) {
-                            failConnection("TV não está mais disponível.")
+                            failConnection(activity.getString(R.string.aux_tv_gone))
                         } else if (session?.isConnected == true &&
                             router?.selectedRoute?.id == route.id
                         ) loadCastMedia(session, device.id)
@@ -349,7 +351,7 @@ internal class ReiAnixTvSender(
                             router?.selectRoute(route)
                             ui.postDelayed({
                                 if (generation == connectionGeneration && connecting == device.id) {
-                                    failConnection("Tempo esgotado ao conectar à TV.")
+                                    failConnection(activity.getString(R.string.aux_tv_timeout))
                                 }
                             }, 20_000)
                         }
@@ -366,7 +368,7 @@ internal class ReiAnixTvSender(
                                     connecting = null
                                     connected = device
                                     onConnectionChanged(ReiAnixTvConnection.Connected(device.name, device))
-                                } else failConnection("A TV não aceitou o vídeo.")
+                                } else failConnection(activity.getString(R.string.aux_tv_rejected))
                             }
                         }, "reianix-tv-dlna-connect").apply { isDaemon = true; start() }
                     }
@@ -378,12 +380,12 @@ internal class ReiAnixTvSender(
     private fun loadCastMedia(session: CastSession, pendingId: String) {
         val server = mediaServer ?: return
         val device = devices[pendingId] ?: run {
-            failConnection("TV não está mais disponível.")
+            failConnection(activity.getString(R.string.aux_tv_gone))
             return
         }
         val generation = connectionGeneration
         val client = session.remoteMediaClient ?: run {
-            failConnection("A TV não oferece reprodução de mídia.")
+            failConnection(activity.getString(R.string.aux_tv_no_media))
             return
         }
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
@@ -404,16 +406,16 @@ internal class ReiAnixTvSender(
                 connecting = null
                 connected = device
                 onConnectionChanged(ReiAnixTvConnection.Connected(device.name, device))
-            } else failConnection("A TV recusou o vídeo. Verifique se o formato é compatível.")
+            } else failConnection(activity.getString(R.string.aux_tv_format))
         }
     }
 
     fun pauseOrResume(resume: Boolean, result: (String?) -> Unit) {
-        val device = connected ?: return result("Nenhuma TV conectada.")
-        if (device.kind == ReiAnixTvKind.ROKU) return result("Use o controle remoto da TV.")
+        val device = connected ?: return result(activity.getString(R.string.aux_tv_not_connected))
+        if (device.kind == ReiAnixTvKind.ROKU) return result(activity.getString(R.string.aux_tv_remote))
         if (device.kind == ReiAnixTvKind.CAST) {
             val client = cast?.sessionManager?.currentCastSession?.remoteMediaClient
-            if (client == null) return result("Conexão com a TV perdida.")
+            if (client == null) return result(activity.getString(R.string.aux_tv_lost))
             if (resume) client.play() else client.pause()
             return result(null)
         }
@@ -463,7 +465,7 @@ internal class ReiAnixTvSender(
             "<s:Body><u:" + operation + " xmlns:u=\"" + device.serviceType + "\">" +
             "<InstanceID>0</InstanceID>" + body + "</u:" + operation + "></s:Body></s:Envelope>"
         val url = URL(device.controlUrl)
-        require(url.protocol == "http" && localHost(url.host)) { "Endereço de TV inválido." }
+        require(url.protocol == "http" && localHost(url.host)) { activity.getString(R.string.aux_tv_invalid_address) }
         val conn = url.openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 5000
@@ -475,7 +477,7 @@ internal class ReiAnixTvSender(
             conn.doOutput = true
             conn.outputStream.use { it.write(request.toByteArray(StandardCharsets.UTF_8)) }
             if (conn.responseCode !in 200..299) {
-                throw IllegalStateException("A TV não aceitou a transmissão (" + conn.responseCode + ").")
+                throw IllegalStateException(activity.getString(R.string.aux_tv_rejected_code, conn.responseCode))
             }
         } finally {
             conn.disconnect()

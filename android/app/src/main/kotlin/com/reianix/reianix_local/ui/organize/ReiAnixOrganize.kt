@@ -1,5 +1,13 @@
 package com.reianix.reianix_local.ui.organize
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalContext
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -221,7 +229,7 @@ fun ReiAnixOrganizeScreen(
                 .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
         ) {
             Icon(Icons.Default.Folder, contentDescription = null)
-            Text("Gerenciar arquivos locais (SAF)", modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm))
+            Text(stringResource(R.string.more_organize_saf), modifier = Modifier.padding(start = ReiAnixTokens.Spacing.sm))
         }
 
         OutlinedButton(
@@ -235,11 +243,11 @@ fun ReiAnixOrganizeScreen(
                 ),
         ) {
             Text(
-                if (isClassifyingLocalGenres) "Classificando gêneros locais…" else "Classificar gêneros locais ausentes",
+                if (isClassifyingLocalGenres) stringResource(R.string.polish_classifying) else stringResource(R.string.polish_classify),
             )
         }
         Text(
-            text = "Usa regras locais e preserva gêneros existentes e metadados AniList/manuais.",
+            text = stringResource(R.string.more_organize_rules),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding),
@@ -270,8 +278,8 @@ fun ReiAnixOrganizeScreen(
                     )
                 } else {
                     ReiAnixLoadingState(
-                        title = "Carregando Organizar",
-                        message = "Lendo o catálogo local…",
+                        title = stringResource(R.string.more_organize_loading),
+                        message = stringResource(R.string.more_catalog_read),
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 }
@@ -279,9 +287,9 @@ fun ReiAnixOrganizeScreen(
 
             ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> {
                 ReiAnixSourceUnavailableState(
-                    title = "Biblioteca local indisponível",
-                    message = "O acesso configurado ao armazenamento não está disponível agora. Isso não significa que a biblioteca esteja vazia.",
-                    actionLabel = "Gerenciar armazenamento",
+                    title = stringResource(R.string.ui_local_unavailable),
+                    message = stringResource(R.string.more_storage_not_available),
+                    actionLabel = stringResource(R.string.polish_manage_storage),
                     onAction = onOpenStorageAccess,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
@@ -290,9 +298,9 @@ fun ReiAnixOrganizeScreen(
             ReiAnixLibraryLoadStatus.ERROR -> {
                 if (state.animes.isEmpty()) {
                     ReiAnixRecoverableErrorState(
-                        title = "Não foi possível carregar Organizar",
+                        title = stringResource(R.string.more_organize_error),
                         message = state.error ?: state.lastCommandError
-                            ?: "A biblioteca local retornou um erro.",
+                            ?: stringResource(R.string.flow_library_return_error),
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
@@ -369,21 +377,19 @@ fun ReiAnixOrganizeScreen(
                 ?.name
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
-                ?: "esta pasta"
+                ?: stringResource(R.string.polish_this_folder)
             AlertDialog(
                 onDismissRequest = { pendingSourceRemoval = null },
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                title = { Text("Remover fonte da biblioteca?") },
+                title = { Text(stringResource(R.string.more_source_remove)) },
                 text = {
                     Text(
-                        "“$sourceName” será removida somente da configuração da Biblioteca. " +
-                            "Os arquivos e vídeos físicos não serão apagados. " +
-                            "Se houver outra fonte contendo o mesmo conteúdo, ele continuará disponível."
+                        stringResource(R.string.polish_remove_source, sourceName)
                     )
                 },
                 confirmButton = {
                     ReiAnixCompactButton(
-                        text = "Remover",
+                        text = stringResource(R.string.extra_remove),
                         onClick = {
                             pendingSourceRemoval = null
                             onRemoveFolder(reference)
@@ -392,7 +398,7 @@ fun ReiAnixOrganizeScreen(
                 },
                 dismissButton = {
                     ReiAnixCompactButton(
-                        text = "Cancelar",
+                        text = stringResource(R.string.locale_cancel),
                         onClick = { pendingSourceRemoval = null },
                     )
                 },
@@ -410,6 +416,7 @@ private fun OrganizeSourcesAndScanPanel(
     onRemoveFolder: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val localeResources = LocalContext.current.resources
     val sources = state.storage.configuredSources
     val availableEpisodes = state.animes.sumOf { it.availableContentCount }
     val scanStatus = organizeScanStatus(state)
@@ -431,16 +438,12 @@ private fun OrganizeSourcesAndScanPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Fontes",
+                        text = stringResource(R.string.more_sources),
                         style = ReiAnixTokens.TypographyTokens.itemTitle,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = when (sources.size) {
-                            0 -> "Nenhuma pasta configurada"
-                            1 -> "1 pasta configurada"
-                            else -> sources.size.toString() + " pastas configuradas"
-                        },
+                        text = stringResource(R.string.polish_folders_count, sources.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -451,7 +454,7 @@ private fun OrganizeSourcesAndScanPanel(
                     shape = ReiAnixTokens.Shapes.button,
                     color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.semantics {
-                        contentDescription = "Adicionar pasta"
+                        contentDescription = localeResources.getString(R.string.extra_storage_add)
                         role = Role.Button
                     },
                 ) {
@@ -464,7 +467,7 @@ private fun OrganizeSourcesAndScanPanel(
                         horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                     ) {
                         Icon(Icons.Filled.Info, contentDescription = null)
-                        Text("Adicionar pasta", style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.extra_storage_add), style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -501,14 +504,7 @@ private fun OrganizeSourcesAndScanPanel(
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = buildString {
-                                append(state.animes.size)
-                                append(if (state.animes.size == 1) " anime" else " animes")
-                                append(" • ")
-                                append(availableEpisodes)
-                                append(if (availableEpisodes == 1) " vídeo disponível" else " vídeos disponíveis")
-                                if (isRefreshing) append(" • Atualizando")
-                            },
+                            text = pluralStringResource(R.plurals.common_anime_count, state.animes.size, state.animes.size) + " • " + stringResource(R.string.polish_video_count, availableEpisodes) + if (isRefreshing) " • " + stringResource(R.string.polish_updating) else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -555,7 +551,7 @@ private fun OrganizeSourcesAndScanPanel(
                 }
             } else {
                 Text(
-                    text = "Adicione uma pasta para alimentar a Biblioteca. A tela permanece disponível enquanto a varredura é executada.",
+                    text = stringResource(R.string.more_source_add_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -570,27 +566,28 @@ private data class OrganizeScanStatus(
     val tone: ReiAnixBadgeTone,
 )
 
+@Composable
 private fun organizeScanStatus(state: ReiAnixLibraryUiState): OrganizeScanStatus {
     val configuredSourcesHaveLostAccess = state.storage.configuredSources.any {
         state.storage.sourceState(it) in setOf("revoked", "unavailable", "error")
     }
     if (configuredSourcesHaveLostAccess && !state.sourceAvailable) {
-        return OrganizeScanStatus("Permissão necessária", "Atenção", ReiAnixBadgeTone.Warning)
+        return OrganizeScanStatus(stringResource(R.string.polish_permission), stringResource(R.string.polish_attention), ReiAnixBadgeTone.Warning)
     }
     if (state.scanInProgress) {
-        return OrganizeScanStatus("Processando", "Ativo", ReiAnixBadgeTone.Info)
+        return OrganizeScanStatus(stringResource(R.string.polish_processing), stringResource(R.string.polish_active), ReiAnixBadgeTone.Info)
     }
     return when (state.scanState.uppercase()) {
         "COMPLETED", "EMPTY_COMPLETE" ->
-            OrganizeScanStatus("Concluído", "OK", ReiAnixBadgeTone.Success)
+            OrganizeScanStatus(stringResource(R.string.flow_finished), "OK", ReiAnixBadgeTone.Success)
         "PARTIAL" ->
-            OrganizeScanStatus("Concluído parcialmente", "Parcial", ReiAnixBadgeTone.Warning)
+            OrganizeScanStatus(stringResource(R.string.polish_partial_done), stringResource(R.string.polish_partial), ReiAnixBadgeTone.Warning)
         "FAILED", "ERROR" ->
-            OrganizeScanStatus("Erro", "Erro", ReiAnixBadgeTone.Error)
+            OrganizeScanStatus(stringResource(R.string.polish_error), stringResource(R.string.polish_error), ReiAnixBadgeTone.Error)
         "CANCELLED" ->
-            OrganizeScanStatus("Cancelado", "Cancelado", ReiAnixBadgeTone.Warning)
+            OrganizeScanStatus(stringResource(R.string.flow_cancelled), stringResource(R.string.flow_cancelled), ReiAnixBadgeTone.Warning)
         else ->
-            OrganizeScanStatus("Aguardando", "Pronto", ReiAnixBadgeTone.Info)
+            OrganizeScanStatus(stringResource(R.string.polish_waiting), stringResource(R.string.polish_ready), ReiAnixBadgeTone.Info)
     }
 }
 
@@ -605,6 +602,7 @@ private fun OrganizeSourceRow(
     onReauthorize: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    val localeResources = LocalContext.current.resources
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -638,7 +636,7 @@ private fun OrganizeSourceRow(
                     )
                 } else if (!available) {
                     Text(
-                        text = "Acesso da pasta não está disponível.",
+                        text = stringResource(R.string.more_folder_no_access),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -649,7 +647,7 @@ private fun OrganizeSourceRow(
             IconButton(
                 onClick = onReauthorize,
                 modifier = Modifier.semantics {
-                    contentDescription = if (available) "Adicionar outra pasta" else "Reautorizar $sourceName"
+                    contentDescription = if (available) localeResources.getString(R.string.polish_another_folder) else localeResources.getString(R.string.polish_reauthorize, sourceName)
                 },
             ) {
                 Icon(Icons.Filled.Refresh, contentDescription = null)
@@ -658,7 +656,7 @@ private fun OrganizeSourceRow(
                 onClick = onRemove,
                 enabled = removeEnabled,
                 modifier = Modifier.semantics {
-                    contentDescription = "Remover $sourceName da Biblioteca"
+                    contentDescription = localeResources.getString(R.string.polish_remove_named, sourceName)
                 },
             ) {
                 Icon(Icons.Filled.Delete, contentDescription = null)
@@ -671,6 +669,7 @@ private fun OrganizeSourceRow(
     }
 }
 
+@Composable
 private fun sourceDisplayName(name: String, reference: String): String {
     val normalized = name.trim()
     if (
@@ -679,15 +678,16 @@ private fun sourceDisplayName(name: String, reference: String): String {
         !normalized.startsWith("file://", ignoreCase = true)
     ) return normalized
     val fallback = Uri.decode(reference.substringAfterLast('/')).trim()
-    return fallback.ifBlank { "Pasta da biblioteca" }
+    return fallback.ifBlank { stringResource(R.string.storage_library_folder) }
 }
 
+@Composable
 private fun organizeSourceStateLabel(state: String): String = when (state.lowercase()) {
-    "available", "granted", "full" -> "Acesso concedido"
-    "partial" -> "Acesso parcial"
-    "revoked" -> "Permissão necessária"
-    "unavailable", "error" -> "Indisponível"
-    else -> "Verificando"
+    "available", "granted", "full" -> stringResource(R.string.final_access_granted)
+    "partial" -> stringResource(R.string.final_access_partial)
+    "revoked" -> stringResource(R.string.polish_permission)
+    "unavailable", "error" -> stringResource(R.string.ui_unavailable)
+    else -> stringResource(R.string.polish_checking)
 }
 
 private fun organizeSourceStateTone(state: String): ReiAnixBadgeTone = when (state.lowercase()) {
@@ -705,15 +705,16 @@ private fun OrganizeTopBar(
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val localeResources = LocalContext.current.resources
     ReiAnixTopBar(
-        title = "Organizar",
+        title = stringResource(R.string.more_organize),
         navigationIcon = Icons.Filled.ArrowBack,
-        navigationContentDescription = "Voltar",
+        navigationContentDescription = stringResource(R.string.ui_back),
         onNavigationClick = onBack,
         actions = {
             ReiAnixIconActionButton(
                 icon = Icons.Filled.Info,
-                contentDescription = "Gerenciar acesso ao armazenamento",
+                contentDescription = stringResource(R.string.polish_manage_access),
                 onClick = onOpenStorageAccess,
             )
             IconButton(
@@ -721,9 +722,9 @@ private fun OrganizeTopBar(
                 enabled = !isRefreshing,
                 modifier = Modifier.semantics {
                     contentDescription = if (isRefreshing) {
-                        "Atualizando biblioteca"
+                        localeResources.getString(R.string.polish_refreshing_library)
                     } else {
-                        "Atualizar biblioteca"
+                        localeResources.getString(R.string.extra_refresh_library)
                     }
                 },
             ) {
@@ -735,7 +736,7 @@ private fun OrganizeTopBar(
             }
             ReiAnixIconActionButton(
                 icon = Icons.Filled.Settings,
-                contentDescription = "Abrir configurações",
+                contentDescription = stringResource(R.string.polish_open_settings),
                 onClick = onOpenSettings,
             )
         },
@@ -752,6 +753,7 @@ private fun OrganizeOverview(
     modifier: Modifier = Modifier,
     statusMessage: String?,
 ) {
+    val localeResources = LocalContext.current.resources
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(
@@ -771,7 +773,7 @@ private fun OrganizeOverview(
             item(key = "scan-completed") {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.CheckCircle,
-                    message = "Atualização da biblioteca concluída.",
+                    message = stringResource(R.string.more_refresh_done),
                     tone = ReiAnixBadgeTone.Success,
                 )
             }
@@ -779,7 +781,7 @@ private fun OrganizeOverview(
             item(key = "scan-partial") {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.Warning,
-                    message = "A atualização terminou parcialmente; a biblioteca exibida permanece na fonte de verdade local.",
+                    message = stringResource(R.string.more_refresh_partial_desc),
                     tone = ReiAnixBadgeTone.Warning,
                 )
             }
@@ -787,7 +789,7 @@ private fun OrganizeOverview(
             item(key = "scan-failed") {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.Warning,
-                    message = state.lastCommandError ?: "A atualização da biblioteca falhou.",
+                    message = state.lastCommandError ?: stringResource(R.string.polish_refresh_failed),
                     tone = ReiAnixBadgeTone.Error,
                 )
             }
@@ -805,8 +807,8 @@ private fun OrganizeOverview(
 
         item(key = "categories-title") {
             OrganizeSectionHeader(
-                title = "Categorias",
-                subtitle = "Estados já existentes no catálogo local",
+                title = stringResource(R.string.more_categories),
+                subtitle = stringResource(R.string.polish_catalog_states),
                 icon = Icons.Filled.Settings,
             )
         }
@@ -832,8 +834,8 @@ private fun OrganizeOverview(
         if (genres.isNotEmpty()) {
             item(key = "genres-title") {
                 OrganizeSectionHeader(
-                    title = "Gêneros",
-                    subtitle = "Agrupamentos vindos do catálogo real",
+                    title = stringResource(R.string.ui_genres),
+                    subtitle = stringResource(R.string.polish_catalog_groups),
                     icon = Icons.Filled.Info,
                 )
             }
@@ -847,11 +849,12 @@ private fun OrganizeOverview(
                         key = { "genre:" + it.stableKey },
                         contentType = { "organize-genre" },
                     ) { genre ->
+                        val genreLabel = localizedGenreLabel(genre.name)
                         Surface(
                             modifier = Modifier
                                 .width(ReiAnixTokens.Dimensions.organizeGenreCardWidth)
                                 .semantics {
-                                    contentDescription = "Gênero " + genre.name
+                                    contentDescription = localeResources.getString(R.string.polish_genre_named, genreLabel)
                                 },
                             shape = ReiAnixTokens.Shapes.card,
                             color = reiAnixContentBackground(MaterialTheme.colorScheme.surfaceContainer),
@@ -863,14 +866,14 @@ private fun OrganizeOverview(
                                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
                             ) {
                                 Text(
-                                    text = genre.name,
+                                    text = genreLabel,
                                     style = ReiAnixTokens.TypographyTokens.itemTitle,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    text = "Filtrar biblioteca local",
+                                    text = stringResource(R.string.more_filter_library),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -901,20 +904,20 @@ private fun OrganizeOverview(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Catálogo local",
+                            text = stringResource(R.string.more_local_catalog),
                             style = ReiAnixTokens.TypographyTokens.itemTitle,
                         )
                         Text(
                             text = categories
                                 .firstOrNull { it.label == ReiAnixOrganizeFilters.DEFAULT_STATE }
-                                ?.let { if (it.count == 1) "1 anime disponível" else it.count.toString() + " animes disponíveis" }
-                                ?: "Catálogo local carregado",
+                                ?.let { stringResource(R.string.polish_available_anime, it.count) }
+                                ?: stringResource(R.string.polish_catalog_loaded),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     ReiAnixBadge(
-                        text = if (isRefreshing) "Atualizando" else "Pronto",
+                        text = if (isRefreshing) stringResource(R.string.polish_updating) else stringResource(R.string.polish_ready),
                         tone = if (isRefreshing) ReiAnixBadgeTone.Info else ReiAnixBadgeTone.Success,
                     )
                 }
@@ -941,6 +944,7 @@ private fun OrganizeCollectionContent(
     modifier: Modifier = Modifier,
     showCatalogError: String?,
 ) {
+    val localeResources = LocalContext.current.resources
     val gridState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     var genreMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -969,9 +973,9 @@ private fun OrganizeCollectionContent(
                 ReiAnixSearchField(
                     value = filters.query,
                     onValueChange = onQueryChange,
-                    accessibilityLabel = "Pesquisar na organização",
+                    accessibilityLabel = stringResource(R.string.polish_search_organize),
                     placeholder = {
-                        Text("Buscar título, gênero, alias ou episódio")
+                        Text(stringResource(R.string.more_organize_search))
                     },
                     leadingIcon = {
                         Icon(Icons.Filled.Search, contentDescription = null)
@@ -981,7 +985,7 @@ private fun OrganizeCollectionContent(
                             IconButton(
                                 onClick = { onQueryChange("") },
                                 modifier = Modifier.semantics {
-                                    contentDescription = "Limpar busca"
+                                    contentDescription = localeResources.getString(R.string.ui_clear_query)
                                 },
                             ) {
                                 Icon(Icons.Filled.Clear, contentDescription = null)
@@ -998,12 +1002,13 @@ private fun OrganizeCollectionContent(
                         key = { "state:" + it },
                         contentType = { "organize-state-chip" },
                     ) { stateLabel ->
+                        val displayLabel = localizedUiLabel(stateLabel)
                         ReiAnixChip(
-                            text = stateLabel,
+                            text = displayLabel,
                             selected = stateLabel == filters.state,
                             onClick = { onStateSelected(stateLabel) },
                             modifier = Modifier.semantics {
-                                contentDescription = "Filtro " + stateLabel
+                                contentDescription = localeResources.getString(R.string.common_filter, displayLabel)
                             },
                         )
                     }
@@ -1021,21 +1026,21 @@ private fun OrganizeCollectionContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ReiAnixChip(
-                    text = "Visão geral",
+                    text = stringResource(R.string.more_overview),
                     onClick = onOpenOverview,
                     modifier = Modifier.semantics {
-                        contentDescription = "Voltar para visão geral"
+                        contentDescription = localeResources.getString(R.string.polish_back_overview)
                     },
                 )
                 Box {
                     ReiAnixChip(
                         text = filters.genreKey?.let { key ->
-                            genres.firstOrNull { it.stableKey == key }?.name ?: "Gênero"
-                        } ?: "Gênero",
+                            genres.firstOrNull { it.stableKey == key }?.name?.let { localizedGenreLabel(it) } ?: stringResource(R.string.common_genre)
+                        } ?: stringResource(R.string.common_genre),
                         selected = filters.genreKey != null,
                         onClick = { genreMenuExpanded = true },
                         modifier = Modifier.semantics {
-                            contentDescription = "Selecionar gênero"
+                            contentDescription = localeResources.getString(R.string.polish_select_genre)
                         },
                     )
                     DropdownMenu(
@@ -1044,7 +1049,7 @@ private fun OrganizeCollectionContent(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Todos") },
+                            text = { Text(stringResource(R.string.more_all_m)) },
                             onClick = {
                                 genreMenuExpanded = false
                                 onGenreSelected(null)
@@ -1054,7 +1059,7 @@ private fun OrganizeCollectionContent(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        genre.name,
+                                        localizedGenreLabel(genre.name),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -1069,11 +1074,12 @@ private fun OrganizeCollectionContent(
                 }
 
                 Box {
+                    val sortLabel = localizedUiLabel(filters.sort)
                     ReiAnixChip(
-                        text = filters.sort,
+                        text = sortLabel,
                         onClick = { sortMenuExpanded = true },
                         modifier = Modifier.semantics {
-                            contentDescription = "Ordenar. Opção atual: " + filters.sort
+                            contentDescription = localeResources.getString(R.string.polish_sort_current, sortLabel)
                         },
                     )
                     DropdownMenu(
@@ -1083,7 +1089,7 @@ private fun OrganizeCollectionContent(
                     ) {
                         com.reianix.reianix_local.ui.library.ReiAnixLibrarySort.OPTIONS.forEach { sort ->
                             DropdownMenuItem(
-                                text = { Text(sort.label) },
+                                text = { Text(localizedUiLabel(sort.label)) },
                                 onClick = {
                                     sortMenuExpanded = false
                                     onSortSelected(sort.label)
@@ -1100,7 +1106,7 @@ private fun OrganizeCollectionContent(
                     filters.sort != ReiAnixOrganizeFilters.DEFAULT_SORT
                 ) {
                     ReiAnixChip(
-                        text = "Limpar",
+                        text = stringResource(R.string.ui_clear),
                         onClick = onClearFilters,
                     )
                 }
@@ -1124,7 +1130,7 @@ private fun OrganizeCollectionContent(
             ) {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.Warning,
-                    message = "A atualização terminou parcialmente.",
+                    message = stringResource(R.string.more_refresh_partial),
                     tone = ReiAnixBadgeTone.Warning,
                 )
             }
@@ -1135,7 +1141,7 @@ private fun OrganizeCollectionContent(
             ) {
                 OrganizeStatusBanner(
                     icon = Icons.Filled.Warning,
-                    message = state.lastCommandError ?: "A atualização da biblioteca falhou.",
+                    message = state.lastCommandError ?: stringResource(R.string.polish_refresh_failed),
                     tone = ReiAnixBadgeTone.Error,
                 )
             }
@@ -1146,22 +1152,16 @@ private fun OrganizeCollectionContent(
             span = { GridItemSpan(maxLineSpan) },
         ) {
             val selectedGenreName = filters.genreKey
-                ?.let { key -> genres.firstOrNull { it.stableKey == key }?.name }
+                ?.let { key -> genres.firstOrNull { it.stableKey == key }?.name?.let { localizedGenreLabel(it) } }
+            val resultLabel = stringResource(R.string.polish_result_count, visibleAnimes.size)
+            val selectedStateLabel = filters.state.takeIf { it != ReiAnixOrganizeFilters.DEFAULT_STATE }?.let { localizedUiLabel(it) }
+            val selectedSortLabel = filters.sort.takeIf { it != ReiAnixOrganizeFilters.DEFAULT_SORT }?.let { localizedUiLabel(it) }
             Text(
-                text = buildString {
-                    append(
-                        if (visibleAnimes.size == 1) "1 resultado" else visibleAnimes.size.toString() + " resultados",
-                    )
-                    filters.state.takeIf { it != ReiAnixOrganizeFilters.DEFAULT_STATE }
-                        ?.let { append(" • "); append(it) }
-                    selectedGenreName?.let { append(" • "); append(it) }
-                    filters.sort.takeIf { it != ReiAnixOrganizeFilters.DEFAULT_SORT }
-                        ?.let { append(" • "); append(it) }
-                },
+                text = listOfNotNull(resultLabel, selectedStateLabel, selectedGenreName, selectedSortLabel).joinToString(" • "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.semantics {
-                    contentDescription = "Resumo da lista de organização"
+                    contentDescription = localeResources.getString(R.string.polish_summary)
                 },
             )
         }
@@ -1185,9 +1185,9 @@ private fun OrganizeCollectionContent(
                 span = { GridItemSpan(maxLineSpan) },
             ) {
                 ReiAnixEmptyState(
-                    title = "Nenhum item corresponde aos filtros",
-                    message = "A biblioteca local possui dados, mas nenhuma obra corresponde à combinação atual.",
-                    actionLabel = "Limpar filtros",
+                    title = stringResource(R.string.more_no_filter_match),
+                    message = stringResource(R.string.more_no_filter_match_desc),
+                    actionLabel = stringResource(R.string.ui_clear_filters),
                     onAction = onClearFilters,
                     icon = Icons.Filled.Search,
                     modifier = Modifier.fillMaxWidth(),
@@ -1225,9 +1225,9 @@ private fun EmptyOrganizeContent(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.md),
     ) {
         ReiAnixEmptyLibraryState(
-            title = "Seu catálogo está vazio",
-            message = "Nenhum conteúdo local está disponível neste momento. Isso é diferente de uma falha de acesso.",
-            actionLabel = "Selecionar pasta",
+            title = stringResource(R.string.more_catalog_empty),
+            message = stringResource(R.string.more_catalog_empty_desc),
+            actionLabel = stringResource(R.string.flow_select_folder),
             onAction = onAddFolder,
             modifier = Modifier.weight(1f),
         )
@@ -1236,7 +1236,7 @@ private fun EmptyOrganizeContent(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             EmptyAction(
-                label = "Adicionar pasta",
+                label = stringResource(R.string.extra_storage_add),
                 onClick = onAddFolder,
                 icon = Icons.Filled.Info,
                 modifier = Modifier.weight(1f),
@@ -1249,13 +1249,13 @@ private fun EmptyOrganizeContent(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             EmptyAction(
-                label = "Atualizar",
+                label = stringResource(R.string.more_refresh),
                 onClick = onRefresh,
                 icon = Icons.Filled.Refresh,
                 modifier = Modifier.weight(1f),
             )
             EmptyAction(
-                label = "Configurações",
+                label = stringResource(R.string.settings_title),
                 onClick = onOpenSettings,
                 icon = Icons.Filled.Settings,
                 modifier = Modifier.weight(1f),
@@ -1307,11 +1307,13 @@ private fun OrganizeCategoryCard(
     category: ReiAnixOrganizeCategory,
     onClick: () -> Unit,
 ) {
+    val categoryLabel = localizedUiLabel(category.label)
+    val categoryCount = pluralStringResource(R.plurals.common_anime_count, category.count, category.count)
     Surface(
         modifier = Modifier
             .width(ReiAnixTokens.Dimensions.organizeCategoryCardWidth)
             .semantics {
-                contentDescription = category.label + ": " + category.count + " animes"
+                contentDescription = "$categoryLabel: $categoryCount"
                 role = Role.Button
             },
         onClick = onClick,
@@ -1324,14 +1326,14 @@ private fun OrganizeCategoryCard(
             verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
         ) {
             Text(
-                text = category.label,
+                text = categoryLabel,
                 style = ReiAnixTokens.TypographyTokens.itemTitle,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = if (category.count == 1) "1 anime" else category.count.toString() + " animes",
+                text = categoryCount,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

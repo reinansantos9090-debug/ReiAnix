@@ -1,5 +1,6 @@
 package com.reianix.reianix_local.player
 
+import com.reianix.reianix_local.R
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -27,7 +28,7 @@ internal class FavoriteClipTimeline(context: Context, private val durationMs: Lo
 
     init {
         isFocusable = true
-        contentDescription = "Linha do tempo do clipe. Arraste as extremidades para recortar ou toque para navegar."
+        contentDescription = context.getString(R.string.a11y_clip_timeline)
     }
 
     fun setRange(start: Long, end: Long, position: Long) {

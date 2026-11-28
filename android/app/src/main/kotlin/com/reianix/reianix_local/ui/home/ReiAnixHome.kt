@@ -1,5 +1,13 @@
 package com.reianix.reianix_local.ui.home
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -202,12 +210,12 @@ private fun ReiAnixHomeObservedScreen(
         !state.error.isNullOrBlank()
     val operationalNotice = when {
         hasPreviousContent && hasOperationalError ->
-            "A atualização da biblioteca falhou. Os dados locais já carregados foram preservados." +
+            stringResource(R.string.flow_library_refresh_failed) +
                 state.error?.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
         hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.LOADING ->
-            "Atualizando a biblioteca local…"
+            stringResource(R.string.flow_library_refreshing)
         hasPreviousContent && state.status == ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE ->
-            "A fonte local está indisponível. O conteúdo já carregado continua disponível."
+            stringResource(R.string.flow_library_source_preserved)
         else -> null
     }
     val overlayHeader = hasPreviousContent &&
@@ -288,8 +296,8 @@ private fun ReiAnixHomeObservedScreen(
                     )
                 } else {
                     ReiAnixRecoverableErrorState(
-                        title = "Não foi possível carregar a biblioteca",
-                        message = state.error ?: "A biblioteca local retornou um erro.",
+                        title = stringResource(R.string.ui_load_library),
+                        message = state.error ?: stringResource(R.string.flow_library_return_error),
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -313,9 +321,9 @@ private fun ReiAnixHomeObservedScreen(
                     )
                 } else {
                     ReiAnixSourceUnavailableState(
-                        title = "Biblioteca local indisponível",
-                        message = "A fonte local configurada não está disponível agora.",
-                        actionLabel = "Selecionar pasta",
+                        title = stringResource(R.string.ui_local_unavailable),
+                        message = stringResource(R.string.ui_source_unavailable),
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -325,16 +333,16 @@ private fun ReiAnixHomeObservedScreen(
                 if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     ReiAnixEmptyLibraryState(
                         transparentOnWallpaper = true,
-                        message = "Configure uma pasta da biblioteca para começar a usar a Home.",
-                        actionLabel = "Selecionar pasta",
+                        message = stringResource(R.string.ui_setup_folder),
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
                     ReiAnixEmptyLibraryState(
                         transparentOnWallpaper = true,
-                        message = "Nenhum vídeo compatível foi encontrado nas fontes configuradas.",
-                        actionLabel = "Selecionar pasta",
+                        message = stringResource(R.string.ui_no_videos),
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -375,6 +383,8 @@ private fun ColumnScope.HomeObservedContent(
     onOpenMyList: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
+    val inListLabel = stringResource(R.string.flow_in_my_list)
+    val addListLabel = stringResource(R.string.flow_add_my_list)
     HomeReadyContent(
         animes = state.animes,
         scrollHeaderState = scrollHeaderState,
@@ -387,7 +397,7 @@ private fun ColumnScope.HomeObservedContent(
         onWatch = onWatch,
         onHeroSecondaryAction = { featured -> onToggleFavorite(featured.id) },
         heroSecondaryLabel = { anime ->
-            if (anime.favorite) "✓ Na Minha Lista" else "+ Minha Lista"
+            if (anime.favorite) inListLabel else addListLabel
         },
         onOpenMyList = onOpenMyList,
         onOpenLibrary = onOpenLibrary,
@@ -454,7 +464,7 @@ fun ReiAnixHomeScreen(
                     )
                 } else {
                     HomeError(
-                        message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                        message = state.error ?: stringResource(R.string.ui_load_library),
                         onRefresh = onRefresh,
                     )
                 }
@@ -474,9 +484,9 @@ fun ReiAnixHomeScreen(
                     )
                 } else {
                     HomeMessage(
-                        title = "Biblioteca local indisponível",
-                        message = "A fonte local configurada não está disponível agora.",
-                        actionLabel = "Selecionar pasta",
+                        title = stringResource(R.string.ui_local_unavailable),
+                        message = stringResource(R.string.ui_source_unavailable),
+                        actionLabel = stringResource(R.string.flow_select_folder),
                         onAction = onSelectSource,
                     )
                 }
@@ -484,19 +494,19 @@ fun ReiAnixHomeScreen(
             ReiAnixLibraryLoadStatus.EMPTY -> HomeMessage(
                 transparentOnWallpaper = true,
                 title = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Configure sua biblioteca"
+                    stringResource(R.string.flow_library_setup)
                 } else {
-                    "Nenhum conteúdo disponível"
+                    stringResource(R.string.flow_library_no_content)
                 },
                 message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecione uma pasta da biblioteca para começar."
+                    stringResource(R.string.flow_library_choose_folder)
                 } else {
-                    "Nenhum vídeo compatível foi encontrado nas fontes configuradas."
+                    stringResource(R.string.ui_no_videos)
                 },
                 actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                    "Selecionar pasta"
+                    stringResource(R.string.flow_select_folder)
                 } else {
-                    "Atualizar"
+                    stringResource(R.string.more_refresh)
                 },
                 onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                     onSelectSource
@@ -574,7 +584,7 @@ private fun HomeNotice(
             }
             if (onDismiss != null) {
                 ReiAnixCompactButton(
-                    text = "Dispensar",
+                    text = stringResource(R.string.ui_dismiss),
                     onClick = onDismiss,
                 )
             }
@@ -606,9 +616,9 @@ internal fun HomeHeader(
             modifier = Modifier.weight(1f).semantics { heading() },
         )
         if (onOpenTimeline != null) {
-            HomeHeaderIcon(Icons.Filled.History, "Linha do tempo", onOpenTimeline)
+            HomeHeaderIcon(Icons.Filled.History, stringResource(R.string.more_timeline), onOpenTimeline)
         }
-        HomeHeaderIcon(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+        HomeHeaderIcon(Icons.Filled.Search, stringResource(R.string.flow_search_local_label), onSearch)
         ReiAnixProfileHeaderAction(onClick = onOpenProfile)
     }
     // Move the controls upward within the existing hero footprint, without
@@ -640,6 +650,7 @@ private fun ColumnScope.HomeContent(
         ReiAnixHomeLibraryUiState.from(state)
     }
 
+    val detailsLabel = stringResource(R.string.ui_details)
     HomeReadyContent(
         animes = homeState.animes,
         heroHeader = heroHeader,
@@ -649,7 +660,7 @@ private fun ColumnScope.HomeContent(
                     onOpenDetails = onOpenDetails,
         onWatch = onWatch,
         onHeroSecondaryAction = { featured -> onOpenDetails(featured.id) },
-        heroSecondaryLabel = { "Detalhes" },
+        heroSecondaryLabel = { detailsLabel },
         onOpenMyList = onOpenMyList,
         onOpenLibrary = onOpenLibrary,
     )
@@ -728,7 +739,7 @@ private fun ColumnScope.HomeReadyContent(
     if (expandedSection != null) {
         val isContinue = expandedSection == "continue"
         ReiAnixTopBar(
-            title = if (isContinue) "Continuar assistindo" else "Novos episódios",
+            title = stringResource(if (isContinue) R.string.ui_continue_watching else R.string.ui_new_episodes),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
             onNavigationClick = { expandedSection = null },
         )
@@ -793,11 +804,11 @@ private fun ColumnScope.HomeReadyContent(
         if (newEpisodes.isNotEmpty()) {
             item(key = "home-section-new-episodes") {
                 HomeMediaSection(
-                    title = "Novos episódios",
+                    title = stringResource(R.string.ui_new_episodes),
                     items = newEpisodes.take(12),
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Novos episódios",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_new_episodes)),
                     onSeeAll = { expandedSection = "new" },
                 )
             }
@@ -805,22 +816,22 @@ private fun ColumnScope.HomeReadyContent(
         if (recentlyAdded.isNotEmpty()) {
             item(key = "home-section-recently-added") {
                 HomeMediaSection(
-                    title = "Adicionados recentemente",
+                    title = stringResource(R.string.ui_recent_added),
                     items = recentlyAdded,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Adicionados recentemente",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_recent_added)),
                 )
             }
         }
         if (available.isNotEmpty()) {
             item(key = "home-section-available") {
                 HomeMediaSection(
-                    title = "Conteúdo disponível",
+                    title = stringResource(R.string.ui_available),
                     items = available,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Conteúdo disponível",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_available)),
                 )
             }
         }
@@ -828,55 +839,55 @@ private fun ColumnScope.HomeReadyContent(
         if (recentlyWatched.isNotEmpty()) {
             item(key = "home-section-recently-watched") {
                 HomeMediaSection(
-                    title = "Recentemente assistidos",
+                    title = stringResource(R.string.ui_recent_watched),
                     items = recentlyWatched,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Recentemente assistidos",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_recent_watched)),
                 )
             }
         }
         if (favorites.isNotEmpty()) {
             item(key = "home-section-my-list") {
                 HomeMediaSection(
-                    title = "Minha lista",
+                    title = stringResource(R.string.ui_my_list),
                     items = favorites,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = HOME_MY_LIST_CONTENT_DESCRIPTION,
+                    contentDescription = stringResource(R.string.a11y_home_my_list),
                 )
             }
         }
         listOf(
-            Triple("airing", "Animes em lançamento", airing),
-            Triple("rated", "Mais bem avaliados", topRated),
-            Triple("recommended", "Recomendações para você", recommended),
+            Triple("airing", R.string.flow_airing, airing),
+            Triple("rated", R.string.flow_top_rated, topRated),
+            Triple("recommended", R.string.more_recommendations, recommended),
         ).forEach { (key, title, cards) ->
             if (cards.isNotEmpty()) {
                 item(key = "home-section-" + key) {
-                    HomeMediaSection(title, cards, posterCardWidth, onOpenDetails, "Home " + title)
+                    HomeMediaSection(stringResource(title), cards, posterCardWidth, onOpenDetails, stringResource(R.string.a11y_home_section, stringResource(title)))
                 }
             }
         }
         genreSections.forEach { section ->
             item(key = "home-section-genre:" + section.key) {
                 HomeMediaSection(
-                    title = section.title,
+                    title = localizedGenreLabel(section.title),
                     items = section.items,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home " + section.title,
+                    contentDescription = stringResource(R.string.a11y_home_section, localizedGenreLabel(section.title)),
                 )
             }
         }
         if (movies.isNotEmpty()) {
             item(key = "home-section-movies") {
                 HomeMediaSection(
-                    title = "Filmes",
+                    title = stringResource(R.string.ui_movies),
                     items = movies,
                     cardWidth = posterCardWidth,
                     onOpenDetails = onOpenDetails,
-                    contentDescription = "Home Filmes",
+                    contentDescription = stringResource(R.string.a11y_home_section, stringResource(R.string.ui_movies)),
                 )
             }
         }
@@ -964,7 +975,7 @@ private fun HomeHero(
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     ) {
                         Text(
-                            text = "Em destaque",
+                            text = stringResource(R.string.ui_featured),
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.padding(
                                 horizontal = ReiAnixTokens.Spacing.md,
@@ -1013,7 +1024,7 @@ private fun HomeHero(
                     ) {
                         anime.playbackTargetEpisodeId?.let { episodeId ->
                             ReiAnixPrimaryButton(
-                                text = anime.playbackActionLabel,
+                                text = localizedUiLabel(anime.playbackActionLabel),
                                 enabled = anime.playbackActionLabel != "Indisponível",
                                 onClick = { onWatch(episodeId, anime.id) },
                                 modifier = Modifier.weight(1f),
@@ -1046,7 +1057,7 @@ private fun HomeContinueSection(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
     ) {
         HomeSectionHeader(
-            title = "Continuar assistindo",
+            title = stringResource(R.string.ui_continue_watching),
             onSeeAll = onSeeAll,
         )
 
@@ -1170,8 +1181,6 @@ private fun HomeContinueCard(
     }
 }
 
-private const val HOME_MY_LIST_CONTENT_DESCRIPTION = "Home Minha Lista"
-
 private fun homeAnimeCardWidth(
     preference: String,
     responsive: com.reianix.reianix_local.ui.theme.ReiAnixResponsiveMetrics,
@@ -1235,12 +1244,13 @@ private fun HomeSectionHeader(
         )
 
         if (onSeeAll != null) {
+            val seeAllDescription = stringResource(R.string.flow_see_all_title, title)
             ReiAnixCompactButton(
-                text = "Ver tudo  ›",
+                text = stringResource(R.string.ui_see_all),
                 onClick = onSeeAll,
                 modifier = Modifier.semantics {
                     role = Role.Button
-                    contentDescription = "Ver tudo: " + title
+                    contentDescription = seeAllDescription
                 },
             )
         }
@@ -1403,7 +1413,7 @@ private fun HomeError(
     onRefresh: () -> Unit,
 ) {
     ReiAnixRecoverableErrorState(
-        title = "Não foi possível carregar a biblioteca",
+        title = stringResource(R.string.ui_load_library),
         message = message,
         onRetry = onRefresh,
         modifier = Modifier.fillMaxSize(),

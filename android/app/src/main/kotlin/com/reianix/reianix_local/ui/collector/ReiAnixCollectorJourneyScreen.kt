@@ -1,5 +1,10 @@
 package com.reianix.reianix_local.ui.collector
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+import com.reianix.reianix_local.ui.localizedGenreLabel
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -186,17 +191,17 @@ internal fun ReiAnixCollectorJourneyScreen(
                 IconButton(onClick = { back() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Voltar",
+                        contentDescription = stringResource(R.string.ui_back),
                     )
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = when (page) {
-                        "stats" -> "Estatísticas da jornada"
-                        "activity" -> "Minha atividade"
-                        "titles" -> "Títulos do colecionador"
-                        "achievements" -> "Conquistas"
+                        "stats" -> stringResource(R.string.finish_journey_stats)
+                        "activity" -> stringResource(R.string.finish_journey_my_activity)
+                        "titles" -> stringResource(R.string.more_journey_titles)
+                        "achievements" -> stringResource(R.string.more_achievements)
                         else -> "Jornada do Colecionador"
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -221,7 +226,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                     Text(state.error, color = MaterialTheme.colorScheme.onErrorContainer)
                     if (state.journey != null) {
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = onRefresh, enabled = !state.isLoading && !state.isSaving) { Text("Tentar novamente") }
+                        Button(onClick = onRefresh, enabled = !state.isLoading && !state.isSaving) { Text(stringResource(R.string.ui_retry)) }
                     }
                 }
             }
@@ -240,15 +245,15 @@ internal fun ReiAnixCollectorJourneyScreen(
                 if (state.isLoading) {
                     androidx.compose.material3.CircularProgressIndicator()
                     Spacer(Modifier.height(12.dp))
-                    Text("Consultando a biblioteca local…")
+                    Text(stringResource(R.string.more_library_read))
                 } else {
-                    Text("A jornada está indisponível", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.more_journey_unavailable), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Não foi possível consultar seu progresso. Tente novamente.",
+                        stringResource(R.string.more_journey_error),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
-                    Button(onClick = onRefresh) { Text("Tentar novamente") }
+                    Button(onClick = onRefresh) { Text(stringResource(R.string.ui_retry)) }
                 }
             }
             return
@@ -263,42 +268,42 @@ internal fun ReiAnixCollectorJourneyScreen(
                     "stats" -> {
             item {
                 MetricCard(
-                    firstLabel = "Animes concluídos",
+                    firstLabel = stringResource(R.string.finish_journey_completed),
                     firstValue = journey.animesCompleted.toString(),
-                    secondLabel = "Episódios concluídos",
+                    secondLabel = stringResource(R.string.profile_completed_count),
                     secondValue = journey.episodesCompleted.toString(),
                 )
             }
             item {
                 MetricCard(
-                    firstLabel = "Dias ativos",
+                    firstLabel = stringResource(R.string.finish_journey_days),
                     firstValue = journey.activeDays.toString(),
-                    secondLabel = "Gêneros explorados",
+                    secondLabel = stringResource(R.string.finish_journey_genres),
                     secondValue = journey.genresExplored.toString(),
                 )
             }
             item {
                 MetricCard(
-                    firstLabel = "Décadas exploradas",
+                    firstLabel = stringResource(R.string.finish_journey_decades),
                     firstValue = journey.decadesExplored.toString(),
-                    secondLabel = "Conquistas",
+                    secondLabel = stringResource(R.string.more_achievements),
                     secondValue = journey.achievementsUnlocked.toString() + "/" + journey.achievementsTotal,
                 )
             }
             item {
                 MetricCard(
-                    firstLabel = "Horas concluídas",
+                    firstLabel = stringResource(R.string.finish_journey_hours),
                     firstValue = (journey.completedDurationSeconds / 3600L).toString() + " h",
-                    secondLabel = "Formatos explorados",
+                    secondLabel = stringResource(R.string.finish_journey_formats),
                     secondValue = journey.formatsExplored.toString(),
                 )
             }
                     }
                     "activity" -> {
             item {
-                Text("Atividade nos últimos 6 meses",
+                Text(stringResource(R.string.more_journey_activity),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Dias em que houve reprodução ou progresso registrado.",
+                Text(stringResource(R.string.more_journey_activity_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -317,9 +322,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                     }
                     "titles" -> {
             item {
-                Text("Títulos do colecionador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.more_journey_titles), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Escolha um título desbloqueado para exibir no perfil.",
+                    stringResource(R.string.more_journey_title_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -335,9 +340,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                     ),
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(title.title, fontWeight = FontWeight.SemiBold)
+                        Text(localizedJourneyTitle(title.id, title.title), fontWeight = FontWeight.SemiBold)
                         Text(
-                            title.condition,
+                            localizedJourneyCondition(title.id, title.title, title.condition),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -349,15 +354,15 @@ internal fun ReiAnixCollectorJourneyScreen(
                             ) {
                                 Text(
                                     when {
-                                        state.isSaving && title.id == journey.activeTitle -> "Salvando…"
-                                        title.id == journey.activeTitle -> "Título ativo"
-                                        else -> "Selecionar título"
+                                        state.isSaving && title.id == journey.activeTitle -> stringResource(R.string.flow_saving)
+                                        title.id == journey.activeTitle -> stringResource(R.string.finish_journey_active_title)
+                                        else -> stringResource(R.string.finish_journey_select_title)
                                     },
                                 )
                             }
                         } else {
                             Text(
-                                "Bloqueado",
+                                stringResource(R.string.more_locked),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelMedium,
                             )
@@ -368,7 +373,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                     }
                     "achievements" -> {
             item {
-                Text("Conquistas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.more_achievements), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             items(journey.achievements) { achievement ->
                 Card(
@@ -384,9 +389,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                                 style = MaterialTheme.typography.titleMedium,
                             )
                             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                                Text(achievement.title, fontWeight = FontWeight.SemiBold)
+                                Text(localizedAchievementTitle(achievement.id, achievement.title), fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    achievement.description,
+                                    localizedAchievementDescription(achievement.id, achievement.title, achievement.description),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -406,7 +411,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            achievement.category + if (achievement.unlocked) " · Desbloqueada" else " · Em progresso",
+                            localizedJourneyCategory(achievement.category) + " · " + stringResource(if (achievement.unlocked) R.string.journey_unlocked else R.string.journey_in_progress),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -422,14 +427,14 @@ internal fun ReiAnixCollectorJourneyScreen(
                     Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(Icons.Outlined.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
-                        Text("Nível " + journey.level, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(journey.xp.toString() + " XP de jornada", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.finish_journey_level, journey.level.toString()), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.finish_journey_xp, journey.xp.toString()), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LinearProgressIndicator(progress = { journey.levelProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(journey.xpIntoLevel.toString() + " / " + (journey.xpIntoLevel + journey.xpToNext) + " XP", style = MaterialTheme.typography.labelSmall)
-                            Text("Próximo nível", style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.more_next_level), style = MaterialTheme.typography.labelSmall)
                         }
-                        Text("Título ativo: " + (journey.activeTitleLabel ?: "Nenhum título desbloqueado"),
+                        Text(stringResource(R.string.finish_journey_title_value, journey.activeTitleLabel?.let { localizedJourneyTitle(journey.activeTitle ?: "", it) } ?: stringResource(R.string.finish_journey_no_title)),
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -437,17 +442,17 @@ internal fun ReiAnixCollectorJourneyScreen(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     JourneySummaryCard(Icons.Outlined.EmojiEvents, journey.achievementsUnlocked.toString() + "/" + journey.achievementsTotal,
-                        "Conquistas", Color(0xFFFFC768), Modifier.weight(1f)) { page = "achievements" }
+                        stringResource(R.string.more_achievements), Color(0xFFFFC768), Modifier.weight(1f)) { page = "achievements" }
                     JourneySummaryCard(Icons.Outlined.CalendarToday, journey.activeDays.toString(),
-                        "Dias ativos", MaterialTheme.colorScheme.primary, Modifier.weight(1f)) { page = "activity" }
+                        stringResource(R.string.finish_journey_days), MaterialTheme.colorScheme.primary, Modifier.weight(1f)) { page = "activity" }
                 }
             }
             item {
-                JourneyCategory(Icons.Outlined.BarChart, "Estatísticas da jornada", "Acompanhe sua evolução") { page = "stats" }
-                JourneyCategory(Icons.Outlined.ShowChart, "Minha atividade", "Atividade dos últimos 6 meses") { page = "activity" }
-                JourneyCategory(Icons.Outlined.MilitaryTech, "Títulos do colecionador", "Desbloqueie e equipe seus títulos") { page = "titles" }
-                JourneyCategory(Icons.Outlined.EmojiEvents, "Conquistas",
-                    journey.achievementsUnlocked.toString() + " de " + journey.achievementsTotal + " desbloqueadas") { page = "achievements" }
+                JourneyCategory(Icons.Outlined.BarChart, stringResource(R.string.finish_journey_stats), stringResource(R.string.finish_journey_evolution)) { page = "stats" }
+                JourneyCategory(Icons.Outlined.ShowChart, stringResource(R.string.finish_journey_my_activity), stringResource(R.string.more_journey_activity)) { page = "activity" }
+                JourneyCategory(Icons.Outlined.MilitaryTech, stringResource(R.string.more_journey_titles), stringResource(R.string.finish_journey_equip)) { page = "titles" }
+                JourneyCategory(Icons.Outlined.EmojiEvents, stringResource(R.string.more_achievements),
+                    stringResource(R.string.finish_journey_unlock_count, journey.achievementsUnlocked.toString(), journey.achievementsTotal.toString())) { page = "achievements" }
             }
                     }
                 }
@@ -509,4 +514,85 @@ private fun JourneySummaryCard(icon: ImageVector, value: String, label: String, 
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+
+// Localize presentation only; achievement IDs, criteria and saved titles are unchanged.
+@Composable
+private fun localizedAchievementTitle(id: String, original: String): String = when (id) {
+    "first_episode" -> stringResource(R.string.journey_achievement_first_episode)
+    "anime_1" -> stringResource(R.string.journey_achievement_anime_1)
+    "library_10" -> stringResource(R.string.journey_achievement_library_10)
+    "library_50" -> stringResource(R.string.journey_achievement_library_50)
+    "genres_5" -> stringResource(R.string.journey_achievement_genres_5)
+    "decades_3" -> stringResource(R.string.journey_achievement_decades_3)
+    "formats_2" -> stringResource(R.string.journey_achievement_formats_2)
+    "active_7" -> stringResource(R.string.journey_achievement_active_7)
+    "active_30" -> stringResource(R.string.journey_achievement_active_30)
+    "active_14" -> stringResource(R.string.journey_achievement_active_14)
+    "marathon_10" -> stringResource(R.string.journey_achievement_marathon_10)
+    else -> when {
+        id.startsWith("episodes_") -> stringResource(R.string.journey_number_episodes, id.removePrefix("episodes_"))
+        id.startsWith("anime_") -> stringResource(R.string.journey_number_animes, id.removePrefix("anime_"))
+        id.startsWith("content_") -> stringResource(R.string.journey_number_hours, id.removePrefix("content_").removeSuffix("h"))
+        id.startsWith("decade_") -> stringResource(R.string.journey_decade, id.removePrefix("decade_"))
+        id.startsWith("genre_") -> stringResource(R.string.journey_genre_explorer, localizedGenreLabel(original.removePrefix("Explorador de ")))
+        else -> original
+    }
+}
+
+@Composable
+private fun localizedAchievementDescription(id: String, originalTitle: String, original: String): String = when (id) {
+    "first_episode" -> stringResource(R.string.journey_achievement_first_episode_desc)
+    "anime_1" -> stringResource(R.string.journey_achievement_anime_1_desc)
+    "library_10" -> stringResource(R.string.journey_achievement_library_10_desc)
+    "library_50" -> stringResource(R.string.journey_achievement_library_50_desc)
+    "genres_5" -> stringResource(R.string.journey_achievement_genres_5_desc)
+    "decades_3" -> stringResource(R.string.journey_achievement_decades_3_desc)
+    "formats_2" -> stringResource(R.string.journey_achievement_formats_2_desc)
+    "active_7" -> stringResource(R.string.journey_achievement_active_7_desc)
+    "active_30" -> stringResource(R.string.journey_achievement_active_30_desc)
+    "active_14" -> stringResource(R.string.journey_achievement_active_14_desc)
+    "marathon_10" -> stringResource(R.string.journey_achievement_marathon_10_desc)
+    else -> when {
+        id.startsWith("episodes_") -> stringResource(R.string.journey_number_episodes_desc, id.removePrefix("episodes_"))
+        id.startsWith("anime_") -> stringResource(R.string.journey_number_animes_desc, id.removePrefix("anime_"))
+        id.startsWith("content_") -> stringResource(R.string.journey_number_hours_desc, id.removePrefix("content_").removeSuffix("h"))
+        id.startsWith("decade_") -> stringResource(R.string.journey_decade_desc, id.removePrefix("decade_"))
+        id.startsWith("genre_") -> stringResource(R.string.journey_genre_explorer_desc, localizedGenreLabel(originalTitle.removePrefix("Explorador de ")))
+        else -> original
+    }
+}
+
+@Composable
+private fun localizedJourneyTitle(id: String, original: String): String = when (id) {
+    "collector_beginner" -> stringResource(R.string.journey_title_beginner)
+    "collector" -> stringResource(R.string.journey_achievement_library_10)
+    "temporal_explorer" -> stringResource(R.string.journey_achievement_decades_3)
+    "genre_explorer" -> stringResource(R.string.journey_achievement_genres_5)
+    "marathon_local" -> stringResource(R.string.journey_title_marathon)
+    "veteran" -> stringResource(R.string.journey_title_veteran)
+    "master" -> stringResource(R.string.journey_title_master)
+    else -> if (id.startsWith("genre_")) stringResource(R.string.journey_genre_explorer, localizedGenreLabel(original.removePrefix("Explorador de "))) else original
+}
+
+@Composable
+private fun localizedJourneyCondition(id: String, title: String, original: String): String = when (id) {
+    "collector_beginner" -> stringResource(R.string.journey_episode_done, "1")
+    "collector" -> stringResource(R.string.journey_episode_done, "10")
+    "temporal_explorer" -> stringResource(R.string.journey_decades_done)
+    "genre_explorer" -> stringResource(R.string.journey_genres_done)
+    "marathon_local" -> stringResource(R.string.journey_achievement_marathon_10_desc)
+    "veteran" -> stringResource(R.string.journey_episode_done, "100")
+    "master" -> stringResource(R.string.journey_episode_done, "300")
+    else -> if (id.startsWith("genre_")) stringResource(R.string.journey_genre_explorer_desc, localizedGenreLabel(title.removePrefix("Explorador de "))) else original
+}
+
+@Composable
+private fun localizedJourneyCategory(category: String): String = when (category) {
+    "Consumo" -> stringResource(R.string.journey_category_0)
+    "Coleção" -> stringResource(R.string.journey_category_1)
+    "Exploração" -> stringResource(R.string.journey_category_2)
+    "Atividade" -> stringResource(R.string.journey_category_3)
+    else -> category
 }

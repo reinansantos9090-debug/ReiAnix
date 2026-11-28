@@ -1,5 +1,13 @@
 package com.reianix.reianix_local.ui.library
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+import com.reianix.reianix_local.ui.localizedGenreLabel
+import com.reianix.reianix_local.ui.localizedEpisodeCount
+
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
 
@@ -457,8 +465,8 @@ private fun ReiAnixLibraryPresentationScreen(
                 )
 
                 ReiAnixLibraryLoadStatus.ERROR -> ReiAnixRecoverableErrorState(
-                    title = "Erro na biblioteca",
-                    message = state.error ?: "Não foi possível carregar a biblioteca local.",
+                    title = stringResource(R.string.ui_library_error),
+                    message = state.error ?: stringResource(R.string.ui_load_library),
                     onRetry = onRefresh,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -466,16 +474,16 @@ private fun ReiAnixLibraryPresentationScreen(
                 )
 
                 ReiAnixLibraryLoadStatus.SOURCE_UNAVAILABLE -> ReiAnixSourceUnavailableState(
-                    title = "Biblioteca local indisponível",
+                    title = stringResource(R.string.ui_local_unavailable),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Configure uma pasta local para acessar sua biblioteca."
+                        stringResource(R.string.flow_library_open_folder)
                     } else {
-                        "A fonte local configurada não está disponível agora."
+                        stringResource(R.string.ui_source_unavailable)
                     },
                     actionLabel = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Selecionar pasta"
+                        stringResource(R.string.flow_select_folder)
                     } else {
-                        "Atualizar"
+                        stringResource(R.string.more_refresh)
                     },
                     onAction = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
                         onSelectSource
@@ -489,16 +497,16 @@ private fun ReiAnixLibraryPresentationScreen(
 
                 ReiAnixLibraryLoadStatus.EMPTY -> ReiAnixEmptyLibraryState(
                     transparentOnWallpaper = true,
-                    title = "Biblioteca vazia",
+                    title = stringResource(R.string.ui_library_empty),
                     message = if (state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true)) {
-                        "Configure uma pasta de mídia para começar."
+                        stringResource(R.string.flow_library_media_folder)
                     } else {
-                        "Adicione uma pasta de mídia para começar."
+                        stringResource(R.string.flow_library_add_folder)
                     },
                     actionLabel = when {
-                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> "Selecionar pasta"
-                        onOpenStorage != null -> "Adicionar pasta"
-                        else -> "Atualizar biblioteca"
+                        state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> stringResource(R.string.flow_select_folder)
+                        onOpenStorage != null -> stringResource(R.string.extra_storage_add)
+                        else -> stringResource(R.string.extra_refresh_library)
                     },
                     onAction = when {
                         state.sourceState.equals("NOT_CONFIGURED", ignoreCase = true) -> onSelectSource
@@ -529,13 +537,15 @@ private fun LibraryHeader(
     onFilters: () -> Unit,
 ) {
     ReiAnixTopBar(
-        title = "Biblioteca",
+        title = stringResource(R.string.nav_library),
         actions = {
+            val missingCoversDescription = stringResource(R.string.ui_missing_covers)
+            val libraryFiltersDescription = stringResource(R.string.ui_library_filters)
             IconButton(
                 onClick = onRetryMissingArtwork,
                 enabled = !missingArtworkRetryState.isRunning,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = "Baixar capas que faltam"
+                    contentDescription = missingCoversDescription
                 },
             ) {
                 if (missingArtworkRetryState.isRunning) {
@@ -561,15 +571,15 @@ private fun LibraryHeader(
                 }
             }
             if (onOpenCollections != null) {
-                LibraryWhiteIconButton(Icons.Outlined.Folder, "Coleções", onOpenCollections)
+                LibraryWhiteIconButton(Icons.Outlined.Folder, stringResource(R.string.common_collections), onOpenCollections)
             }
             if (onSearch != null) {
-                LibraryWhiteIconButton(Icons.Filled.Search, "Pesquisar na biblioteca", onSearch)
+                LibraryWhiteIconButton(Icons.Filled.Search, stringResource(R.string.flow_search_local_label), onSearch)
             }
             IconButton(
                 onClick = onFilters,
                 modifier = Modifier.size(ReiAnixTokens.Dimensions.touchTarget).semantics {
-                    contentDescription = "Filtros da biblioteca"
+                    contentDescription = libraryFiltersDescription
                 },
             ) {
                 Canvas(Modifier.size(ReiAnixTokens.Dimensions.iconMedium)) {
@@ -684,15 +694,16 @@ private fun LibraryFiltersDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Filtros da biblioteca",
+                    stringResource(R.string.ui_library_filters),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                val refreshDescription = stringResource(R.string.extra_refresh_library)
                 IconButton(
                     enabled = !isRefreshing && !closing,
                     onClick = { closeThen(onRefresh) },
-                    modifier = Modifier.semantics { contentDescription = "Atualizar biblioteca" },
+                    modifier = Modifier.semantics { contentDescription = refreshDescription },
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null)
                 }
@@ -701,6 +712,7 @@ private fun LibraryFiltersDialog(
             Row(Modifier.fillMaxWidth().selectableGroup()) {
                 tabs.forEachIndexed { index, title ->
                     val active = index == tab
+                    val tabLabel = localizedUiLabel(title)
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -710,7 +722,7 @@ private fun LibraryFiltersDialog(
                                 role = Role.Tab,
                                 onClick = { tab = index },
                             )
-                            .semantics { contentDescription = title },
+                            .semantics { contentDescription = tabLabel },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(
@@ -718,7 +730,7 @@ private fun LibraryFiltersDialog(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                title,
+                                tabLabel,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = if (active) accent else colors.onSurfaceVariant,
                                 maxLines = 1,
@@ -746,6 +758,7 @@ private fun LibraryFiltersDialog(
                 ) {
                     items(options, key = { it.first ?: "__all_genres__" }) { (value, title) ->
                         val selected = value == selectedKey
+                        val optionLabel = if (tab == 1 && value != null) localizedGenreLabel(title) else localizedUiLabel(title)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -792,8 +805,7 @@ private fun LibraryFiltersDialog(
                                     )
                                 }
                             }
-                            Text(
-                                title,
+                            Text(optionLabel,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                 color = if (selected) colors.onBackground else colors.onBackground.copy(alpha = 0.65f),
@@ -925,7 +937,7 @@ private fun ColumnScope.LibraryReadyContent(
                     contentType = "library-error-banner",
                 ) {
                     ReiAnixRecoverableErrorState(
-                        title = "Atualização indisponível",
+                        title = stringResource(R.string.ui_refresh_unavailable),
                         message = errorMessage,
                         onRetry = onRefresh,
                         modifier = Modifier.fillMaxWidth(),
@@ -941,9 +953,9 @@ private fun ColumnScope.LibraryReadyContent(
                 ReiAnixSearchField(
                     value = filters.query,
                     onValueChange = onQueryChange,
-                    accessibilityLabel = "Pesquisar na biblioteca",
+                    accessibilityLabel = stringResource(R.string.flow_search_local_label),
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Título ou gênero") },
+                    placeholder = { Text(stringResource(R.string.ui_title_genre)) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Search,
@@ -952,10 +964,11 @@ private fun ColumnScope.LibraryReadyContent(
                     },
                     trailingIcon = {
                         if (filters.query.isNotBlank()) {
+                            val clearSearch = stringResource(R.string.ui_clear_search)
                             IconButton(
                                 onClick = { onQueryChange("") },
                                 modifier = Modifier.semantics {
-                                    contentDescription = "Limpar pesquisa"
+                                    contentDescription = clearSearch
                                 },
                             ) {
                                 Icon(
@@ -984,21 +997,21 @@ private fun ColumnScope.LibraryReadyContent(
                     ) {
                         item(key = "filter-favorite") {
                             LibraryFilterChip(
-                                text = "Favoritos",
+                                text = stringResource(R.string.ui_favorites),
                                 selected = filters.favoritesOnly,
                                 onClick = onToggleFavorites,
                             )
                         }
                         item(key = "filter-watching") {
                             LibraryFilterChip(
-                                text = "Assistindo",
+                                text = stringResource(R.string.ui_watching),
                                 selected = filters.watchingOnly,
                                 onClick = onToggleWatching,
                             )
                         }
                         item(key = "filter-completed") {
                             LibraryFilterChip(
-                                text = "Completos",
+                                text = stringResource(R.string.ui_completed),
                                 selected = filters.completedOnly,
                                 onClick = onToggleCompleted,
                             )
@@ -1047,11 +1060,12 @@ private fun ColumnScope.LibraryReadyContent(
                             modifier = Modifier.weight(1f),
                         )
                         Spacer(modifier = Modifier.width(ReiAnixTokens.Spacing.xs))
+                        val clearFilters = stringResource(R.string.ui_clear_filters)
                         ReiAnixChip(
-                            text = "Limpar",
+                            text = stringResource(R.string.ui_clear),
                             onClick = onClearFilters,
                             modifier = Modifier.semantics {
-                                contentDescription = "Limpar filtros"
+                                contentDescription = clearFilters
                             },
                         )
                     }
@@ -1082,16 +1096,16 @@ private fun ColumnScope.LibraryReadyContent(
                 ) {
                     ReiAnixEmptyLibraryState(
                         title = if (filters.hasAnyFilter) {
-                            "Nenhum resultado"
+                            stringResource(R.string.flow_library_no_results)
                         } else {
-                            "Nenhum conteúdo"
+                            stringResource(R.string.flow_library_no_visible)
                         },
                         message = if (filters.hasAnyFilter) {
-                            "Nenhum título corresponde aos filtros atuais."
+                            stringResource(R.string.flow_library_filters_none)
                         } else {
-                            "A biblioteca local ainda não possui conteúdo visível."
+                            stringResource(R.string.flow_library_no_visible_desc)
                         },
-                        actionLabel = if (filters.hasAnyFilter) "Limpar filtros" else null,
+                        actionLabel = if (filters.hasAnyFilter) stringResource(R.string.ui_clear_filters) else null,
                         onAction = if (filters.hasAnyFilter) onClearFilters else null,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1112,6 +1126,7 @@ private fun ColumnScope.LibraryReadyContent(
                     ) {
                         LibraryAnimeCard(
                             card = card,
+                            availableContentCount = anime.availableContentCount,
                             onClick = remember(onOpenDetails, animeId) { { onOpenDetails(animeId) } },
                             onToggleFavorite = remember(onToggleFavorite, animeId) { { onToggleFavorite(animeId) } },
                             maxDimensionPx = posterRequestDimensionPx,
@@ -1184,7 +1199,7 @@ private fun LibrarySourceSummaryCard(
                 verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
             ) {
                 Text(
-                    text = "Capas sincronizadas",
+                    text = stringResource(R.string.ui_covers_synced),
                     style = ReiAnixTokens.TypographyTokens.sectionTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -1198,7 +1213,7 @@ private fun LibrarySourceSummaryCard(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 ReiAnixBadge(
-                    text = if (sourceAvailable) "Funciona offline" else "Fonte indisponível",
+                    text = stringResource(if (sourceAvailable) R.string.native_offline else R.string.flow_source_unavailable),
                     tone = if (sourceAvailable) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
                 )
             }
@@ -1213,10 +1228,9 @@ private fun LibrarySourceSummaryCard(
     }
 }
 
+@Composable
 private fun librarySourceCountLabel(animeCount: Int, episodeCount: Int): String =
-    animeCount.toString() + " " + if (animeCount == 1) "anime" else "animes" +
-        " • " + episodeCount.toString() + " " +
-        if (episodeCount == 1) "episódio" else "episódios"
+    androidx.compose.ui.res.pluralStringResource(R.plurals.common_anime_count, animeCount, animeCount) + " • " + localizedEpisodeCount(episodeCount)
 
 @Composable
 private fun LibraryLoadingGrid(
@@ -1287,12 +1301,13 @@ private fun LibraryFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val filterDescription = stringResource(R.string.common_filter, text)
     ReiAnixChip(
         text = text,
         onClick = onClick,
         selected = selected,
         modifier = Modifier.semantics {
-            contentDescription = "Filtro $text"
+            contentDescription = filterDescription
         },
     )
 }
@@ -1310,6 +1325,7 @@ private fun libraryFilterTabOptions(
 @Composable
 private fun LibraryAnimeCard(
     card: LibraryCardRenderData,
+    availableContentCount: Int,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     maxDimensionPx: Int,
@@ -1321,7 +1337,7 @@ private fun LibraryAnimeCard(
         artworkExternalUrl = card.artwork?.externalUrl,
         artworkIdentity = card.artworkIdentity,
         artworkSourceRevisions = card.artwork?.sourceRevisions.orEmpty(),
-        metadata = card.metadata,
+        metadata = if (availableContentCount > 0) card.metadata.dropLast(1) + localizedEpisodeCount(availableContentCount) else card.metadata,
         progress = card.progress,
         favorite = card.favorite,
         watching = card.watching,
@@ -1368,5 +1384,6 @@ private fun ReiAnixAnimeUiModel.toLibraryCard(): LibraryCardRenderData = Library
         ?: if (mediaKind == ReiAnixMediaKind.MOVIE) "Filme" else null,
 )
 
+@Composable
 private fun libraryResultLabel(count: Int): String =
-    count.toString() + " " + if (count == 1) "resultado" else "resultados"
+    androidx.compose.ui.res.pluralStringResource(R.plurals.common_result_count, count, count)

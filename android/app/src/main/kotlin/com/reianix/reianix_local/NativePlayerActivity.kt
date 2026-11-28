@@ -140,6 +140,10 @@ import kotlin.math.roundToLong
 /** Full-screen Media3 player for one persisted local, SAF, or MediaStore URI. */
 @OptIn(UnstableApi::class)
 class NativePlayerActivity : FragmentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val traceId = UUID.randomUUID().toString()
     private val activityInstanceId = UUID.randomUUID().toString()
     private lateinit var player: ExoPlayer
@@ -305,9 +309,9 @@ class NativePlayerActivity : FragmentActivity() {
 
     private fun showSleepTimerSelection() {
         if (episodeChangePending || sleepTimerDialog?.isShowing == true) return
-        val choices = arrayOf("15 minutos", "30 minutos", "45 minutos", "60 minutos", "90 minutos", "Personalizado", "Desativar")
+        val choices = (listOf(15, 30, 45, 60, 90).map { getString(R.string.native_timer_minutes, it) } + listOf(getString(R.string.native_custom), getString(R.string.native_disable))).toTypedArray()
         sleepTimerDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Temporizador")
+            .setTitle(getString(R.string.ui_timer))
             .setItems(choices) { _, which ->
                 when (which) {
                     in 0..4 -> setSleepTimer(listOf(15, 30, 45, 60, 90)[which])
@@ -315,27 +319,27 @@ class NativePlayerActivity : FragmentActivity() {
                     else -> setSleepTimer(null)
                 }
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
             .create().also { showPlayerMenuDialog(it) }
     }
 
     private fun showCustomSleepTimer() {
         val input = android.widget.EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            hint = "Minutos (1 a 1440)"
+            hint = getString(R.string.native_timer_range)
             setSingleLine(true)
             setPadding(dp(24), dp(12), dp(24), dp(12))
             setTextColor(Color.WHITE)
             setHintTextColor(0xFFBDBDBD.toInt())
             backgroundTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
         }
-        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme).setTitle("Temporizador").setView(input)
-            .setPositiveButton("Iniciar", null).setNegativeButton("Cancelar", null).create()
+        val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme).setTitle(getString(R.string.ui_timer)).setView(input)
+            .setPositiveButton(getString(R.string.tail_start), null).setNegativeButton(getString(R.string.locale_cancel), null).create()
         sleepTimerDialog = dialog
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val minutes = input.text.toString().toIntOrNull()
-                if (minutes == null || minutes !in 1..1440) input.error = "Informe de 1 a 1440 minutos"
+                if (minutes == null || minutes !in 1..1440) input.error = getString(R.string.native_timer_invalid)
                 else { setSleepTimer(minutes); dialog.dismiss() }
             }
         }
@@ -1148,11 +1152,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
             isSelected = aspectModeLabel != "Ajustar"
         }
         findViewByTag<TextView>("reianix_gesture_horizontal_seek")?.apply {
-            text = gestureSettingLabel("Gestos", horizontalSeekEnabled)
+            text = gestureSettingLabel(getString(R.string.ui_gestures), horizontalSeekEnabled)
             isSelected = horizontalSeekEnabled
         }
         findViewByTag<TextView>("reianix_gesture_double_tap")?.apply {
-            text = gestureSettingLabel("Double tap", doubleTapEnabled)
+            text = gestureSettingLabel(getString(R.string.ui_double_tap), doubleTapEnabled)
             isSelected = doubleTapEnabled
         }
 
@@ -2028,7 +2032,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             if (!isCurrent()) return
             if (inFavoriteClip) {
                 logPlayer("FAVORITE_CLIP_PLAYBACK_FAILED", error)
-                Toast.makeText(this@NativePlayerActivity, "Não foi possível reproduzir a cena", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@NativePlayerActivity, getString(R.string.native_scene_play_failed), Toast.LENGTH_LONG).show()
                 handler.post { if (inFavoriteClip && !isFinishing && !isDestroyed) exitFavoriteClip() }
                 return
             }
@@ -2407,7 +2411,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun requestPictureInPicture() {
         if (audioOnly) {
-            showFeedback("Desative o modo somente áudio para usar o PIP")
+            showFeedback(getString(R.string.native_pip_audio))
             return
         }
         if (!canRequestPictureInPicture()) {
@@ -2508,7 +2512,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             isIndeterminate = true
             indeterminateTintList = ColorStateList.valueOf(ReiAnixTokens.Colors.primary.toArgb())
             visibility = View.VISIBLE
-            contentDescription = "Preparando vídeo"
+            contentDescription = getString(R.string.tail_prepare_video)
         }
         root.addView(
             preparingIndicator,
@@ -2586,7 +2590,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             finishPlayer("back_button")
         }
         back.tag = "reianix_back_button"
-        back.contentDescription = "Voltar"
+        back.contentDescription = getString(R.string.ui_back)
         topBar.addView(back, weightParams(44))
 
         val title = TextView(this).apply {
@@ -2598,22 +2602,22 @@ override fun onCreate(savedInstanceState: Bundle?) {
             ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
             tag = "reianix_player_title"
-            contentDescription = "Título do episódio"
+            contentDescription = getString(R.string.ui_episode_title)
         }
         topBar.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-        lockButton = actionButton(if (locked) "Desbloquear" else "Bloquear", 48) {
+        lockButton = actionButton(if (locked) getString(R.string.native_unlock) else getString(R.string.ui_lock), 48) {
             setLocked(!locked)
         }.apply {
             tag = "reianix_lock_button"
-            contentDescription = if (locked) "Desbloquear controles" else "Bloquear controles"
+            contentDescription = if (locked) getString(R.string.ui_unlock_controls) else getString(R.string.native_lock_controls)
         }
         topBar.addView(lockButton, weightParams(48))
 
         val moreButton = actionButton("Opções", 48) {
             toggleMorePanel()
         }
-        moreButton.contentDescription = "Mais opções"
+        moreButton.contentDescription = getString(R.string.ui_more_options)
         moreButton.tag = "reianix_more_button"
         topBar.addView(moreButton, weightParams(48))
 
@@ -2703,13 +2707,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         })
 
         val previousButton = actionButton("−10", 70, showPressFeedback = false) { seekBy(-10_000L) }.apply {
-            contentDescription = "Voltar 10 segundos"
+            contentDescription = getString(R.string.tail_rewind_10)
         }
         previousButton.tag = "reianix_seek_back"
         centerControls.addView(previousButton, weightParams(70))
 
         playPauseButton = actionButton("Reproduzir", 84) { togglePlayPause() }.apply {
-            contentDescription = "Reproduzir ou pausar"
+            contentDescription = getString(R.string.tail_play_pause)
             textSize = 26f
             tag = "reianix_play_pause"
             minHeight = dp(72)
@@ -2718,7 +2722,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         centerControls.addView(playPauseButton, weightParams(84))
 
         val nextButton = actionButton("+10", 70, showPressFeedback = false) { seekBy(10_000L) }.apply {
-            contentDescription = "Avançar 10 segundos"
+            contentDescription = getString(R.string.tail_forward_10)
         }
         nextButton.tag = "reianix_seek_forward"
         centerControls.addView(nextButton, weightParams(70))
@@ -2753,7 +2757,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
         seekBar = SeekBar(this).apply {
             max = SEEK_PROGRESS_MAX
-            contentDescription = "Barra de progresso"
+            contentDescription = getString(R.string.tail_progress_bar)
             tag = "reianix_seekbar"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -2794,14 +2798,14 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }.apply {
             tag = "reianix_skip_opening"
             visibility = View.GONE
-            contentDescription = "Pular abertura"
+            contentDescription = getString(R.string.tail_skip_opening)
         }
         val skipEnding = actionButton("Pular encerramento", 150) {
             localMetadata.ending?.let { seekToMarker(it.endMs) }
         }.apply {
             tag = "reianix_skip_ending"
             visibility = View.GONE
-            contentDescription = "Pular encerramento"
+            contentDescription = getString(R.string.tail_skip_ending)
         }
         markerRow.addView(skipOpening, weightParams(132))
         markerRow.addView(skipEnding, weightParams(150))
@@ -2828,8 +2832,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                             }
                         },
                         onSleepTimer = { showSleepTimerSelection() },
-                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Selecionar faixa de áudio") },
-                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, "Selecionar legendas") },
+                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, getString(R.string.ui_select_audio)) },
+                        onSubtitles = { showTrackSelection(C.TRACK_TYPE_TEXT, getString(R.string.ui_select_subtitles)) },
                         onPlaybackSpeed = {
                             showSpeedSelection(TextView(this@NativePlayerActivity))
                         },
@@ -2923,7 +2927,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             tag = "reianix_more_dismiss_scrim"
             visibility = View.GONE
             isClickable = true
-            contentDescription = "Fechar menu do player"
+            contentDescription = getString(R.string.tail_close_player_menu)
             setOnClickListener { setMorePanelVisible(false) }
         }.also { scrim ->
             root.addView(
@@ -2984,7 +2988,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (favoriteClipSession != null) return
         setMorePanelVisible(false)
         if (!::uri.isInitialized || !::player.isInitialized || player.currentMediaItem == null) {
-            Toast.makeText(this, "Abra um vídeo local antes de escolher o aplicativo", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.native_video_before_app), Toast.LENGTH_SHORT).show()
             return
         }
         try {
@@ -3063,7 +3067,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         onPlaybackSpeed = { showSpeedSelection(TextView(this@NativePlayerActivity)) },
                         onCast = { showTvPicker() },
                         onAspect = ::toggleAspectMode,
-                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, "Trilhas sonoras") },
+                        onAudioTracks = { showTrackSelection(C.TRACK_TYPE_AUDIO, getString(R.string.ui_audio_tracks)) },
                         onManualSkip = ::skipOpeningOrEndingManually,
                         onNext = {
                             if (!episodeChangePending && intent.getBooleanExtra("canNext", false)) {
@@ -3186,7 +3190,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             canPrevious = favoriteClipSession == null && intent.getBooleanExtra("canPrevious", false),
             episodeTransitionInProgress = episodeChangePending || favoriteClipSession?.restoring == true,
             aspectLabel = aspectModeLabel,
-            sleepTimerLabel = if (sleepTimerDeadlineMs > 0L) formatTime(sleepTimerRemainingMs()) else "Desativado",
+            sleepTimerLabel = if (sleepTimerDeadlineMs > 0L) formatTime(sleepTimerRemainingMs()) else getString(R.string.choice_disabled),
             playbackSpeed = if (::player.isInitialized) player.playbackParameters.speed else 1f,
             audioTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_AUDIO),
             subtitleTrackLabel = selectedPlayerTrackLabel(C.TRACK_TYPE_TEXT),
@@ -3381,7 +3385,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 activity = this,
                 sourceId = sourceId,
                 sourceUri = source,
-                title = titleValue.ifBlank { "Episódio" },
+                title = titleValue.ifBlank { getString(R.string.flow_episode) },
                 positionMs = player.currentPosition.coerceAtLeast(0L),
                 onRemotePlaybackStarted = {
                     if (::player.isInitialized && !episodeChangePending) {
@@ -3645,10 +3649,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     private fun selectedPlayerTrackLabel(trackType: Int): String {
-        if (!::player.isInitialized) return "Selecionar"
+        if (!::player.isInitialized) return getString(R.string.choice_select)
         val parameters = player.trackSelectionParameters
         if (parameters.disabledTrackTypes.contains(trackType)) {
-            return "Desativado"
+            return getString(R.string.choice_disabled)
         }
         val selectedFormat = player.currentTracks.groups
             .filter { it.type == trackType && it.isSupported }
@@ -3660,7 +3664,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             .firstOrNull()
         return selectedFormat?.label?.takeIf { it.isNotBlank() }
             ?: selectedFormat?.language?.takeIf { it.isNotBlank() }
-            ?: if (trackType == C.TRACK_TYPE_TEXT) "Off" else "Automático"
+            ?: if (trackType == C.TRACK_TYPE_TEXT) getString(R.string.choice_disabled) else getString(R.string.choice_automatic)
     }
 
     private fun showSpeedSelection(button: TextView) {
@@ -3671,7 +3675,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val currentIndex = speeds.indices.minByOrNull { abs(speeds[it] - player.playbackParameters.speed) } ?: 2
         touchControls()
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Velocidade")
+            .setTitle(getString(R.string.ui_speed))
             .setSingleChoiceItems(labels, currentIndex) { dialog, which ->
                 player.setPlaybackSpeed(speeds[which])
                 persistCanonicalPlayerSetting("player.default_speed", speeds[which].toString())
@@ -3681,7 +3685,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 syncComposePlayerUiState()
                 dialog.dismiss()
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
             .create().also { showPlayerMenuDialog(it) }
     }
 
@@ -3732,7 +3736,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 root.addView(overlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 touchControls()
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
-            } catch (error: Exception) { showFeedback("Não foi possível carregar os episódios.") }
+            } catch (error: Exception) { showFeedback(getString(R.string.native_episodes_load_failed)) }
         }
     }
 
@@ -3964,9 +3968,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun showPlaybackHistory() {
         touchControls()
         val loadingDialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Histórico")
-            .setMessage("Carregando histórico…")
-            .setNegativeButton("Fechar", null)
+            .setTitle(getString(R.string.ui_history))
+            .setMessage(getString(R.string.tail_history_loading))
+            .setNegativeButton(getString(R.string.ui_close), null)
             .create()
         showPlayerMenuDialog(loadingDialog)
 
@@ -3997,13 +4001,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (loadingDialog.isShowing) loadingDialog.dismiss()
                 if (isFinishing || isDestroyed) return@launch
                 if (historyItems.isEmpty()) {
-                    showFeedback("Nenhum histórico de reprodução encontrado")
+                    showFeedback(getString(R.string.native_history_empty))
                     return@launch
                 }
                 AlertDialog.Builder(this@NativePlayerActivity, R.style.ReiAnixPlayerMenuDialogTheme)
-                    .setTitle("Histórico")
+                    .setTitle(getString(R.string.ui_history))
                     .setItems(historyItems.toTypedArray(), null)
-                    .setNegativeButton("Fechar", null)
+                    .setNegativeButton(getString(R.string.ui_close), null)
                     .create().also { showPlayerMenuDialog(it) }
             } catch (cancelled: CancellationException) {
                 if (loadingDialog.isShowing) loadingDialog.dismiss()
@@ -4012,7 +4016,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 if (loadingDialog.isShowing) loadingDialog.dismiss()
                 logPlayer("PLAYER_HISTORY_LOAD_FAILED", exception)
                 if (!isFinishing && !isDestroyed) {
-                    showFeedback("Não foi possível carregar o histórico")
+                    showFeedback(getString(R.string.native_history_load_failed))
                 }
             }
         }
@@ -4022,9 +4026,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         if (!::player.isInitialized) return
         touchControls()
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Informações técnicas")
+            .setTitle(getString(R.string.tail_technical_info))
             .setMessage(buildTechnicalInfo())
-            .setPositiveButton("Fechar", null)
+            .setPositiveButton(getString(R.string.ui_close), null)
             .create().also { showPlayerMenuDialog(it) }
     }
     private fun showTrackSelection(trackType: Int, label: String) {
@@ -4056,7 +4060,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         channels.takeIf { it.isNotBlank() },
                         codec.takeIf { it.isNotBlank() },
                     ).joinToString(" • ")
-                    val base = labelText ?: language ?: "Faixa " + (groupIndex + 1) + "." + (trackIndex + 1)
+                    val base = labelText ?: language ?: getString(R.string.native_track_number, groupIndex + 1, trackIndex + 1)
                     realTracks += TrackOption(
                         title = if (suffix.isBlank() || base.contains(suffix, ignoreCase = true)) {
                             base
@@ -4071,16 +4075,16 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         if (realTracks.isEmpty()) {
             showFeedback(
-                if (trackType == C.TRACK_TYPE_AUDIO) "Nenhuma faixa de áudio disponível"
-                else "Nenhuma legenda disponível",
+                if (trackType == C.TRACK_TYPE_AUDIO) getString(R.string.native_no_audio_tracks)
+                else getString(R.string.native_no_subtitles),
             )
             return
         }
 
         val options = buildList {
-            add(TrackOption("Automático", null, -1))
+            add(TrackOption(getString(R.string.choice_automatic), null, -1))
             add(TrackOption(
-                if (trackType == C.TRACK_TYPE_AUDIO) "Desativar áudio" else "Desativar legendas",
+                if (trackType == C.TRACK_TYPE_AUDIO) getString(R.string.native_disable_audio) else getString(R.string.native_disable_subtitles),
                 null,
                 -2,
             ))
@@ -4161,11 +4165,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     )
                 }.onFailure { error ->
                     logPlayer("TRACK_SELECTION_FAILED type=" + trackType, error)
-                    showFeedback("Não foi possível trocar a faixa")
+                    showFeedback(getString(R.string.native_track_change_failed))
                 }
                 dialog.dismiss()
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
             .create().also { showPlayerMenuDialog(it) }
     }
 
@@ -4342,8 +4346,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun updateLockUi() {
         if (!::lockButton.isInitialized) return
-        lockButton.text = if (locked) "Desbloquear" else "Bloquear"
-        lockButton.contentDescription = if (locked) "Desbloquear controles" else "Bloquear controles"
+        lockButton.text = if (locked) getString(R.string.native_unlock) else getString(R.string.ui_lock)
+        lockButton.contentDescription = if (locked) getString(R.string.ui_unlock_controls) else getString(R.string.native_lock_controls)
     }
 
     private val playerSettingWriteLocks = ConcurrentHashMap<String, Mutex>()
@@ -4499,7 +4503,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     private fun enableAnimePreferences() {
         if (currentAnimePreferencesKey() == null || favoriteClipSession != null) {
-            showFeedback("Abra um episódio vinculado a um anime para usar esta opção")
+            showFeedback(getString(R.string.native_anime_required))
             return
         }
         // Prevent an older in-flight configuration read from overwriting the
@@ -4513,7 +4517,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         )
         activeAnimePreferencesKey = currentAnimePreferencesKey()
         persistAnimePreferences()
-        showFeedback("Preferências deste anime ativadas")
+        showFeedback(getString(R.string.native_anime_prefs_on))
     }
 
     private fun resetAnimePreferences() {
@@ -4538,7 +4542,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 sessionState == SessionState.ACTIVE
             ) {
                 applyGlobalPlayerPreferences(values)
-                showFeedback("Configurações gerais restauradas")
+                showFeedback(getString(R.string.native_general_restored))
             }
         }
     }
@@ -4659,7 +4663,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             setWindowBrightness((current + delta).coerceIn(0f, 1f))
             val percent = (windowBrightness * 100f).roundToInt().coerceIn(0, 100)
-            showFeedback("Brilho $percent%", 900L)
+            showFeedback(getString(R.string.native_brightness, percent), 900L)
         }.onFailure { error ->
             logPlayer("GESTURE_BRIGHTNESS_IGNORED", error)
         }
@@ -4682,7 +4686,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             }
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
             val percent = (target.toFloat() / maxVolume.toFloat() * 100f).roundToInt()
-            showFeedback("Volume $percent%", 900L)
+            showFeedback(getString(R.string.native_volume, percent), 900L)
         }.onFailure { error ->
             logPlayer("GESTURE_VOLUME_IGNORED", error)
         }
@@ -4699,11 +4703,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 "PLAYER_RETRY_REJECTED requestId=" + requestId.ifEmpty { "-" } +
                     " kind=" + currentFailureKind.name,
             )
-            showFeedback("Esta falha não pode ser repetida automaticamente", 1600L)
+            showFeedback(getString(R.string.native_retry_unavailable), 1600L)
             return
         }
         if (retryCount >= MAX_RETRY_ATTEMPTS) {
-            showFeedback("Limite de tentativas atingido", 1400L)
+            showFeedback(getString(R.string.native_retry_limit), 1400L)
             return
         }
 
@@ -4809,7 +4813,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         setControlsVisible(true)
         findViewByTag<View>("reianix_error_text")?.let { (it as TextView).text = userMessageForFailure(resolvedFailureKind, fallback = message) }
         findViewByTag<View>("reianix_error_reason")?.let {
-            (it as TextView).text = "Detalhe: " + userFailureDetailForFailure(resolvedFailureKind)
+            (it as TextView).text = getString(R.string.native_detail, userFailureDetailForFailure(resolvedFailureKind))
         }
         findViewByTag<View>("reianix_error_retry")?.visibility =
             if (::player.isInitialized && resolvedRetryable) View.VISIBLE else View.GONE
@@ -4850,17 +4854,17 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun userFailureDetailForFailure(
         kind: PlayerMediaPolicy.PlaybackFailureKind,
     ): String = when (kind) {
-        PlayerMediaPolicy.PlaybackFailureKind.MEDIA_NOT_FOUND -> "arquivo ausente"
-        PlayerMediaPolicy.PlaybackFailureKind.PERMISSION -> "acesso negado ou autorização revogada"
-        PlayerMediaPolicy.PlaybackFailureKind.SOURCE -> "fonte local indisponível"
-        PlayerMediaPolicy.PlaybackFailureKind.PARSER -> "container/formato não reconhecido"
-        PlayerMediaPolicy.PlaybackFailureKind.DECODER -> "falha de inicialização do decoder"
-        PlayerMediaPolicy.PlaybackFailureKind.CODEC -> "codec incompatível"
-        PlayerMediaPolicy.PlaybackFailureKind.RENDERER -> "falha no renderizador"
-        PlayerMediaPolicy.PlaybackFailureKind.TIMEOUT -> "tempo de preparação excedido"
-        PlayerMediaPolicy.PlaybackFailureKind.LIFECYCLE -> "sessão/lifecycle invalidado"
-        PlayerMediaPolicy.PlaybackFailureKind.STALE -> "requisição obsoleta"
-        PlayerMediaPolicy.PlaybackFailureKind.UNKNOWN -> "falha de reprodução não classificada"
+        PlayerMediaPolicy.PlaybackFailureKind.MEDIA_NOT_FOUND -> getString(R.string.native_failure_missing)
+        PlayerMediaPolicy.PlaybackFailureKind.PERMISSION -> getString(R.string.native_failure_permission)
+        PlayerMediaPolicy.PlaybackFailureKind.SOURCE -> getString(R.string.native_failure_source)
+        PlayerMediaPolicy.PlaybackFailureKind.PARSER -> getString(R.string.native_failure_parser)
+        PlayerMediaPolicy.PlaybackFailureKind.DECODER -> getString(R.string.native_failure_decoder)
+        PlayerMediaPolicy.PlaybackFailureKind.CODEC -> getString(R.string.native_failure_codec)
+        PlayerMediaPolicy.PlaybackFailureKind.RENDERER -> getString(R.string.native_failure_renderer)
+        PlayerMediaPolicy.PlaybackFailureKind.TIMEOUT -> getString(R.string.native_failure_timeout)
+        PlayerMediaPolicy.PlaybackFailureKind.LIFECYCLE -> getString(R.string.native_failure_lifecycle)
+        PlayerMediaPolicy.PlaybackFailureKind.STALE -> getString(R.string.native_failure_stale)
+        PlayerMediaPolicy.PlaybackFailureKind.UNKNOWN -> getString(R.string.native_failure_unknown)
     }
 
     private fun userMessageForFailure(
@@ -4868,26 +4872,26 @@ override fun onCreate(savedInstanceState: Bundle?) {
         fallback: String? = null,
     ): String = when (kind) {
         PlayerMediaPolicy.PlaybackFailureKind.MEDIA_NOT_FOUND ->
-            "O arquivo deste episódio não foi encontrado ou foi removido."
+            getString(R.string.native_message_missing)
         PlayerMediaPolicy.PlaybackFailureKind.PERMISSION ->
-            "O acesso ao arquivo deste episódio foi negado ou revogado."
+            getString(R.string.native_message_permission)
         PlayerMediaPolicy.PlaybackFailureKind.SOURCE ->
-            "O arquivo ou provedor local não está disponível para leitura."
+            getString(R.string.native_message_source)
         PlayerMediaPolicy.PlaybackFailureKind.PARSER ->
-            "O Media3 não conseguiu interpretar o container ou formato deste arquivo."
+            getString(R.string.native_message_parser)
         PlayerMediaPolicy.PlaybackFailureKind.DECODER ->
-            "Este dispositivo não conseguiu inicializar um decoder compatível com este vídeo."
+            getString(R.string.native_message_decoder)
         PlayerMediaPolicy.PlaybackFailureKind.CODEC ->
-            "O codec deste vídeo não é compatível com o decoder disponível."
+            getString(R.string.native_message_codec)
         PlayerMediaPolicy.PlaybackFailureKind.RENDERER ->
-            "O vídeo foi preparado, mas o renderizador não conseguiu exibir os frames."
+            getString(R.string.native_message_renderer)
         PlayerMediaPolicy.PlaybackFailureKind.TIMEOUT ->
-            "A preparação do vídeo excedeu o tempo esperado."
+            getString(R.string.native_message_timeout)
         PlayerMediaPolicy.PlaybackFailureKind.LIFECYCLE,
         PlayerMediaPolicy.PlaybackFailureKind.STALE ->
-            fallback ?: "A reprodução foi invalidada por uma mudança de sessão."
+            fallback ?: getString(R.string.native_message_session)
         PlayerMediaPolicy.PlaybackFailureKind.UNKNOWN ->
-            fallback ?: "Não foi possível reproduzir este arquivo neste dispositivo."
+            fallback ?: getString(R.string.native_message_unknown)
     }
 
     private fun publishPlayerError(message: String, payload: JSONObject = JSONObject()) {
@@ -5288,7 +5292,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         transitionPublishFuture = null
                         if (!published) {
 
-                            showFeedback("Não foi possível mudar de episódio.", 1800L)
+                            showFeedback(getString(R.string.native_episode_change_failed), 1800L)
                             episodeChangePending = false
                             invalidateTransition("mailbox_publish_failed")
                             return@post
@@ -5411,7 +5415,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     // "no adjacent item" from a successful transition that was cancelled.
 
                     invalidateTransition("no_adjacent_episode")
-                    showFeedback("Não existe outro episódio local disponível nesta direção.", 2_200L)
+                    showFeedback(getString(R.string.native_no_next_local), 2_200L)
                     return@launch
                 }
                 require(target.id > 0L && target.animeId == animeId) {
@@ -6311,7 +6315,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
             val duration = if (knownDuration > 0L) knownDuration else favoriteSceneDialogs.durationOf(media)
             if (revision != favoriteSceneUiRevision || !favoriteScenesAvailable()) return@launch
             if (duration <= 0L) {
-                Toast.makeText(this@NativePlayerActivity, "Arquivo indisponível ou sem duração válida", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@NativePlayerActivity, getString(R.string.native_scene_no_duration), Toast.LENGTH_SHORT).show()
                 showFavoriteScenes()
                 return@launch
             }
@@ -6370,7 +6374,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
-                    Toast.makeText(this@NativePlayerActivity, "Não foi possível excluir a cena", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@NativePlayerActivity, getString(R.string.native_scene_delete_failed), Toast.LENGTH_SHORT).show()
                 }
                 if (revision == favoriteSceneUiRevision && favoriteScenesAvailable()) showFavoriteScenes()
             }
@@ -6408,7 +6412,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 return@launch
             }
             if (duration <= 0L || end > duration) {
-                Toast.makeText(this@NativePlayerActivity, "Arquivo original indisponível ou trecho inválido", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@NativePlayerActivity, getString(R.string.native_scene_original_invalid), Toast.LENGTH_LONG).show()
                 showFavoriteScenes()
                 return@launch
             }
@@ -6437,13 +6441,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
                 val opening = favoriteClipSession
                 handler.postDelayed({
                     if (favoriteOpeningWaitingForFrame && favoriteClipSession === opening && inFavoriteClip) {
-                        Toast.makeText(this@NativePlayerActivity, "A cena não conseguiu carregar", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@NativePlayerActivity, getString(R.string.native_scene_load_failed), Toast.LENGTH_SHORT).show()
                         exitFavoriteClip()
                     }
                 }, 10_000L)
             } catch (error: Exception) {
                 logPlayer("FAVORITE_CLIP_START_FAILED", error)
-                Toast.makeText(this@NativePlayerActivity, "Não foi possível abrir a cena", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@NativePlayerActivity, getString(R.string.native_scene_open_failed), Toast.LENGTH_SHORT).show()
                 restoreOriginalEpisode()
             }
         }
@@ -6588,8 +6592,8 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     selected(index)
                     applySubtitlePreferences()
                 }
-                .setNegativeButton("Voltar") { _, _ -> showSubtitleAppearance() }
-                .setPositiveButton("Fechar", null)
+                .setNegativeButton(getString(R.string.ui_back)) { _, _ -> showSubtitleAppearance() }
+                .setPositiveButton(getString(R.string.ui_close), null)
                 .setOnCancelListener { showSubtitleAppearance() }
                 .create()
             showPlayerMenuDialog(dialog)
@@ -6600,9 +6604,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val fonts = arrayOf("system", "sans", "serif", "mono")
 
         val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Personalizar legendas")
-            .setItems(arrayOf("Tamanho", "Posição vertical", "Cor do texto", "Fonte", "Estilos originais", "Restaurar padrão"), null)
-            .setNegativeButton("Fechar", null)
+            .setTitle(getString(R.string.ui_custom_subtitles))
+            .setItems(arrayOf(getString(R.string.common_size), getString(R.string.native_vertical_position), getString(R.string.native_text_color), getString(R.string.native_font), getString(R.string.native_original_styles), getString(R.string.native_restore_default)), null)
+            .setNegativeButton(getString(R.string.ui_close), null)
             .create()
         // Override the default item click so resetting the settings keeps this
         // page open. Entering a category dismisses only the parent dialog.
@@ -6610,27 +6614,27 @@ override fun onCreate(savedInstanceState: Bundle?) {
             dialog.listView.setOnItemClickListener { _, _, index, _ ->
                 if (index != 5) dialog.dismiss()
                 when (index) {
-                    0 -> choose("Tamanho", arrayOf("Pequeno", "Normal", "Grande", "Muito grande"),
+                    0 -> choose(getString(R.string.common_size), arrayOf(getString(R.string.choice_small), getString(R.string.native_normal), getString(R.string.choice_large), getString(R.string.native_very_large)),
                         sizes.indexOfFirst { it == subtitleScale }) { i ->
                         subtitleScale = sizes[i]
                         persistCanonicalPlayerSetting("audio.subtitle_scale", subtitleScale.toString())
                     }
-                    1 -> choose("Posição vertical", arrayOf("Mais baixa", "Normal", "Mais alta", "Alta"),
+                    1 -> choose(getString(R.string.native_vertical_position), arrayOf(getString(R.string.native_lower), getString(R.string.native_normal), getString(R.string.native_higher), getString(R.string.native_high)),
                         positions.indexOf(subtitleBottomPaddingPercent)) { i ->
                         subtitleBottomPaddingPercent = positions[i]
                         persistCanonicalPlayerSetting("audio.subtitle_bottom_padding", subtitleBottomPaddingPercent.toString())
                     }
-                    2 -> choose("Cor do texto", arrayOf("Sistema", "Branco", "Amarelo", "Ciano"),
+                    2 -> choose(getString(R.string.native_text_color), arrayOf(getString(R.string.choice_system), getString(R.string.choice_white), getString(R.string.choice_yellow), getString(R.string.choice_cyan)),
                         colors.indexOf(subtitleColor)) { i ->
                         subtitleColor = colors[i]
                         persistCanonicalPlayerSetting("audio.subtitle_color", subtitleColor)
                     }
-                    3 -> choose("Fonte", arrayOf("Sistema", "Sem serifa", "Serifada", "Monoespaçada"),
+                    3 -> choose(getString(R.string.native_font), arrayOf(getString(R.string.choice_system), getString(R.string.choice_sans), getString(R.string.choice_serif), getString(R.string.choice_mono)),
                         fonts.indexOf(subtitleFont)) { i ->
                         subtitleFont = fonts[i]
                         persistCanonicalPlayerSetting("audio.subtitle_font", subtitleFont)
                     }
-                    4 -> choose("Estilos originais", arrayOf("Manter", "Ignorar"),
+                    4 -> choose(getString(R.string.native_original_styles), arrayOf(getString(R.string.native_keep), getString(R.string.native_ignore)),
                         if (subtitleEmbeddedStyle) 0 else 1) { i ->
                         subtitleEmbeddedStyle = i == 0
                         persistCanonicalPlayerSetting("audio.subtitle_embedded_style", subtitleEmbeddedStyle.toString())
@@ -6658,11 +6662,11 @@ override fun onCreate(savedInstanceState: Bundle?) {
     private fun setAudioOnly(enabled: Boolean) {
         if (!::player.isInitialized || errorVisible || episodeChangePending || inPictureInPicture) return
         if (enabled && supportedTrackCount(C.TRACK_TYPE_AUDIO) <= 0) {
-            showFeedback("Não há uma faixa de áudio disponível")
+            showFeedback(getString(R.string.native_no_audio_track))
             return
         }
         if (mediaControls?.setBackgroundAudioEnabled(enabled) != true) {
-            showFeedback("Não foi possível alterar o modo somente áudio")
+            showFeedback(getString(R.string.native_audio_only_failed))
             return
         }
         audioOnly = enabled
@@ -6754,7 +6758,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val endingEnd = field("Encerramento fim", localMetadata.ending?.endMs)
 
         container.addView(android.widget.TextView(this).apply {
-            text = "Marcadores locais (timestamps informados pelo usuário)"
+            text = getString(R.string.tail_local_markers)
             setTextColor(Color.WHITE)
             textSize = 13f
         })
@@ -6765,7 +6769,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
         if (localMetadata.notes.any { !it.favorite }) {
             container.addView(android.widget.TextView(this).apply {
-                text = "Notas e cenas deste episódio"
+                text = getString(R.string.tail_episode_notes)
                 setTextColor(0xFFF5F5F5.toInt())
                 setPadding(0, dp(10), 0, dp(4))
             })
@@ -6778,7 +6782,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     try {
                         localMetadata = localMetadataStore.deleteNote(uri.toString(), note.id)
                     } catch (_: Exception) {
-                        showFeedback("Não foi possível excluir a nota")
+                        showFeedback(getString(R.string.native_note_delete_failed))
                         return@setOnLongClickListener true
                     }
                     showLocalMetadataEditor()
@@ -6792,13 +6796,13 @@ override fun onCreate(savedInstanceState: Bundle?) {
         }
 
         AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Marcadores e notas locais")
+            .setTitle(getString(R.string.tail_markers_notes))
             .setView(container)
-            .setNeutralButton("Nota no tempo atual") { _, _ ->
+            .setNeutralButton(getString(R.string.tail_note_current)) { _, _ ->
                 handler.post { showAddLocalNoteDialog() }
             }
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Salvar marcadores") { _, _ ->
+            .setNegativeButton(getString(R.string.locale_cancel), null)
+            .setPositiveButton(getString(R.string.tail_save_markers)) { _, _ ->
                 val openingStartMs = parseTimestampMs(openingStart.text?.toString())
                 val openingEndMs = parseTimestampMs(openingEnd.text?.toString())
                 val endingStartMs = parseTimestampMs(endingStart.text?.toString())
@@ -6810,7 +6814,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     !PlayerLocalMetadataStore.isValidSegment(openingStartMs, openingEndMs, durationMs) ||
                     !PlayerLocalMetadataStore.isValidSegment(endingStartMs, endingEndMs, durationMs)
                 ) {
-                    showFeedback("Marcadores inválidos: confira os intervalos e a duração do vídeo")
+                    showFeedback(getString(R.string.native_markers_invalid))
                     return@setPositiveButton
                 }
                 try {
@@ -6823,10 +6827,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
                         durationMs,
                     )
                 } catch (_: IllegalArgumentException) {
-                    showFeedback("Marcadores inválidos: confira os intervalos e a duração do vídeo")
+                    showFeedback(getString(R.string.native_markers_invalid))
                     return@setPositiveButton
                 } catch (_: IllegalStateException) {
-                    showFeedback("Não foi possível salvar os marcadores locais")
+                    showFeedback(getString(R.string.native_markers_save_failed))
                     return@setPositiveButton
                 }
                 updateMetadataControls(if (::player.isInitialized) player.currentPosition else 0L)
@@ -6844,7 +6848,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
         val noteGeneration = transitionGeneration
         val notePositionMs = player.currentPosition.coerceAtLeast(0L)
         val input = android.widget.EditText(this).apply {
-            hint = "Nota neste ponto do episódio"
+            hint = getString(R.string.native_note_hint)
             setSingleLine(false)
             maxLines = 5
             setTextColor(Color.WHITE)
@@ -6853,20 +6857,20 @@ override fun onCreate(savedInstanceState: Bundle?) {
             setTextSize(14f)
         }
         val dialog = AlertDialog.Builder(this, R.style.ReiAnixPlayerMenuDialogTheme)
-            .setTitle("Nota em " + formatTime(notePositionMs))
+            .setTitle(getString(R.string.tail_note_at, formatTime(notePositionMs)))
             .setView(input)
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Salvar", null)
+            .setNegativeButton(getString(R.string.locale_cancel), null)
+            .setPositiveButton(getString(R.string.pref_save), null)
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val noteText = input.text?.toString().orEmpty().trim()
                 if (noteText.isBlank()) {
-                    input.error = "Escreva uma anotação"
+                    input.error = getString(R.string.native_note_required)
                     return@setOnClickListener
                 }
                 if (noteText.length > 500) {
-                    input.error = "Use até 500 caracteres"
+                    input.error = getString(R.string.native_note_max)
                     return@setOnClickListener
                 }
                 try {
@@ -6881,7 +6885,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
                     }
                     dialog.dismiss()
                 } catch (_: Exception) {
-                    input.error = "Não foi possível salvar a nota"
+                    input.error = getString(R.string.native_note_save_failed)
                 }
             }
         }

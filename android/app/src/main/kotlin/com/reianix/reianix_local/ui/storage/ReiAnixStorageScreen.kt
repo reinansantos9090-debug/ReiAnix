@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.storage
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import androidx.compose.foundation.layout.Arrangement
@@ -192,20 +196,20 @@ private fun ReiAnixLibraryFoldersSection(
         Box(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
                 item(key = "folders-header") {
-                    SettingsHeader("Pastas", "", onBack)
+                    SettingsHeader(stringResource(R.string.settings_folders), "", onBack)
                 }
                 if (showFolderLoading) {
                     item(key = "folders-loading") {
-                        ReiAnixLoadingState("Verificando armazenamento", "Consultando as pastas da biblioteca…")
+                        ReiAnixLoadingState(stringResource(R.string.final_storage_check), stringResource(R.string.final_storage_folders_read))
                     }
                 }
                 if (storage.safSelectionPending) {
                     item(key = "folders-selecting") {
-                        ReiAnixLoadingState("Seleção de pasta em andamento", "Aguardando o seletor de pastas do Android…")
+                        ReiAnixLoadingState(stringResource(R.string.final_storage_selecting), stringResource(R.string.final_storage_wait_picker))
                     }
                 }
                 items(configuredSafSources, key = { it.reference }) { source ->
-                    val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
+                    val name = friendlySourceName(source.name).ifBlank { stringResource(R.string.storage_library_folder) }
                     Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -220,14 +224,14 @@ private fun ReiAnixLibraryFoldersSection(
                         }
                         androidx.compose.material3.IconButton(onClick = { pendingRemoval = source },
                             enabled = !removeBusy && !selectionBusy) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Remover $name")
+                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.a11y_remove_named, name))
                         }
                     }
                 }
                 if (nativeFolders.status == ReiAnixNativeFoldersStatus.ERROR ||
                     nativeFolders.status == ReiAnixNativeFoldersStatus.NOT_FOUND) {
                     item(key = "folders-error") {
-                        Text("Não foi possível consultar as pastas cadastradas.", modifier = Modifier.padding(20.dp))
+                        Text(stringResource(R.string.extra_storage_read_error), modifier = Modifier.padding(20.dp))
                         ReiAnixSecondaryButton("Tentar novamente", onRefreshNativeFolders)
                     }
                 }
@@ -238,39 +242,39 @@ private fun ReiAnixLibraryFoldersSection(
                 .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(24.dp))
-                Text("Adicionar pasta", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.extra_storage_add), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
 
     pendingRemoval?.let { source ->
-        val sourceName = friendlySourceName(source.name).ifBlank { "esta pasta" }
+        val sourceName = friendlySourceName(source.name)
+        val removalDescription = stringResource(R.string.final_storage_remove_a11y, sourceName)
         AlertDialog(
             onDismissRequest = { pendingRemoval = null },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            title = { Text("Remover pasta da biblioteca?") },
+            title = { Text(stringResource(R.string.extra_storage_remove_question)) },
             text = {
                 Text(
-                    "“$sourceName” será removida somente da configuração da biblioteca. "
-                        + "A permissão Android dessa pasta também será liberada. Nenhum arquivo físico será apagado.",
+                    stringResource(R.string.final_storage_remove_confirm, sourceName),
                 )
             },
             confirmButton = {
                 ReiAnixCompactButton(
-                    text = "Remover",
+                    text = stringResource(R.string.extra_remove),
                     onClick = {
                         pendingRemoval = null
                         onRemoveSaf(source.reference)
                     },
                     enabled = !removeBusy && !selectionBusy,
                     modifier = Modifier.semantics {
-                        contentDescription = "Confirmar remoção de $sourceName"
+                        contentDescription = removalDescription
                     },
                 )
             },
             dismissButton = {
                 ReiAnixCompactButton(
-                    text = "Cancelar",
+                    text = stringResource(R.string.locale_cancel),
                     onClick = { pendingRemoval = null },
                 )
             },
@@ -289,26 +293,26 @@ private fun NativeSqliteFoldersSection(
         verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.xs),
     ) {
         StorageSectionTitle(
-            title = "Registros persistidos no SQLite",
-            description = "Consulta somente leitura do banco canônico. As permissões e alterações de pastas continuam sendo gerenciadas pelo fluxo atual.",
+            title = stringResource(R.string.extra_storage_records),
+            description = stringResource(R.string.extra_storage_records_desc),
         )
         when (state.status) {
             ReiAnixNativeFoldersStatus.IDLE -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "A consulta nativa ainda não foi executada.",
+                    text = stringResource(R.string.extra_storage_not_queried),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             ReiAnixNativeFoldersStatus.LOADING -> ReiAnixLoadingState(
-                title = "Consultando pastas persistidas",
-                message = "Lendo os registros locais do SQLite…",
+                title = stringResource(R.string.extra_storage_querying),
+                message = stringResource(R.string.extra_storage_reading),
                 modifier = Modifier.fillMaxWidth(),
             )
             ReiAnixNativeFoldersStatus.READY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
                     Text(
-                        text = "${state.folders.size} registro(s) de pasta no SQLite",
+                        text = stringResource(R.string.final_storage_record_count, state.folders.size),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -330,26 +334,26 @@ private fun NativeSqliteFoldersSection(
             }
             ReiAnixNativeFoldersStatus.EMPTY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Nenhuma pasta registrada no banco SQLite.",
+                    text = stringResource(R.string.extra_storage_no_records),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             ReiAnixNativeFoldersStatus.NOT_FOUND -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "A consulta nativa retornou uma referência inexistente.",
+                    text = stringResource(R.string.extra_storage_invalid_ref),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
-                ReiAnixSecondaryButton(text = "Consultar novamente", onClick = onRetry)
+                ReiAnixSecondaryButton(text = stringResource(R.string.extra_storage_query_again), onClick = onRetry)
             }
             ReiAnixNativeFoldersStatus.ERROR -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Não foi possível consultar as pastas persistidas. Os registros configurados continuam preservados.",
+                    text = stringResource(R.string.extra_storage_read_failed),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
-                ReiAnixSecondaryButton(text = "Tentar novamente", onClick = onRetry)
+                ReiAnixSecondaryButton(text = stringResource(R.string.ui_retry), onClick = onRetry)
             }
         }
     }
@@ -392,10 +396,10 @@ private fun SafSourceCard(
     onReauthorize: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
+    val name = friendlySourceName(source.name).ifBlank { stringResource(R.string.storage_library_folder) }
     val available = state == "available"
     val stateLabel = safStateLabel(state)
-    val actionLabel = if (available) "Alterar pasta" else "Reautorizar"
+    val actionLabel = stringResource(if (available) R.string.storage_change_folder else R.string.storage_reauthorize)
 
     ReiAnixSettingsSurface(
         modifier = Modifier
@@ -423,7 +427,7 @@ private fun SafSourceCard(
                 )
                 if (available) {
                     Text(
-                        text = "Pasta local da biblioteca",
+                        text = stringResource(R.string.extra_storage_local_folder),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -433,9 +437,9 @@ private fun SafSourceCard(
                     com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState(
                         title = stateLabel,
                         message = when (state) {
-                            "revoked" -> "A autorização desta pasta não está mais disponível no Android."
-                            "unavailable" -> "O provedor desta pasta está indisponível no momento."
-                            else -> "Não foi possível confirmar o acesso desta pasta."
+                            "revoked" -> stringResource(R.string.storage_folder_permission_missing)
+                            "unavailable" -> stringResource(R.string.storage_folder_provider_now)
+                            else -> stringResource(R.string.storage_folder_access_unknown)
                         },
                         actionLabel = null,
                         onAction = null,
@@ -463,7 +467,7 @@ private fun SafSourceCard(
                 modifier = Modifier.weight(1f),
             )
             ReiAnixSecondaryButton(
-                text = "Remover",
+                text = stringResource(R.string.extra_remove),
                 onClick = onRemove,
                 enabled = !removeBusy && !selectionBusy,
                 leadingIcon = Icons.Filled.Delete,
@@ -532,7 +536,7 @@ private fun ConfiguredSourceCard(
     state: String,
     onAction: (() -> Unit)?,
 ) {
-    val name = friendlySourceName(source.name).ifBlank { "Fonte local" }
+    val name = friendlySourceName(source.name).ifBlank { stringResource(R.string.extra_storage_local_folder) }
     val stateLabel = genericSourceStateLabel(state)
     val available = state in setOf("available", "full", "partial", "granted")
 
@@ -575,7 +579,7 @@ private fun ConfiguredSourceCard(
         if (!available && onAction != null) {
             Spacer(Modifier.height(ReiAnixTokens.Spacing.md))
             ReiAnixSecondaryButton(
-                text = "Verificar acesso",
+                text = stringResource(R.string.extra_storage_verify),
                 onClick = onAction,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -593,7 +597,7 @@ private fun StorageScanCard(
 
     ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "Atualização da biblioteca",
+            text = stringResource(R.string.extra_storage_refresh),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -619,13 +623,13 @@ private fun StorageScanCard(
             horizontalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm),
         ) {
             ReiAnixSecondaryButton(
-                text = "Verificar acesso",
+                text = stringResource(R.string.extra_storage_verify),
                 onClick = onCheckAccess,
                 enabled = !state.scanInProgress,
                 modifier = Modifier.weight(1f),
             )
             ReiAnixPrimaryButton(
-                text = "Atualizar biblioteca",
+                text = stringResource(R.string.extra_refresh_library),
                 onClick = onRefreshLibrary,
                 enabled = !state.scanInProgress,
                 leadingIcon = Icons.Filled.Refresh,
@@ -642,6 +646,7 @@ private fun persistedGrantMessage(count: Int): String =
         "Existem $count permissões de pasta já salvas no Android, mas nenhuma foi configurada na biblioteca."
     }
 
+@Composable
 private fun friendlySourceName(raw: String): String {
     val value = raw.trim()
     return if (
@@ -649,48 +654,52 @@ private fun friendlySourceName(raw: String): String {
         value.startsWith("content://", ignoreCase = true) ||
         value.startsWith("file://", ignoreCase = true)
     ) {
-        "Pasta da biblioteca"
+        stringResource(R.string.storage_library_folder)
     } else {
         value
     }
 }
 
+@Composable
 private fun safStateLabel(state: String): String = when (state.lowercase()) {
-    "available", "granted", "full" -> "Acesso concedido"
-    "revoked" -> "Acesso perdido"
-    "unavailable", "error" -> "Acesso indisponível"
-    "partial" -> "Acesso parcial"
-    "unknown" -> "Verificando acesso"
-    else -> "Acesso necessário"
+    "available", "granted", "full" -> stringResource(R.string.final_access_granted)
+    "revoked" -> stringResource(R.string.final_access_lost)
+    "unavailable", "error" -> stringResource(R.string.final_access_unavailable)
+    "partial" -> stringResource(R.string.final_access_partial)
+    "unknown" -> stringResource(R.string.final_access_checking)
+    else -> stringResource(R.string.final_access_required)
 }
 
+@Composable
 private fun genericSourceStateLabel(state: String): String = when (state.lowercase()) {
-    "available", "granted", "full" -> "Acesso concedido"
-    "partial" -> "Acesso parcial"
-    "revoked" -> "Acesso perdido"
-    "unavailable", "error" -> "Acesso indisponível"
-    "denied" -> "Acesso necessário"
-    else -> "Estado desconhecido"
+    "available", "granted", "full" -> stringResource(R.string.final_access_granted)
+    "partial" -> stringResource(R.string.final_access_partial)
+    "revoked" -> stringResource(R.string.final_access_lost)
+    "unavailable", "error" -> stringResource(R.string.final_access_unavailable)
+    "denied" -> stringResource(R.string.final_access_required)
+    else -> stringResource(R.string.final_access_unknown)
 }
 
+@Composable
 private fun mediaAccessLabel(state: String): String = when (state) {
-    "full" -> "Acesso concedido"
-    "partial" -> "Acesso parcial"
-    else -> "Acesso necessário"
+    "full" -> stringResource(R.string.final_access_granted)
+    "partial" -> stringResource(R.string.final_access_partial)
+    else -> stringResource(R.string.final_access_required)
 }
 
 private fun accessBadgeTone(state: String, successState: String): ReiAnixBadgeTone =
     if (state == successState) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning
 
+@Composable
 private fun scanStateLabel(state: String, inProgress: Boolean): String = when {
-    inProgress -> "Atualizando a biblioteca…"
-    state.equals("COMPLETED", ignoreCase = true) -> "Biblioteca atualizada"
+    inProgress -> stringResource(R.string.flow_library_refreshing)
+    state.equals("COMPLETED", ignoreCase = true) -> stringResource(R.string.final_scan_updated)
     state.equals("EMPTY", ignoreCase = true) || state.equals("EMPTY_COMPLETE", ignoreCase = true) ->
-        "A fonte está acessível e não contém vídeos reconhecidos"
-    state.equals("PARTIAL", ignoreCase = true) -> "Atualização parcial; o catálogo confirmado foi preservado"
-    state.equals("FAILED", ignoreCase = true) -> "Não foi possível concluir a atualização"
-    state.equals("CANCELLED", ignoreCase = true) -> "Atualização cancelada"
-    state.equals("WAITING_FOR_MEDIASTORE", ignoreCase = true) -> "Aguardando o MediaStore concluir a indexação"
-    state.equals("VOLUME_UNAVAILABLE", ignoreCase = true) -> "Uma fonte de mídia está indisponível"
-    else -> "Nenhuma atualização em andamento"
+        stringResource(R.string.final_scan_empty)
+    state.equals("PARTIAL", ignoreCase = true) -> stringResource(R.string.final_scan_partial)
+    state.equals("FAILED", ignoreCase = true) -> stringResource(R.string.final_scan_failed)
+    state.equals("CANCELLED", ignoreCase = true) -> stringResource(R.string.final_scan_cancelled)
+    state.equals("WAITING_FOR_MEDIASTORE", ignoreCase = true) -> stringResource(R.string.final_scan_media_wait)
+    state.equals("VOLUME_UNAVAILABLE", ignoreCase = true) -> stringResource(R.string.final_scan_volume)
+    else -> stringResource(R.string.final_scan_idle)
 }

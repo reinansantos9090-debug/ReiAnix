@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.player
 
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import androidx.compose.foundation.background
 import androidx.compose.animation.animateColorAsState
@@ -154,58 +156,58 @@ fun ReiAnixNativePlayerOptionsPanel(
                 )
                 PlayerOptionToggleRow(
                     icon = Icons.Filled.PlayCircle,
-                    label = "Autoplay",
+                    label = stringResource(R.string.ui_autoplay),
                     checked = state.autoplayNext,
                     enabled = !state.favoriteClipMode,
                     onCheckedChange = onAutoplayChanged,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Tune,
-                    label = "Personalizar atalhos",
+                    label = stringResource(R.string.ui_custom_shortcuts),
                     value = "${state.shortcuts.size}/5",
                     onClick = { page = PlayerOptionsPage.SHORTCUTS },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Speed,
-                    label = "Velocidade",
+                    label = stringResource(R.string.ui_speed),
                     value = String.format(Locale.US, "%.1fx", state.playbackSpeed),
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onPlaybackSpeed,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Timer,
-                    label = "Temporizador",
+                    label = stringResource(R.string.ui_timer),
                     value = state.sleepTimerLabel,
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onSleepTimer,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.VolumeUp,
-                    label = "Áudio",
-                    value = if (state.audioOnly) "Somente áudio" else if (state.audioTrackSelectionEnabled) state.audioTrackLabel else "Indisponível",
+                    label = stringResource(R.string.ui_audio),
+                    value = if (state.audioOnly) stringResource(R.string.ui_audio_only) else if (state.audioTrackSelectionEnabled) state.audioTrackLabel else stringResource(R.string.ui_unavailable),
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { page = PlayerOptionsPage.AUDIO },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Subtitles,
-                    label = "Legendas",
-                    value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else "Indisponível",
+                    label = stringResource(R.string.ui_subtitles),
+                    value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else stringResource(R.string.ui_unavailable),
                     enabled = !state.episodeTransitionInProgress,
                     onClick = { page = PlayerOptionsPage.SUBTITLES },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Gesture,
-                    label = "Gestos",
+                    label = stringResource(R.string.ui_gestures),
                     onClick = { page = PlayerOptionsPage.GESTURES },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.BookmarkBorder,
-                    label = "Salvar cena",
+                    label = stringResource(R.string.ui_save_scene),
                     onClick = onFavoriteScenes,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.MoreHoriz,
-                    label = "Outras opções",
+                    label = stringResource(R.string.ui_other_options),
                     onClick = { page = PlayerOptionsPage.OTHER },
                 )
                 if (showPictureInPicture) {
@@ -218,7 +220,7 @@ fun ReiAnixNativePlayerOptionsPanel(
                 }
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Replay,
-                    label = "Reiniciar",
+                    label = stringResource(R.string.ui_restart),
                     enabled = !state.episodeTransitionInProgress,
                     showChevron = false,
                     onClick = onRestart,
@@ -227,19 +229,19 @@ fun ReiAnixNativePlayerOptionsPanel(
 
             PlayerOptionsPage.AUDIO -> {
                 PlayerOptionsSubpageHeader(
-                    title = "Áudio",
+                    title = stringResource(R.string.ui_audio),
                     onBack = { page = PlayerOptionsPage.MAIN },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.VolumeUp,
-                    label = "Selecionar faixa de áudio",
-                    value = if (state.audioTrackSelectionEnabled) state.audioTrackLabel else "Indisponível",
+                    label = stringResource(R.string.ui_select_audio),
+                    value = if (state.audioTrackSelectionEnabled) state.audioTrackLabel else stringResource(R.string.ui_unavailable),
                     enabled = state.audioTrackSelectionEnabled && !state.episodeTransitionInProgress,
                     onClick = onAudioTracks,
                 )
                 PlayerOptionToggleRow(
                     icon = Icons.Filled.VolumeUp,
-                    label = "Somente áudio",
+                    label = stringResource(R.string.ui_audio_only),
                     checked = state.audioOnly,
                     enabled = !state.episodeTransitionInProgress && (state.audioOnly || state.audioTrackSelectionEnabled),
                     onCheckedChange = onAudioOnlyChanged,
@@ -248,19 +250,19 @@ fun ReiAnixNativePlayerOptionsPanel(
 
             PlayerOptionsPage.SUBTITLES -> {
                 PlayerOptionsSubpageHeader(
-                    title = "Legendas",
+                    title = stringResource(R.string.ui_subtitles),
                     onBack = { page = PlayerOptionsPage.MAIN },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Subtitles,
-                    label = "Selecionar legendas",
-                    value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else "Indisponível",
+                    label = stringResource(R.string.ui_select_subtitles),
+                    value = if (state.subtitleTrackSelectionEnabled) state.subtitleTrackLabel else stringResource(R.string.ui_unavailable),
                     enabled = state.subtitleTrackSelectionEnabled && !state.episodeTransitionInProgress,
                     onClick = onSubtitles,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Subtitles,
-                    label = "Personalizar legendas",
+                    label = stringResource(R.string.ui_custom_subtitles),
                     enabled = !state.episodeTransitionInProgress,
                     onClick = onSubtitleAppearance,
                 )
@@ -268,52 +270,52 @@ fun ReiAnixNativePlayerOptionsPanel(
 
             PlayerOptionsPage.GESTURES -> {
                 PlayerOptionsSubpageHeader(
-                    title = "Gestos",
+                    title = stringResource(R.string.ui_gestures),
                     onBack = { page = PlayerOptionsPage.MAIN },
                 )
                 PlayerOptionToggleRow(
                     icon = ImageVector.vectorResource(R.drawable.ic_gesture_horizontal_seek),
-                    label = "Avançar e voltar",
+                    label = stringResource(R.string.ui_seek),
                     checked = state.horizontalSeekEnabled,
-                    description = "Ativar ou desativar o avanço e retrocesso por gesto horizontal",
+                    description = stringResource(R.string.ui_seek_desc),
                     onCheckedChange = onGesturesChanged,
                 )
                 PlayerOptionToggleRow(
                     icon = ImageVector.vectorResource(R.drawable.ic_gesture_vertical_adjust),
-                    label = "Brilho e volume",
+                    label = stringResource(R.string.ui_brightness_volume),
                     checked = state.volumeGesturesEnabled || state.brightnessGesturesEnabled,
-                    description = "Deslize verticalmente à direita para ajustar o volume e à esquerda para ajustar o brilho",
+                    description = stringResource(R.string.ui_brightness_volume_desc),
                     onCheckedChange = onBrightnessVolumeChanged,
                 )
                 PlayerOptionToggleRow(
                     icon = ImageVector.vectorResource(R.drawable.ic_gesture_adjust_fill),
-                    label = "Ajustar e preencher",
+                    label = stringResource(R.string.ui_fit_fill),
                     checked = state.zoomEnabled,
-                    description = "Permite ajustar e preencher a tela com o vídeo usando gesto de pinça",
+                    description = stringResource(R.string.ui_fit_fill_desc),
                     onCheckedChange = onZoomChanged,
                 )
                 PlayerOptionToggleRow(
                     icon = Icons.Filled.TouchApp,
-                    label = "Double Tap",
+                    label = stringResource(R.string.ui_double_tap),
                     checked = state.doubleTapEnabled,
                     onCheckedChange = onDoubleTapChanged,
                 )
                 PlayerOptionToggleRow(
                     icon = ImageVector.vectorResource(R.drawable.ic_gesture_long_press),
-                    label = "Pressão",
+                    label = stringResource(R.string.ui_long_press),
                     checked = state.longPressEnabled,
-                    description = "Ativar ou desativar a pressão longa",
+                    description = stringResource(R.string.ui_long_press_desc),
                     onCheckedChange = onLongPressChanged,
                 )
             }
 
             PlayerOptionsPage.SHORTCUTS -> {
                 PlayerOptionsSubpageHeader(
-                    title = "Personalizar atalhos",
+                    title = stringResource(R.string.ui_custom_shortcuts),
                     onBack = { page = PlayerOptionsPage.MAIN },
                 )
                 Text(
-                    text = "Escolha até 5 atalhos. Segure e arraste os ativos para reorganizar. Opções fica sempre em último.",
+                    text = stringResource(R.string.ui_shortcut_instructions),
                     fontSize = 12.sp,
                     color = Color(0xFFBBBBBB),
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -504,32 +506,32 @@ fun ReiAnixNativePlayerOptionsPanel(
                 }
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Replay,
-                    label = "Restaurar 5 atalhos padrão",
+                    label = stringResource(R.string.ui_reset_shortcuts),
                     showChevron = false,
                     onClick = { onShortcutsChanged(PlayerShortcutPolicy.default) },
                 )
             }
             PlayerOptionsPage.OTHER -> {
                 PlayerOptionsSubpageHeader(
-                    title = "Outras opções",
+                    title = stringResource(R.string.ui_other_options),
                     onBack = { page = PlayerOptionsPage.MAIN },
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.History,
-                    label = "Histórico",
+                    label = stringResource(R.string.ui_history),
                     showChevron = false,
                     onClick = onHistory,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.BookmarkBorder,
-                    label = "Marcadores",
+                    label = stringResource(R.string.ui_bookmarks),
                     enabled = !state.favoriteClipMode,
                     showChevron = false,
                     onClick = onMarkers,
                 )
                 PlayerOptionActionRow(
                     icon = Icons.Filled.Info,
-                    label = "Informações",
+                    label = stringResource(R.string.ui_information),
                     showChevron = false,
                     onClick = onInformation,
                 )
@@ -555,14 +557,14 @@ private fun PlayerOptionEpisodeNavigationRow(
     ) {
         PlayerOptionNavigationAction(
             icon = Icons.Filled.SkipPrevious,
-            label = "Anterior",
+            label = stringResource(R.string.ui_previous),
             enabled = canPrevious,
             onClick = onPrevious,
             modifier = Modifier.weight(1f),
         )
         PlayerOptionNavigationAction(
             icon = Icons.Filled.SkipNext,
-            label = "Próximo",
+            label = stringResource(R.string.ui_next),
             enabled = canNext,
             onClick = onNext,
             modifier = Modifier.weight(1f),
@@ -630,7 +632,7 @@ private fun PlayerOptionsSubpageHeader(
     ) {
         Icon(
             imageVector = Icons.Filled.ArrowBack,
-            contentDescription = "Voltar",
+            contentDescription = stringResource(R.string.ui_back),
             tint = Color.White,
             modifier = Modifier.size(22.dp),
         )

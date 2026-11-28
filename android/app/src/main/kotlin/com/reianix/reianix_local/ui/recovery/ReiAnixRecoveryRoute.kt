@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.recovery
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -70,37 +74,34 @@ fun ReiAnixRecoveryRoute(
             horizontalAlignment = Alignment.Start,
         ) {
             Text(
-                text = "Recuperação da biblioteca",
+                text = stringResource(R.string.more_recovery),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "O banco de dados local não passou na verificação nativa de integridade ou compatibilidade. " +
-                    "A biblioteca não será inicializada normalmente até que um backup válido seja restaurado.",
+                text = stringResource(R.string.final_recovery_failure),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             failureReason?.trim()?.takeIf { it.isNotBlank() }?.let { reason ->
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Motivo técnico: " + reason.take(640),
+                    text = stringResource(R.string.final_recovery_reason, reason.take(640)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Selecione um backup ReiAnix ZIP no formato suportado. O arquivo será inspecionado e seus dados " +
-                    "apresentados antes da confirmação. Antes de substituir o banco, o aplicativo preservará uma cópia bruta " +
-                    "do SQLite atual e dos arquivos auxiliares disponíveis. Vídeos externos e permissões SAF não são incorporados.",
+                text = stringResource(R.string.final_recovery_instructions),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (settingsState.status.name == "ERROR" && !settingsState.error.isNullOrBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "A leitura das configurações atuais também está indisponível até que o banco seja recuperado.",
+                    text = stringResource(R.string.more_recovery_settings),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -124,7 +125,7 @@ fun ReiAnixRecoveryRoute(
             when (operation?.state) {
                 ReiAnixSettingsOperationState.SUCCESS -> {
                     Text(
-                        text = operation.message ?: "Restauração validada. A biblioteca será reaberta.",
+                        text = operation.message ?: stringResource(R.string.final_recovery_validated),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -132,7 +133,7 @@ fun ReiAnixRecoveryRoute(
                 }
                 ReiAnixSettingsOperationState.ERROR -> {
                     Text(
-                        text = operation.error ?: "A restauração falhou. O banco anterior foi preservado quando possível.",
+                        text = operation.error ?: stringResource(R.string.final_recovery_restore_failed),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -140,7 +141,7 @@ fun ReiAnixRecoveryRoute(
                 }
                 ReiAnixSettingsOperationState.CANCELLED -> {
                     Text(
-                        text = operation.message ?: "A seleção ou a restauração foi cancelada.",
+                        text = operation.message ?: stringResource(R.string.final_recovery_cancelled),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -153,11 +154,11 @@ fun ReiAnixRecoveryRoute(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Usar backup local válido mais recente")
+                Text(stringResource(R.string.more_recovery_latest))
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "O ReiAnix verificará os ZIPs guardados pelo aplicativo e mostrará os dados do backup antes da confirmação. Se nenhum for válido, selecione um backup externo abaixo.",
+                text = stringResource(R.string.more_recovery_latest_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -167,7 +168,7 @@ fun ReiAnixRecoveryRoute(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Selecionar backup para recuperar")
+                Text(stringResource(R.string.more_recovery_choose))
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
@@ -175,7 +176,7 @@ fun ReiAnixRecoveryRoute(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Criar snapshot bruto de segurança")
+                Text(stringResource(R.string.more_recovery_snapshot))
             }
         }
     }
@@ -183,12 +184,10 @@ fun ReiAnixRecoveryRoute(
     if (confirmationVisible) {
         AlertDialog(
             onDismissRequest = { confirmationVisible = false },
-            title = { Text("Recuperar a biblioteca?") },
+            title = { Text(stringResource(R.string.more_recovery_question)) },
             text = {
                 Text(
-                    "O backup escolhido será validado antes da promoção. O banco ativo pode ser substituído. " +
-                        "Será criado um snapshot de segurança com o banco e os arquivos auxiliares que ainda estiverem disponíveis. " +
-                        "Use um backup do ReiAnix em que você confia.",
+                    stringResource(R.string.final_recovery_warning),
                 )
             },
             confirmButton = {
@@ -198,12 +197,12 @@ fun ReiAnixRecoveryRoute(
                         viewModel.requestAction("backup_recovery_restore")
                     },
                 ) {
-                    Text("Escolher backup")
+                    Text(stringResource(R.string.more_choose_backup))
                 }
             },
             dismissButton = {
                 OutlinedButton(onClick = { confirmationVisible = false }) {
-                    Text("Cancelar")
+                    Text(stringResource(R.string.locale_cancel))
                 }
             },
         )

@@ -47,11 +47,11 @@ internal class ReiAnixTvPicker(
         dialog?.dismiss()
         val list = ArrayAdapter(
             activity, android.R.layout.simple_list_item_1,
-            arrayListOf("Procurando TVs na mesma rede…"),
+            arrayListOf(activity.getString(R.string.aux_tv_search)),
         )
         adapter = list
         val picker = AlertDialog.Builder(activity)
-            .setTitle("Transmitir para TV")
+            .setTitle(activity.getString(R.string.ui_cast_tv))
             .setAdapter(list) { _, index ->
                 val device = entries.getOrNull(index)
                 if (device?.kind == ReiAnixTvKind.ROKU) {
@@ -61,13 +61,13 @@ internal class ReiAnixTvPicker(
                     openInWebVideoCaster()
                 } else if (device != null) {
                     list.clear()
-                    list.add("Conectando a " + device.name + "…")
+                    list.add(activity.getString(R.string.aux_tv_connecting, device.name))
                     list.notifyDataSetChanged()
                     sender.connect(device)
                 }
             }
-            .setNegativeButton("Fechar", null)
-            .setNeutralButton("Atualizar", null)
+            .setNegativeButton(activity.getString(R.string.ui_close), null)
+            .setNeutralButton(activity.getString(R.string.more_refresh), null)
             .create()
         dialog = picker
         present(picker)
@@ -93,7 +93,7 @@ internal class ReiAnixTvPicker(
             if (!closed && dialog?.isShowing == true && entries.isEmpty()) {
                 adapter?.apply {
                     clear()
-                    add("Nenhuma TV encontrada. Verifique a rede Wi-Fi.")
+                    add(activity.getString(R.string.aux_tv_none))
                     notifyDataSetChanged()
                 }
             }
@@ -106,7 +106,7 @@ internal class ReiAnixTvPicker(
         val list = adapter ?: return
         list.clear()
         list.addAll(
-            if (entries.isEmpty()) listOf("Procurando TVs na mesma rede…")
+            if (entries.isEmpty()) listOf(activity.getString(R.string.aux_tv_search))
             else {
                 val counts = entries.groupingBy { it.name }.eachCount()
                 val numbers = mutableMapOf<String, Int>()
@@ -133,10 +133,10 @@ internal class ReiAnixTvPicker(
             }
             is ReiAnixTvConnection.Failure -> present(
                 AlertDialog.Builder(activity)
-                    .setTitle("Não foi possível transmitir")
+                    .setTitle(activity.getString(R.string.aux_cast_failed))
                     .setMessage(state.message)
-                    .setPositiveButton("Fechar", null)
-                    .setNeutralButton("Tentar novamente") { _, _ -> show() }
+                    .setPositiveButton(activity.getString(R.string.ui_close), null)
+                    .setNeutralButton(activity.getString(R.string.ui_retry)) { _, _ -> show() }
                     .create()
             )
         }
@@ -153,9 +153,9 @@ internal class ReiAnixTvPicker(
         } catch (error: IllegalArgumentException) {
             present(
                 AlertDialog.Builder(activity)
-                    .setTitle("Vídeo indisponível")
-                    .setMessage(error.message ?: "Não foi possível compartilhar este vídeo local.")
-                    .setPositiveButton("Entendi", null)
+                    .setTitle(activity.getString(R.string.aux_video_unavailable))
+                    .setMessage(error.message ?: activity.getString(R.string.aux_share_failed))
+                    .setPositiveButton(activity.getString(R.string.aux_understood), null)
                     .create()
             )
             return
@@ -169,7 +169,7 @@ internal class ReiAnixTvPicker(
             onRemotePlaybackStarted()
             Toast.makeText(
                 activity,
-                "Vídeo aberto no Web Video Caster. Selecione a Roku nele para transmitir.",
+                activity.getString(R.string.aux_wvc_opened),
                 Toast.LENGTH_LONG,
             ).show()
         } catch (_: ActivityNotFoundException) {
@@ -184,14 +184,12 @@ internal class ReiAnixTvPicker(
     private fun showInstallWebVideoCaster() {
         present(
             AlertDialog.Builder(activity)
-                .setTitle("Web Video Caster indisponível")
+                .setTitle(activity.getString(R.string.aux_wvc_unavailable))
                 .setMessage(
-                    "O Web Video Caster não está instalado ou não aceitou abrir este vídeo. " +
-                        "Confira o aplicativo no Google Play. " +
-                        "Depois, escolha a Roku dentro dele para transmitir."
+                    activity.getString(R.string.aux_wvc_install)
                 )
-                .setPositiveButton("Abrir Google Play") { _, _ -> openWebVideoCasterStore() }
-                .setNegativeButton("Cancelar", null)
+                .setPositiveButton(activity.getString(R.string.aux_open_play_store)) { _, _ -> openWebVideoCasterStore() }
+                .setNegativeButton(activity.getString(R.string.locale_cancel), null)
                 .create()
         )
     }
@@ -214,7 +212,7 @@ internal class ReiAnixTvPicker(
                 )
             } catch (_: ActivityNotFoundException) {
                 Toast.makeText(
-                    activity, "Google Play indisponível neste dispositivo.", Toast.LENGTH_LONG
+                    activity, activity.getString(R.string.aux_play_store_unavailable), Toast.LENGTH_LONG
                 ).show()
             }
         }
@@ -223,9 +221,9 @@ internal class ReiAnixTvPicker(
     private fun showWebVideoCasterError() {
         present(
             AlertDialog.Builder(activity)
-                .setTitle("Não foi possível abrir Web Video Caster")
-                .setMessage("Verifique se o aplicativo está atualizado e se o vídeo pode ser compartilhado.")
-                .setPositiveButton("Entendi", null)
+                .setTitle(activity.getString(R.string.aux_wvc_open_failed))
+                .setMessage(activity.getString(R.string.aux_wvc_check))
+                .setPositiveButton(activity.getString(R.string.aux_understood), null)
                 .create()
         )
     }
@@ -233,10 +231,10 @@ internal class ReiAnixTvPicker(
     private fun showControls(device: ReiAnixTvDevice) {
         val controls = AlertDialog.Builder(activity)
             .setTitle(device.name)
-            .setMessage("Transmitindo para a TV.")
-            .setPositiveButton("Fechar", null)
-            .setNeutralButton(if (remotePaused) "Reproduzir" else "Pausar", null)
-            .setNegativeButton("Desconectar") { _, _ ->
+            .setMessage(activity.getString(R.string.aux_casting))
+            .setPositiveButton(activity.getString(R.string.ui_close), null)
+            .setNeutralButton(if (remotePaused) activity.getString(R.string.aux_play) else activity.getString(R.string.aux_pause), null)
+            .setNegativeButton(activity.getString(R.string.aux_disconnect)) { _, _ ->
                 sender.disconnect()
                 remotePaused = false
             }
@@ -248,7 +246,7 @@ internal class ReiAnixTvPicker(
                 if (error == null) {
                     remotePaused = !resume
                     controls.getButton(AlertDialog.BUTTON_NEUTRAL)?.text =
-                        if (remotePaused) "Reproduzir" else "Pausar"
+                        if (remotePaused) activity.getString(R.string.aux_play) else activity.getString(R.string.aux_pause)
                 } else controls.setMessage(error)
             }
         }

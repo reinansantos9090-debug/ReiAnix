@@ -1,5 +1,11 @@
 package com.reianix.reianix_local.ui.discovery
 
+import androidx.compose.ui.platform.LocalContext
+
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
@@ -58,6 +64,7 @@ fun ReiAnixTimelineHubRoute(
     viewModel: ReiAnixLibraryViewModel,
     initialSection: String,
 ) {
+    val context = LocalContext.current
     val playEpisode = rememberEpisodeLauncher(viewModel)
     val allowedSections = listOf("animes", "roleta", "colecionador")
     var selectedTab by rememberSaveable(initialSection) {
@@ -85,7 +92,7 @@ fun ReiAnixTimelineHubRoute(
         } catch (failure: Exception) {
             groups = null
             error = failure.message?.takeIf(String::isNotBlank)
-                ?: "Não foi possível carregar a linha do tempo local."
+                ?: context.getString(R.string.finish_timeline_error)
             loadedToken = retryToken
         } finally {
             loading = false
@@ -97,7 +104,7 @@ fun ReiAnixTimelineHubRoute(
             modifier = Modifier.fillMaxSize().background(reiAnixScreenBackground()),
         ) {
             ReiAnixTopBar(
-                title = "Linha do tempo",
+                title = stringResource(R.string.more_timeline),
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onNavigationClick = { navController.popBackStack() },
             )
@@ -109,9 +116,9 @@ fun ReiAnixTimelineHubRoute(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 listOf(
-                    "animes" to "Animes",
-                    "roleta" to "Roleta",
-                    "colecionador" to "Colecionador",
+                    "animes" to stringResource(R.string.profile_anime),
+                    "roleta" to stringResource(R.string.finish_timeline_roulette),
+                    "colecionador" to stringResource(R.string.finish_timeline_collector),
                 ).forEach { (section, label) ->
                     FilterChip(
                         selected = selectedTab == section,
@@ -138,10 +145,10 @@ fun ReiAnixTimelineHubRoute(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
-                                Button(onClick = { retryToken++ }) { Text("Tentar novamente") }
+                                Button(onClick = { retryToken++ }) { Text(stringResource(R.string.ui_retry)) }
                             }
                             groups.orEmpty().isEmpty() -> Text(
-                                text = "A biblioteca ainda não possui itens para a linha do tempo.",
+                                text = stringResource(R.string.more_timeline_empty),
                                 modifier = Modifier.align(Alignment.Center).padding(20.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                             )

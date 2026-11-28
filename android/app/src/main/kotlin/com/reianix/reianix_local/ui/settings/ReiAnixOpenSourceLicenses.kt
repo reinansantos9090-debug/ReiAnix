@@ -1,10 +1,15 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 import android.content.Intent
 import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -47,37 +52,41 @@ import androidx.compose.foundation.layout.widthIn
  */
 internal data class ReiAnixLicenseCredit(
     val id: String,
-    val title: String,
-    val attribution: String,
+    @StringRes val title: Int,
+    @StringRes val attribution: Int,
     val licenseName: String,
     val licenseAsset: String = "licenses/apache_2_0.txt",
     val noticeAsset: String? = null,
+    @StringRes val licenseNameRes: Int? = null,
 )
 
 internal val ReiAnixLicenseCredits = listOf(
-    ReiAnixLicenseCredit("reianix", "ReiAnix", "Copyright © 2026 Reinan Santos", "Apache License 2.0",
+    ReiAnixLicenseCredit("reianix", R.string.license_title_reianix, R.string.license_attribution_reianix, "Apache License 2.0",
         noticeAsset = "licenses/reianix_NOTICE.txt"),
-    ReiAnixLicenseCredit("kotlin", "Kotlin e biblioteca padrão", "JetBrains e colaboradores Kotlin", "Apache License 2.0"),
-    ReiAnixLicenseCredit("coroutines", "kotlinx.coroutines", "JetBrains e colaboradores Kotlin", "Apache License 2.0"),
-    ReiAnixLicenseCredit("activity", "AndroidX Activity", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("compose", "Jetpack Compose e Material", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("lifecycle", "AndroidX Lifecycle", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("navigation", "AndroidX Navigation", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("documentfile", "AndroidX DocumentFile", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("webkit", "AndroidX WebKit", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("workmanager", "AndroidX WorkManager", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("media3", "AndroidX Media3 (ExoPlayer)", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("metrics", "AndroidX Metrics", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("mediarouter", "AndroidX MediaRouter", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("fragment", "AndroidX Fragment", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("appcompat", "AndroidX AppCompat", "Android Open Source Project", "Apache License 2.0"),
-    ReiAnixLicenseCredit("coil", "Coil e Coil Compose", "Coil Contributors", "Apache License 2.0"),
-    ReiAnixLicenseCredit("external-services", "APIs e serviços externos", "Fornecedores de dados, traduções e transmissão", "Créditos e termos de uso",
-        licenseAsset = "licenses/external_services.txt"),
-    ReiAnixLicenseCredit("google-sans", "Google Sans — fonte das configurações",
-        "Copyright 2025 The Google Sans Project Authors", "SIL Open Font License 1.1",
+    ReiAnixLicenseCredit("kotlin", R.string.license_title_kotlin, R.string.license_attribution_jetbrains, "Apache License 2.0"),
+    ReiAnixLicenseCredit("coroutines", R.string.license_title_coroutines, R.string.license_attribution_jetbrains, "Apache License 2.0"),
+    ReiAnixLicenseCredit("activity", R.string.license_title_activity, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("compose", R.string.license_title_compose, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("lifecycle", R.string.license_title_lifecycle, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("navigation", R.string.license_title_navigation, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("documentfile", R.string.license_title_documentfile, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("webkit", R.string.license_title_webkit, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("workmanager", R.string.license_title_workmanager, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("media3", R.string.license_title_media3, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("metrics", R.string.license_title_metrics, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("mediarouter", R.string.license_title_mediarouter, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("fragment", R.string.license_title_fragment, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("appcompat", R.string.license_title_appcompat, R.string.license_attribution_aosp, "Apache License 2.0"),
+    ReiAnixLicenseCredit("coil", R.string.license_title_coil, R.string.license_attribution_coil, "Apache License 2.0"),
+    ReiAnixLicenseCredit("external-services", R.string.license_title_external_services, R.string.license_attribution_services, "",
+        licenseAsset = "licenses/external_services.txt", licenseNameRes = R.string.license_service_terms),
+    ReiAnixLicenseCredit("google-sans", R.string.license_title_google_sans, R.string.license_attribution_google_sans, "SIL Open Font License 1.1",
         licenseAsset = "licenses/google_sans_OFL.txt"),
 )
+
+@Composable
+private fun ReiAnixLicenseCredit.localizedLicenseName(): String =
+    licenseNameRes?.let { stringResource(it) } ?: licenseName
 
 @Composable
 internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
@@ -93,14 +102,14 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
         selected?.let { credit ->
             runCatching {
                 context.assets.open(credit.licenseAsset).bufferedReader(Charsets.UTF_8).use { it.readText() }
-            }.getOrElse { "Não foi possível ler o texto da licença incluído no APK." }
-        }.orEmpty()
+            }
+        }
     }
     val noticeText = remember(selected?.noticeAsset) {
         selected?.noticeAsset?.let { asset ->
             runCatching {
                 context.assets.open(asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
-            }.getOrElse { "Não foi possível ler os avisos de atribuição incluídos no APK." }
+            }
         }
     }
 
@@ -115,16 +124,16 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
             ) {
                 item(key = "licenses:header") {
                     SettingsHeader(
-                        title = selected?.title ?: "Licenças",
+                        title = stringResource(selected?.title ?: R.string.pref_licenses),
                         subtitle = "",
                         onBack = { if (selected == null) onBack() else selectedId = null },
-                        backContentDescription = "Voltar",
+                        backContentDescription = stringResource(R.string.ui_back),
                     )
                 }
                 if (selected == null) {
                     item(key = "licenses:intro") {
                         Text(
-                            "Licenças, avisos de terceiros e créditos dos serviços utilizados pelo ReiAnix.",
+                            stringResource(R.string.license_intro),
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -140,13 +149,13 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    credit.title,
+                                    stringResource(credit.title),
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    credit.licenseName,
+                                    credit.localizedLicenseName(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -162,7 +171,7 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                         Row(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
                                 .settingsClickable(role = Role.Button) {
-                                    OssLicensesMenuActivity.setActivityTitle("Licenças de terceiros")
+                                    OssLicensesMenuActivity.setActivityTitle(context.getString(R.string.tail_third_party_licenses))
                                     context.startActivity(Intent(context, OssLicensesMenuActivity::class.java))
                                 }
                                 .padding(horizontal = 20.dp, vertical = 10.dp),
@@ -170,8 +179,8 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Licenças de terceiros", style = MaterialTheme.typography.bodyMedium)
-                                Text("Avisos das bibliotecas incluídas na compilação", style = MaterialTheme.typography.bodySmall,
+                                Text(stringResource(R.string.tail_third_party_licenses), style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.tail_library_notices), style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Icon(Icons.Filled.ChevronRight, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -179,8 +188,7 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                     }
                     item(key = "licenses:footnote") {
                         Text(
-                            "A lista gerada complementa os créditos locais; avisos não fornecidos pelos artefatos devem ser verificados separadamente. " +
-                                "Os arquivos de licença originais também permanecem disponíveis no repositório.",
+                            stringResource(R.string.license_footnote),
                             modifier = Modifier.padding(20.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -192,16 +200,16 @@ internal fun ReiAnixOpenSourceLicensesScreen(onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth().padding(20.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Text(selected.licenseName, style = MaterialTheme.typography.titleMedium)
+                            Text(selected.localizedLicenseName(), style = MaterialTheme.typography.titleMedium)
                             Text(
-                                selected.attribution,
+                                stringResource(selected.attribution),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             noticeText?.let { notice ->
-                                Text(notice, style = MaterialTheme.typography.bodySmall)
+                                Text(notice.getOrNull() ?: stringResource(R.string.license_notice_read_error), style = MaterialTheme.typography.bodySmall)
                             }
-                            Text(licenseText, style = MaterialTheme.typography.bodySmall)
+                            Text(licenseText?.getOrNull() ?: stringResource(R.string.license_read_error), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

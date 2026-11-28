@@ -1,5 +1,7 @@
 package com.reianix.reianix_local.ui.player
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import com.reianix.reianix_local.player.PlayerSkipSegment
@@ -216,13 +218,14 @@ fun ReiAnixNativePlayerTopControls(
             ),
     ) {
         // The top overlay contains only Back and the centered episode title.
+        val backDescription = stringResource(R.string.ui_back)
         PlayerIconButton(
             onClick = onBack,
             modifier = Modifier
                 .size(48.dp)
                 .align(Alignment.TopStart)
                 .semantics {
-                    contentDescription = "Voltar"
+                    contentDescription = backDescription
                     role = Role.Button
                 },
         ) {
@@ -241,7 +244,7 @@ fun ReiAnixNativePlayerTopControls(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = state.episodeLabel.ifBlank { "Episódio" },
+                text = state.episodeLabel.ifBlank { stringResource(R.string.flow_episode) },
                 style = ReiAnixTokens.TypographyTokens.playerTopLabel.copy(fontSize = 15.sp, lineHeight = 18.sp),
                 color = ReiAnixTokens.Colors.playerControl,
                 maxLines = 1,
@@ -255,7 +258,7 @@ fun ReiAnixNativePlayerTopControls(
                 )
             }
             Text(
-                text = state.title.ifBlank { "Episódio" },
+                text = state.title.ifBlank { stringResource(R.string.flow_episode) },
                 style = ReiAnixTokens.TypographyTokens.metadata.copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = ReiAnixTokens.Colors.playerControl.copy(alpha = 0.98f),
                 maxLines = 2,
@@ -317,7 +320,7 @@ fun ReiAnixNativePlayerCenterControls(
             ) {
                 PlayerSeekIconButton(
                     seconds = if (accumulatedSeekSeconds < 0) -accumulatedSeekSeconds else seekSeconds,
-                    description = "Voltar $seekSeconds segundos",
+                    description = stringResource(R.string.flow_seek_back, seekSeconds),
                     forward = false,
                     iconSize = seekSize,
                     touchSize = seekTouchSize,
@@ -337,18 +340,19 @@ fun ReiAnixNativePlayerCenterControls(
                     modifier = Modifier.size(maxOf(dimensions.centerButtonContainerSize, playTouchSize)),
                     contentAlignment = Alignment.Center,
                 ) {
+                    val playDescription = stringResource(when {
+                        state.episodeTransitionInProgress -> R.string.polish_wait_episode
+                        state.ended -> R.string.polish_replay
+                        state.isPlaying -> R.string.aux_pause
+                        else -> R.string.aux_play
+                    })
                     PlayerIconButton(
                         onClick = onPlayPause,
                         enabled = !state.episodeTransitionInProgress,
                         modifier = Modifier
                             .size(maxOf(dimensions.centerButtonSize, playTouchSize))
                             .semantics {
-                                contentDescription = when {
-                                    state.episodeTransitionInProgress -> "Aguarde a troca de episódio"
-                                    state.ended -> "Reproduzir novamente"
-                                    state.isPlaying -> "Pausar"
-                                    else -> "Reproduzir"
-                                }
+                                contentDescription = playDescription
                                 role = Role.Button
                             },
                     ) {
@@ -406,7 +410,7 @@ fun ReiAnixNativePlayerCenterControls(
             ) {
                 PlayerSeekIconButton(
                     seconds = if (accumulatedSeekSeconds > 0) accumulatedSeekSeconds else seekSeconds,
-                    description = "Avançar $seekSeconds segundos",
+                    description = stringResource(R.string.flow_seek_forward, seekSeconds),
                     forward = true,
                     iconSize = seekSize,
                     touchSize = seekTouchSize,
@@ -577,6 +581,7 @@ fun ReiAnixNativePlayerBottomControls(
                             contentAlignment = Alignment.TopCenter,
                         ) {
                             if (shortcut == PlayerShortcut.LOCK) {
+                                val unlockDescription = stringResource(R.string.ui_unlock_controls)
                                 PlayerIconButton(
                                     onClick = onToggleLock,
                                     modifier = Modifier
@@ -586,7 +591,7 @@ fun ReiAnixNativePlayerBottomControls(
                                             shape = androidx.compose.foundation.shape.CircleShape,
                                         )
                                         .semantics {
-                                            contentDescription = "Desbloquear controles"
+                                            contentDescription = unlockDescription
                                             role = Role.Button
                                         },
                                 ) {
@@ -799,13 +804,13 @@ fun ReiAnixNativePlayerBottomControls(
                                 if (previewImage != null) {
                                     Image(
                                         bitmap = previewImage,
-                                        contentDescription = "Prévia da cena do anime",
+                                        contentDescription = stringResource(R.string.ui_scene_preview),
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 } else if (previewFrames?.isUnavailable == true) {
                                     Text(
-                                        text = "Prévia indisponível",
+                                        text = stringResource(R.string.ui_preview_unavailable),
                                         color = Color.White.copy(alpha = 0.72f),
                                         fontSize = 11.sp,
                                     )
@@ -834,6 +839,8 @@ fun ReiAnixNativePlayerBottomControls(
                         }
                     }
                 }
+                val progressDescription = stringResource(R.string.final_player_progress)
+                val progressState = if (duration > 0L) stringResource(R.string.common_timeline_progress, PlayerTimeFormatter.format(displayPosition), PlayerTimeFormatter.format(duration)) else stringResource(R.string.common_duration_unavailable)
                 Slider(
                     value = sliderFraction,
                     onValueChange = {
@@ -882,13 +889,8 @@ fun ReiAnixNativePlayerBottomControls(
                             }
                         }
                         .semantics {
-                            contentDescription = "Barra de progresso do vídeo"
-                            stateDescription = if (duration > 0L) {
-                                PlayerTimeFormatter.format(displayPosition) +
-                                    " de " + PlayerTimeFormatter.format(duration)
-                            } else {
-                                "Duração indisponível"
-                            }
+                            contentDescription = progressDescription
+                            stateDescription = progressState
                         },
                     colors = SliderDefaults.colors(
                         thumbColor = ReiAnixTokens.Colors.primary,
@@ -944,9 +946,9 @@ fun ReiAnixNativePlayerBottomControls(
                         PlayerShortcut.LOCK -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Lock,
-                            label = "Bloquear",
+                            label = stringResource(R.string.ui_lock),
                             showLabel = !landscape,
-                            contentDescription = "Bloquear toques",
+                            contentDescription = stringResource(R.string.ui_lock_touches),
                             onClick = onToggleLock,
                             enabled = !state.episodeTransitionInProgress,
                             iconVisualScale = 0.75f,
@@ -954,46 +956,40 @@ fun ReiAnixNativePlayerBottomControls(
                         PlayerShortcut.EPISODES -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.PlaylistPlay,
-                            label = "Episódios",
+                            label = stringResource(R.string.ui_episodes),
                             showLabel = !landscape,
-                            contentDescription = "Abrir lista de episódios",
+                            contentDescription = stringResource(R.string.ui_episode_list),
                             onClick = onResize,
                             enabled = !state.favoriteClipMode && !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.NEXT -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.SkipNext,
-                            label = "Próximo episódio",
+                            label = stringResource(R.string.ui_next_episode),
                             showLabel = !landscape,
-                            contentDescription = "Próximo episódio",
+                            contentDescription = stringResource(R.string.ui_next_episode),
                             onClick = onNext,
                             enabled = state.canNext && !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.OPTIONS -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.MoreVert,
-                            label = "Opções",
+                            label = stringResource(R.string.ui_options),
                             showLabel = !landscape,
-                            contentDescription = buildString {
-                                append("Mais opções do player")
-                                state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let {
-                                    append(". Velocidade ")
-                                    append(String.format(java.util.Locale.ROOT, "%.2gx", it))
-                                }
-                                if (state.aspectLabel.isNotBlank()) {
-                                    append(". Proporção ")
-                                    append(state.aspectLabel)
-                                }
-                            },
+                            contentDescription = listOfNotNull(
+                                stringResource(R.string.polish_player_options),
+                                state.playbackSpeed.takeIf { it.isFinite() && it > 0f }?.let { stringResource(R.string.polish_speed, String.format(java.util.Locale.ROOT, "%.2gx", it)) },
+                                state.aspectLabel.takeIf { it.isNotBlank() }?.let { stringResource(R.string.polish_aspect, it) },
+                            ).joinToString(". "),
                             onClick = onSource,
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.CAST -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Cast,
-                            label = "Transmitir",
+                            label = stringResource(R.string.ui_cast),
                             showLabel = !landscape,
-                            contentDescription = "Transmitir para TV",
+                            contentDescription = stringResource(R.string.ui_cast_tv),
                             iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onCast,
                             enabled = !state.episodeTransitionInProgress,
@@ -1001,9 +997,9 @@ fun ReiAnixNativePlayerBottomControls(
                         PlayerShortcut.SPEED -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Speed,
-                            label = "Velocidade",
+                            label = stringResource(R.string.ui_speed),
                             showLabel = !landscape,
-                            contentDescription = "Alterar velocidade do vídeo",
+                            contentDescription = stringResource(R.string.ui_change_speed),
                             iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onPlaybackSpeed,
                             enabled = !state.episodeTransitionInProgress,
@@ -1011,18 +1007,18 @@ fun ReiAnixNativePlayerBottomControls(
                         PlayerShortcut.AUDIO -> PlayerBottomAction(
                             firstPortraitSlot = firstPortraitSlot,
                             icon = Icons.Filled.Equalizer,
-                            label = "Trilhas sonoras",
+                            label = stringResource(R.string.ui_audio_tracks),
                             showLabel = !landscape,
-                            contentDescription = "Selecionar trilha sonora",
+                            contentDescription = stringResource(R.string.ui_select_audio_track),
                             iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onAudioTracks,
                             enabled = !state.episodeTransitionInProgress,
                         )
                         PlayerShortcut.ASPECT -> PlayerBottomAction(
                             icon = Icons.Filled.AspectRatio,
-                            label = "Proporção",
+                            label = stringResource(R.string.ui_aspect),
                             showLabel = !landscape,
-                            contentDescription = "Alternar entre ajustar, esticar e zoom. Atual: " + state.aspectLabel,
+                            contentDescription = stringResource(R.string.flow_aspect_current, com.reianix.reianix_local.ui.settings.localizedSettingChoice(state.aspectLabel)),
                             // Normalize the wider rectangular artwork in portrait only.
                             // Keep the same centered 48dp hit target and weighted slot.
                             iconVisualScale = (if (fiveShortcuts) 0.88f else 1f) *
@@ -1032,9 +1028,9 @@ fun ReiAnixNativePlayerBottomControls(
                         )
                         PlayerShortcut.SKIP_OP_ED -> PlayerBottomAction(
                             icon = Icons.Filled.FastForward,
-                            label = "Pular OP/ED",
+                            label = stringResource(R.string.ui_skip_op_ed),
                             showLabel = !landscape,
-                            contentDescription = "Avançar 85 segundos",
+                            contentDescription = stringResource(R.string.ui_skip_85),
                             iconVisualScale = if (fiveShortcuts) 0.88f else 1f,
                             onClick = onManualSkip,
                             enabled = !state.episodeTransitionInProgress && state.durationMs > 0L,

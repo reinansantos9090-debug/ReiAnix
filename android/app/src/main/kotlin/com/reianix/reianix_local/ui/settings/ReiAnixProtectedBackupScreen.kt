@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.settings
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,9 +77,9 @@ internal fun ReiAnixProtectedBackupScreen(onBack: () -> Unit) {
                         }
                         require(count == file.length() && java.security.MessageDigest.isEqual(expected.digest(), actual.digest()))
                     }
-                    message = if (encrypt) "Backup protegido salvo." else "ZIP recuperado. Use Restaurar backup para importá-lo."
+                    message = if (encrypt) context.getString(R.string.final_protected_saved) else context.getString(R.string.final_protected_zip)
                 } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { message = "Não foi possível salvar ou verificar o arquivo." }
+                catch (_: Exception) { message = context.getString(R.string.tail_backup_save_failed) }
                 finally { file.delete(); busy = false }
             }
         }
@@ -85,23 +89,23 @@ internal fun ReiAnixProtectedBackupScreen(onBack: () -> Unit) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingsHeader(title = "Backup protegido", subtitle = "", onBack = onBack)
+                SettingsHeader(title = stringResource(R.string.pref_protected_backup), subtitle = "", onBack = onBack)
                 if (Build.VERSION.SDK_INT < 26) {
-                    Text("A criptografia de backup requer Android 8 ou superior.")
+                    Text(stringResource(R.string.tail_backup_android))
                     return@Column
                 }
-                Text("Proteja um ZIP criado em Fazer backup com uma senha. Para restaurar um arquivo protegido, recupere primeiro o ZIP e use Restaurar backup. O original não é apagado. Guarde a senha: não há recuperação.")
+                Text(stringResource(R.string.tail_backup_instructions))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = encrypt, enabled = !busy, onClick = { encrypt = true; source = null; message = "" }, label = { Text("Proteger ZIP") })
-                    FilterChip(selected = !encrypt, enabled = !busy, onClick = { encrypt = false; source = null; message = "" }, label = { Text("Recuperar ZIP") })
+                    FilterChip(selected = encrypt, enabled = !busy, onClick = { encrypt = true; source = null; message = "" }, label = { Text(stringResource(R.string.tail_protect_zip)) })
+                    FilterChip(selected = !encrypt, enabled = !busy, onClick = { encrypt = false; source = null; message = "" }, label = { Text(stringResource(R.string.tail_recover_zip)) })
                 }
                 OutlinedButton(enabled = !busy, onClick = { open.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }) {
                     Text(if (source == null) "Selecionar arquivo" else "Arquivo selecionado — trocar")
                 }
-                OutlinedTextField(value = password, onValueChange = { password = it.take(256) }, label = { Text("Senha") },
+                OutlinedTextField(value = password, onValueChange = { password = it.take(256) }, label = { Text(stringResource(R.string.tail_password)) },
                     singleLine = true, enabled = !busy, visualTransformation = PasswordVisualTransformation())
                 if (encrypt) OutlinedTextField(value = confirmation, onValueChange = { confirmation = it.take(256) },
-                    label = { Text("Confirmar senha (mínimo 12 caracteres)") }, singleLine = true, enabled = !busy,
+                    label = { Text(stringResource(R.string.tail_confirm_password)) }, singleLine = true, enabled = !busy,
                     visualTransformation = PasswordVisualTransformation())
                 Button(enabled = !busy && source != null && password.isNotEmpty() &&
                     (!encrypt || (password.length >= 12 && confirmation == password)), onClick = {
@@ -142,7 +146,7 @@ internal fun ReiAnixProtectedBackupScreen(onBack: () -> Unit) {
                             save.launch(if (encrypt) "reianix-backup.rxb" else "reianix-backup.zip")
                             result = null
                         } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) { message = "Arquivo inválido, senha incorreta ou falha de leitura."; busy = false }
+                        catch (_: Exception) { message = context.getString(R.string.tail_backup_invalid); busy = false }
                         finally { secret.fill('\u0000'); result?.delete() }
                     }
                 }) { Text(if (encrypt) "Criptografar" else "Descriptografar") }

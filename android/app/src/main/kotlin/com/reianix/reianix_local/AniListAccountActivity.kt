@@ -1,5 +1,7 @@
 package com.reianix.reianix_local
 
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
 import android.content.Intent
@@ -39,6 +41,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class AniListAccountActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
 
     override fun onResume() {
@@ -91,7 +97,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
-                            error = "Não foi possível abrir a conexão. Tente novamente."
+                            error = context.getString(R.string.native_account_open_failed)
                             showAccount = false
                         } finally {
                             busy = false
@@ -108,17 +114,18 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                             )
                             .verticalScroll(rememberScrollState()),
                     ) {
-                        SettingsHeader(title = "Contas e Avançado", subtitle = "", onBack = onBack)
+                        SettingsHeader(title = stringResource(R.string.settings_accounts), subtitle = "", onBack = onBack)
+                        val connectionStateLabel = stringResource(if (state.connected) R.string.tail_account_connected else R.string.native_account_not_connected)
                         Row(
                             Modifier.fillMaxWidth()
                                 .settingsClickable(enabled = !busy, role = Role.Button, onClick = {
                                     error = ""
                                     if (state.connected) showAccount = true
                                     else if (state.configured) connect()
-                                    else error = "A conexão com o AniList está indisponível nesta versão."
+                                    else error = context.getString(R.string.native_account_unavailable)
                                 })
                                 .semantics {
-                                    stateDescription = if (state.connected) "Conta conectada" else "Conta não conectada"
+                                    stateDescription = connectionStateLabel
                                 }
                                 .heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -127,7 +134,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                             Icon(painterResource(R.drawable.ic_anilist), contentDescription = null,
                                 modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onSurface)
                             Text("AniList", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                            if (state.connected) Icon(Icons.Filled.CheckCircle, contentDescription = "Conta conectada",
+                            if (state.connected) Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(R.string.tail_account_connected),
                                 tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                         }
                         if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error,
@@ -147,7 +154,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 ReiAnixAccountAvatar(pictureUrl = state.avatarUrl,
-                                    contentDescription = "Foto de ${state.name}")
+                                    contentDescription = stringResource(R.string.native_photo_of, state.name))
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(state.name, style = MaterialTheme.typography.titleLarge,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -166,7 +173,7 @@ fun AniListAccountSettingsScreen(onBack: () -> Unit, useSystemInsets: Boolean = 
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (_: Exception) {
-                                        error = "Não foi possível desconectar. Tente novamente."
+                                        error = context.getString(R.string.native_account_disconnect_failed)
                                         showAccount = false
                                     } finally {
                                         busy = false
@@ -187,7 +194,7 @@ private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Uni
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         com.reianix.reianix_local.ui.settings.SettingsLeadingIcon(label)
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(when (label) { "Trocar conta" -> stringResource(R.string.native_switch_account); "Sair" -> stringResource(R.string.native_sign_out); else -> label }, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
             modifier = Modifier.size(28.dp))
     }
@@ -195,6 +202,10 @@ private fun AccountActionRow(label: String, enabled: Boolean, onClick: () -> Uni
 
 /** Dedicated callback: OAuth fragments never enter the player/diagnostic intent handlers. */
 class AniListOAuthCallbackActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(newBase))
+    }
+
     private val appWindowPreference by lazy { ReiAnixAppWindowPreference(this) }
 
     override fun onResume() {
@@ -213,7 +224,7 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("Conectando ao AniList…")
+                        Text(stringResource(R.string.tail_account_connecting))
                         CircularProgressIndicator()
                     }
                 }
@@ -225,11 +236,11 @@ class AniListOAuthCallbackActivity : ComponentActivity() {
                 val connected = callback != null && ReiAnixAppDependencies.from(applicationContext)
                     .aniListAccountService.acceptCallback(callback)
                 if (!connected) android.widget.Toast.makeText(this@AniListOAuthCallbackActivity,
-                    "Conexão não concluída. Tente novamente.", android.widget.Toast.LENGTH_LONG).show()
+                    getString(R.string.native_account_incomplete), android.widget.Toast.LENGTH_LONG).show()
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (_: Exception) {
                 android.widget.Toast.makeText(this@AniListOAuthCallbackActivity,
-                    "Não foi possível conectar ao AniList. Tente novamente.", android.widget.Toast.LENGTH_LONG).show()
+                    getString(R.string.native_account_connect_failed), android.widget.Toast.LENGTH_LONG).show()
             } finally {
                 if (!isFinishing && !isDestroyed) {
                     // Return to the already open Settings page instead of pushing a second

@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.player
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -134,17 +138,17 @@ fun ReiAnixPlayerRoute(
     when {
         episodeId == null || canonicalAnimeId == null -> {
             PlayerHandoffMessage(
-                title = "Não foi possível abrir o player",
-                message = "A identificação do episódio local é inválida.",
+                title = stringResource(R.string.more_player_open_failed),
+                message = stringResource(R.string.more_episode_id_invalid),
                 onRetry = null,
             )
         }
 
         launchFailed -> {
             PlayerHandoffMessage(
-                title = "Não foi possível abrir o episódio",
+                title = stringResource(R.string.more_episode_open_failed),
                 message = libraryState.lastCommandError
-                    ?: "A mídia local não pôde ser enviada ao player.",
+                    ?: stringResource(R.string.polish_handoff_error),
                 onRetry = {
                     launchRequestId = viewModel.openEpisode(
                         episodeId,
@@ -173,7 +177,7 @@ private fun PlayerHandoffMessage(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .semantics {
-                    contentDescription = "ReiAnixPlayerHandoff"
+                    contentDescription = "$title. $message"
                 },
         )
     } else {
@@ -182,7 +186,7 @@ private fun PlayerHandoffMessage(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .semantics {
-                    contentDescription = "ReiAnixPlayerHandoff"
+                    contentDescription = "$title. $message"
                 }
                 .padding(ReiAnixTokens.Spacing.xxl),
             verticalArrangement = Arrangement.Center,
@@ -218,6 +222,7 @@ internal fun rememberEpisodeLauncher(viewModel: ReiAnixLibraryViewModel): (Long,
         }
     }
 
+    val handoffError = stringResource(R.string.polish_handoff_error)
     val activeRequest = requestId
     if (activeRequest != null) {
         BackHandler { /* Keep the current screen while native launch is pending. */ }
@@ -227,7 +232,7 @@ internal fun rememberEpisodeLauncher(viewModel: ReiAnixLibraryViewModel): (Long,
         LaunchedEffect(viewModel, activeRequest) {
             val result = viewModel.uiState.first { state -> state.lastCommandId == activeRequest }
             if (result.lastCommandStatus == "FAILED") {
-                launchError = result.lastCommandError ?: "A mídia local não pôde ser enviada ao player."
+                launchError = result.lastCommandError ?: handoffError
             }
             requestId = null
         }
@@ -236,16 +241,16 @@ internal fun rememberEpisodeLauncher(viewModel: ReiAnixLibraryViewModel): (Long,
     launchError?.let { message ->
         AlertDialog(
             onDismissRequest = { launchError = null },
-            title = { Text("Não foi possível abrir o episódio") },
+            title = { Text(stringResource(R.string.more_episode_open_failed)) },
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = {
                     launchError = null
                     lastEpisode?.let { (episodeId, animeId) -> launch(episodeId, animeId) }
-                }) { Text("Tentar novamente") }
+                }) { Text(stringResource(R.string.ui_retry)) }
             },
             dismissButton = {
-                TextButton(onClick = { launchError = null }) { Text("Fechar") }
+                TextButton(onClick = { launchError = null }) { Text(stringResource(R.string.ui_close)) }
             },
         )
     }

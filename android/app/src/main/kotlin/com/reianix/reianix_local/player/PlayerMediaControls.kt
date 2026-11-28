@@ -11,6 +11,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerNotificationManager
+import com.reianix.reianix_local.R
+import com.reianix.reianix_local.ui.settings.ReiAnixAppLocales
 
 /**
  * Owns the one Android media session and its notification for an Activity-owned
@@ -34,12 +36,13 @@ class PlayerMediaControls(
     private var backgroundAudio = false
 
     init {
-        ensureNotificationChannel()
+        val localizedContext = ReiAnixAppLocales.localizedContext(appContext)
+        ensureNotificationChannel(localizedContext)
         mediaSession = MediaSession.Builder(appContext, player)
             .setId(sessionId)
             .build()
         notificationManager = PlayerNotificationManager.Builder(
-            appContext,
+            localizedContext,
             NOTIFICATION_ID,
             CHANNEL_ID,
         )
@@ -105,20 +108,18 @@ class PlayerMediaControls(
         mediaSession.release()
     }
 
-    private fun ensureNotificationChannel() {
+    private fun ensureNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = appContext.getSystemService<NotificationManager>() ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "Reprodução",
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = "Controles da reprodução local do ReiAnix"
-                setShowBadge(false)
-            },
-        )
+        val name = context.getString(R.string.choice_playback)
+        val description = context.getString(R.string.playback_channel_description)
+        val existing = manager.getNotificationChannel(CHANNEL_ID)
+        if (existing?.name == name && existing.description == description) return
+        val channel = existing ?: NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_LOW)
+            .apply { setShowBadge(false) }
+        channel.name = name
+        channel.description = description
+        manager.createNotificationChannel(channel)
     }
 
     companion object {

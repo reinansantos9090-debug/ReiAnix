@@ -13,6 +13,13 @@ android {
     namespace = "com.reianix.reianix_local"
     compileSdk = 36
 
+    // Keep app languages available offline in Play-delivered app bundles.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
     buildFeatures {
         buildConfig = true
         compose = true

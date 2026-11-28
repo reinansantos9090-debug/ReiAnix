@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import com.reianix.reianix_local.ui.theme.LocalReiAnixWallpaperVisible
 
 import com.reianix.reianix_local.ui.theme.reiAnixContentTint
@@ -419,6 +423,7 @@ fun ReiAnixChip(
     enabled: Boolean = true,
     selected: Boolean = false,
 ) {
+    val selectedDescription = stringResource(if (selected) R.string.nav_selected else R.string.nav_not_selected)
     FilterChip(
         selected = selected,
         onClick = onClick,
@@ -426,7 +431,7 @@ fun ReiAnixChip(
         modifier = modifier
             .heightIn(min = ReiAnixTokens.Dimensions.chipMinHeight)
             .semantics {
-                stateDescription = if (selected) "Selecionado" else "Não selecionado"
+                stateDescription = selectedDescription
             },
         label = {
             Text(
@@ -597,7 +602,7 @@ fun ReiAnixTopBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     navigationIcon: ImageVector? = null,
-    navigationContentDescription: String = "Voltar",
+    navigationContentDescription: String = stringResource(R.string.ui_back),
     onNavigationClick: (() -> Unit)? = null,
     titleStyle: TextStyle = ReiAnixTokens.TypographyTokens.screenTitle,
     titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
@@ -667,6 +672,7 @@ fun ReiAnixAnimeCard(
     bottomBadgeText: String? = null,
     onFavoriteClick: (() -> Unit)? = null,
 ) {
+    val countLabel = anime.availableContentCount.takeIf { it > 0 }?.let { localizedEpisodeCount(it) }
     ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
@@ -674,7 +680,7 @@ fun ReiAnixAnimeCard(
         artworkSourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
-            anime.episodeCountLabel.takeIf { anime.availableContentCount > 0 }?.let(::add)
+            countLabel?.let(::add)
         },
         // This summary is already cached per immutable anime. Rewalking every
         // episode while a lazy grid card enters composition adds work on the UI thread.
@@ -701,6 +707,7 @@ fun ReiAnixAnimeCard(
     bottomBadgeText: String? = null,
     onFavoriteClick: (() -> Unit)? = null,
 ) {
+    val countLabel = anime.availableContentCount.takeIf { it > 0 }?.let { localizedEpisodeCount(it) }
     ReiAnixAnimeCard(
         title = anime.title,
         artworkPath = anime.artwork?.localPath,
@@ -708,9 +715,7 @@ fun ReiAnixAnimeCard(
         artworkSourceRevisions = anime.artwork?.sourceRevisions.orEmpty(),
         metadata = buildList {
             anime.year?.let { add(it.toString()) }
-            anime.availableContentCount.takeIf { it > 0 }?.let {
-                add(if (it == 1) "1 episódio" else "$it episódios")
-            }
+            countLabel?.let(::add)
         },
         progress = null,
         favorite = anime.favorite,
@@ -749,24 +754,27 @@ fun ReiAnixAnimeCard(
     val accessibilityMetadata = remember(metadata) {
         metadata.filter { it.isNotBlank() }.joinToString(" • ")
     }
-    val animeAccessibilityLabel = remember(
-        title, accessibilityMetadata, completed, watching, watched, favorite, progress,
-    ) {
+    val statusLabel = when {
+        completed -> localizedUiLabel("Concluído")
+        watching -> localizedUiLabel("Assistindo")
+        watched -> localizedUiLabel("Assistido")
+        favorite -> localizedUiLabel("Na Minha Lista")
+        else -> null
+    }
+    val progressLabel = progress?.takeIf { it.isFinite() && it > 0f }?.let {
+        stringResource(R.string.common_watched_percent, (it.coerceIn(0f, 1f) * 100f).roundToInt())
+    }
+    val animeAccessibilityLabel = remember(title, accessibilityMetadata, statusLabel, progressLabel) {
         buildList {
             add(title)
             accessibilityMetadata.takeIf { it.isNotBlank() }?.let(::add)
-            when {
-                completed -> add("Concluído")
-                watching -> add("Assistindo")
-                watched -> add("Assistido")
-                favorite -> add("Na Minha Lista")
-            }
-            progress
-                ?.takeIf { it.isFinite() && it > 0f }
-                ?.let { add(((it.coerceIn(0f, 1f) * 100f).roundToInt()).toString() + "% assistido") }
+            statusLabel?.let(::add)
+            progressLabel?.let(::add)
         }.joinToString(", ")
     }
 
+    val openLabel = stringResource(R.string.common_open, animeAccessibilityLabel)
+    val favoriteActionLabel = stringResource(if (favorite) R.string.common_remove_mylist else R.string.common_add_mylist)
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -779,7 +787,7 @@ fun ReiAnixAnimeCard(
                         )
                         .semantics {
                             role = Role.Button
-                            this.contentDescription = "Abrir " + animeAccessibilityLabel
+                            this.contentDescription = openLabel
                         }
                 } else {
                     Modifier.semantics {
@@ -811,10 +819,10 @@ fun ReiAnixAnimeCard(
                 if (favorite || watching || watched || completed) {
                     Text(
                         text = when {
-                            completed -> "Concluído"
-                            watching -> "Assistindo"
-                            watched -> "Assistido"
-                            else -> "Minha lista"
+                            completed -> stringResource(R.string.flow_finished)
+                            watching -> stringResource(R.string.ui_watching)
+                            watched -> stringResource(R.string.common_watched)
+                            else -> stringResource(R.string.ui_my_list)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimary,
@@ -838,11 +846,7 @@ fun ReiAnixAnimeCard(
                             .align(Alignment.TopEnd)
                             .size(ReiAnixTokens.Dimensions.touchTarget)
                             .semantics {
-                                this.contentDescription = if (favorite) {
-                                    "Remover da Minha Lista"
-                                } else {
-                                    "Adicionar à Minha Lista"
-                                }
+                                this.contentDescription = favoriteActionLabel
                             },
                     ) {
                         Icon(
@@ -870,7 +874,7 @@ fun ReiAnixAnimeCard(
                         contentColor = MaterialTheme.colorScheme.onSurface,
                     ) {
                         Text(
-                            text = bottomBadgeText,
+                            text = localizedUiLabel(bottomBadgeText),
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -931,6 +935,11 @@ fun ReiAnixEpisodeCard(
     showThumbnail: Boolean = true,
 ) {
     val playable = episode.isPlayable && onPlay != null
+    val progressDescription = episode.progressPercent?.let { stringResource(R.string.common_watched_percent, it) }
+    val currentDescription = if (isCurrent) stringResource(R.string.common_now) else if (isNext) stringResource(R.string.ui_next) else null
+    val completionDescription = if (episode.isCompleted) stringResource(R.string.flow_finished) else if (episode.consumptionState == com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS) stringResource(R.string.common_in_progress) else null
+    val unavailableDescription = if (!episode.isPlayable) stringResource(R.string.common_media_unavailable) else null
+    val playbackDescription = localizedUiLabel(episode.playbackActionLabel)
     val episodeAccessibilityLabel = buildList {
         episode.number?.let { number ->
             add(
@@ -948,21 +957,11 @@ fun ReiAnixEpisodeCard(
                 ?.let(::formatDurationLabel)
                 ?: "—",
         )
-        episode.progressPercent?.let { add(it.toString() + "% assistido") }
-        if (isCurrent) {
-            add("Agora")
-        } else if (isNext) {
-            add("Próximo")
-        }
-        if (episode.isCompleted) {
-            add("Concluído")
-        } else if (episode.consumptionState == com.reianix.reianix_local.ui.model.ReiAnixConsumptionState.IN_PROGRESS) {
-            add("Em andamento")
-        }
-        if (!episode.isPlayable) {
-            add("Mídia indisponível")
-        }
-        add(episode.playbackActionLabel)
+        progressDescription?.let(::add)
+        currentDescription?.let(::add)
+        completionDescription?.let(::add)
+        unavailableDescription?.let(::add)
+        add(playbackDescription)
     }.distinct().joinToString(", ")
 
     Card(
@@ -1070,7 +1069,7 @@ fun ReiAnixEpisodeCard(
                             color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Text(
-                                text = if (isCurrent) "Agora" else "Próximo",
+                                text = stringResource(if (isCurrent) R.string.common_now else R.string.ui_next),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (isCurrent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(
@@ -1083,7 +1082,7 @@ fun ReiAnixEpisodeCard(
                     if (episode.isCompleted) {
                         Icon(
                             imageVector = Icons.Filled.Check,
-                            contentDescription = "Concluído",
+                            contentDescription = stringResource(R.string.flow_finished),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(ReiAnixTokens.Dimensions.iconSmall),
                         )
@@ -1118,7 +1117,7 @@ fun ReiAnixEpisodeCard(
                             if (isNotEmpty()) append(" • ")
                             append("$it%")
                         }
-                    }.ifBlank { "Episódio" },
+                    }.ifBlank { stringResource(R.string.flow_episode) },
                 )
                 ReiAnixProgressIndicator(
                     progress = episode.progressFraction,
@@ -1126,7 +1125,7 @@ fun ReiAnixEpisodeCard(
                     announceProgress = false,
                 )
                 Text(
-                    text = if (episode.isPlayable) "Episódio local" else "Arquivo indisponível",
+                    text = stringResource(if (episode.isPlayable) R.string.common_local_episode else R.string.tail_file_unavailable),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (episode.isPlayable) {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -1278,7 +1277,7 @@ fun ReiAnixArtwork(
             )
         } else {
             Text(
-                text = "Sem arte",
+                text = stringResource(R.string.extra_art_missing),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1298,6 +1297,8 @@ fun ReiAnixProgressIndicator(
     } else {
         0f
     }
+    val progressDescription = if (announceProgress && visible) stringResource(R.string.common_progress) else ""
+    val watchedDescription = if (announceProgress && visible) stringResource(R.string.common_watched_percent, (clampedProgress * 100f).roundToInt()) else ""
     LinearProgressIndicator(
         progress = { clampedProgress },
         modifier = modifier
@@ -1306,13 +1307,13 @@ fun ReiAnixProgressIndicator(
             .then(
                 if (announceProgress && visible) {
                     Modifier.semantics {
-                        contentDescription = "Progresso"
+                        contentDescription = progressDescription
                         progressBarRangeInfo = ProgressBarRangeInfo(
                             current = clampedProgress,
                             range = 0f..1f,
                             steps = 0,
                         )
-                        stateDescription = ((clampedProgress * 100f).roundToInt()).toString() + "% assistido"
+                        stateDescription = watchedDescription
                     }
                 } else {
                     Modifier

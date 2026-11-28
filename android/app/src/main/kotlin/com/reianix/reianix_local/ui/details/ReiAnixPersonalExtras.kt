@@ -1,5 +1,11 @@
 package com.reianix.reianix_local.ui.details
 
+import com.reianix.reianix_local.ui.localizedUiLabel
+
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -194,18 +200,18 @@ fun ReiAnixPersonalExtras(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Recomendações para você", style = MaterialTheme.typography.titleMedium,
+            Text(stringResource(R.string.more_recommendations), style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold)
             if (!suggestions.isNullOrEmpty()) {
                 IconButton(onClick = { showAll = true }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Todas as sugestões")
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.profile_all_suggestions))
                 }
             }
         }
         when {
-            suggestions == null && recommendationState.failedFor(animeId) -> Text("Não foi possível carregar as sugestões.", style = MaterialTheme.typography.bodySmall)
-            suggestions == null -> Text("Carregando sugestões…", style = MaterialTheme.typography.bodySmall)
-            suggestions.isEmpty() -> Text("Sem sugestões suficientes na biblioteca.", style = MaterialTheme.typography.bodySmall)
+            suggestions == null && recommendationState.failedFor(animeId) -> Text(stringResource(R.string.more_suggestions_error), style = MaterialTheme.typography.bodySmall)
+            suggestions == null -> Text(stringResource(R.string.more_suggestions_loading), style = MaterialTheme.typography.bodySmall)
+            suggestions.isEmpty() -> Text(stringResource(R.string.more_suggestions_insufficient), style = MaterialTheme.typography.bodySmall)
             else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(suggestions.take(6), key = { it.animeId }) { suggestion ->
                     RecommendationPoster(suggestion, artworkById[suggestion.animeId]) { onOpenAnime(suggestion.animeId) }
@@ -216,7 +222,7 @@ fun ReiAnixPersonalExtras(
     if (showAll && !suggestions.isNullOrEmpty()) {
         AlertDialog(
             onDismissRequest = { showAll = false },
-            title = { Text("Sugestões") },
+            title = { Text(stringResource(R.string.more_suggestions)) },
             text = {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(92.dp),
@@ -232,7 +238,7 @@ fun ReiAnixPersonalExtras(
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showAll = false }) { Text("Fechar") } },
+            confirmButton = { TextButton(onClick = { showAll = false }) { Text(stringResource(R.string.ui_close)) } },
         )
     }
 }
@@ -302,13 +308,13 @@ internal fun ReiAnixPersonalNoteDialog(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            error = "Não foi possível ler a avaliação salva."
+            error = context.getString(R.string.profile_rating_load_error)
         }
     }
 
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
-        title = { Text("Nota pessoal") },
+        title = { Text(stringResource(R.string.ui_personal_note)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -318,7 +324,7 @@ internal fun ReiAnixPersonalNoteDialog(
                     value = note,
                     onValueChange = { if (it.length <= 2000) note = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Nota privada") },
+                    label = { Text(stringResource(R.string.more_private_note)) },
                     minLines = 3,
                     maxLines = 5,
                     enabled = !saving,
@@ -327,9 +333,9 @@ internal fun ReiAnixPersonalNoteDialog(
                     },
                 )
                 HorizontalDivider()
-                Text("Minha avaliação", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.more_my_rating), style = MaterialTheme.typography.titleSmall)
                 Text(rating?.let { String.format(Locale.forLanguageTag("pt-BR"), "%.1f / 10", it / 10.0) }
-                    ?: "Sem avaliação", color = MaterialTheme.colorScheme.primary)
+                    ?: stringResource(R.string.profile_no_rating), color = MaterialTheme.colorScheme.primary)
                 Slider(
                     value = (rating ?: 0).toFloat(),
                     onValueChange = { rating = (it / 5f).roundToInt().times(5).coerceIn(0, 100) },
@@ -344,11 +350,11 @@ internal fun ReiAnixPersonalNoteDialog(
                 }
                 if (rating != null) {
                     TextButton(onClick = { rating = null }, enabled = loaded && !saving) {
-                        Text("Remover avaliação")
+                        Text(stringResource(R.string.more_remove_rating))
                     }
                 } else {
                     TextButton(onClick = { rating = 0 }, enabled = loaded && !saving) {
-                        Text("Avaliar com 0")
+                        Text(stringResource(R.string.more_rate_zero))
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -356,7 +362,7 @@ internal fun ReiAnixPersonalNoteDialog(
         },
         confirmButton = {
             ReiAnixPrimaryButton(
-                text = if (saving) "Salvando…" else "Salvar",
+                text = if (saving) stringResource(R.string.flow_saving) else stringResource(R.string.pref_save),
                 enabled = !saving && loaded,
                 onClick = {
                     if (!saving && loaded) {
@@ -375,7 +381,7 @@ internal fun ReiAnixPersonalNoteDialog(
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (_: Exception) {
-                                error = "Não foi possível concluir o salvamento. Tente novamente."
+                                error = context.getString(R.string.profile_rating_save_error)
                             } finally {
                                 saving = false
                             }
@@ -386,9 +392,9 @@ internal fun ReiAnixPersonalNoteDialog(
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancelar") }
+                TextButton(onClick = onDismiss, enabled = !saving) { Text(stringResource(R.string.locale_cancel)) }
                 if (note.isNotBlank()) {
-                    TextButton(onClick = { note = "" }, enabled = !saving) { Text("Apagar texto") }
+                    TextButton(onClick = { note = "" }, enabled = !saving) { Text(stringResource(R.string.more_clear_text)) }
                 }
             }
         },
@@ -574,18 +580,19 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                Toast.makeText(context, "Não foi possível atualizar sua lista.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.profile_list_save_error), Toast.LENGTH_SHORT).show()
             } finally {
                 saving = false
             }
         }
     }
 
+    val listDescription = selected?.let { localizedUiLabel(it.label) } ?: stringResource(R.string.profile_list_outside)
     Box(modifier = modifier.semantics {
-        stateDescription = selected?.label ?: "Fora das listas de acompanhamento"
+        stateDescription = listDescription
     }) {
         ReiAnixDetailsQuickAction(
-            label = "Adicionar à lista",
+            label = stringResource(R.string.more_add_list),
             icon = ReiAnixDetailsShortcutIcons.Bookmark,
             onClick = { expanded = true },
             enabled = !loading && !saving,
@@ -598,13 +605,13 @@ fun ReiAnixPersonalListButton(animeId: Long, modifier: Modifier = Modifier) {
         ) {
             ReiAnixWatchStatus.entries.forEach { status ->
                 DropdownMenuItem(
-                    text = { Text(if (selected == status) "✓ " + status.label else status.label) },
+                    text = { Text((if (selected == status) "✓ " else "") + localizedUiLabel(status.label)) },
                     onClick = { save(status) },
                 )
             }
             if (selected != null) {
                 DropdownMenuItem(
-                    text = { Text("Remover da lista") },
+                    text = { Text(stringResource(R.string.more_remove_list)) },
                     onClick = { save(null) },
                 )
             }
@@ -658,7 +665,7 @@ fun ReiAnixMetadataCharacters(
                 ) {
                     AsyncImage(
                         model = character.imageUrl,
-                        contentDescription = "Personagem: " + character.name,
+                        contentDescription = stringResource(R.string.a11y_character, character.name),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(70.dp).clip(CircleShape),
                     )

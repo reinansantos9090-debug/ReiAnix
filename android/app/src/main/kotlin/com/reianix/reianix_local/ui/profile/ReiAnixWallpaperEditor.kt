@@ -1,5 +1,9 @@
 package com.reianix.reianix_local.ui.profile
 
+import com.reianix.reianix_local.R
+
+import androidx.compose.ui.res.stringResource
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,7 +70,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                 store.save(ReiAnixWallpaper(imageName = imported))
                 selectedId = null
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { error = "Não foi possível aplicar a arte." }
+            catch (_: Exception) { error = context.getString(R.string.profile_art_apply_error) }
             finally {
                 try { withContext(NonCancellable) { store.discard(imported) } }
                 finally { busy = false }
@@ -75,12 +79,12 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
     }
     BackHandler { leave() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
-        ReiAnixTopBar(if (banner) "Banner do perfil" else "Papel de parede",
+        ReiAnixTopBar(if (banner) stringResource(R.string.profile_banner) else stringResource(R.string.profile_wallpaper),
             navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, onNavigationClick = { leave() },
             actions = {
                 if (saved.imageName != null && selected == null) {
                     IconButton(onClick = { confirmRemove = true }, enabled = !busy) {
-                        Icon(Icons.Outlined.DeleteOutline, if (banner) "Remover banner" else "Remover papel de parede")
+                        Icon(Icons.Outlined.DeleteOutline, if (banner) stringResource(R.string.profile_banner_remove) else stringResource(R.string.profile_wallpaper_remove))
                     }
                 }
             })
@@ -90,15 +94,15 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 val ratio = if (banner) 3f else 9f / 16f
                 val width = minOf(maxWidth, maxHeight * ratio)
-                AsyncImage(model = ReiAnixArtPack.model(selected), contentDescription = selected.title,
+                AsyncImage(model = ReiAnixArtPack.model(selected), contentDescription = localizedArtTitle(selected),
                     modifier = Modifier.size(width, width / ratio).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Crop)
             }
-            Text(selected.title, modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
+            Text(localizedArtTitle(selected), modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
                 style = MaterialTheme.typography.titleMedium)
             Button(onClick = { selectArt(selected) }, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp)) {
-                Text(if (banner) "Aplicar banner" else "Aplicar papel de parede")
+                Text(if (banner) stringResource(R.string.profile_banner_apply) else stringResource(R.string.profile_wallpaper_apply))
             }
         } else {
             val columns = if (banner) 2 else 3
@@ -107,7 +111,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                 if (saved.imageName != null) {
                     item {
                         val current = rememberWallpaperImage(store, saved)
-                        Text(if (banner) "Banner atual" else "Papel de parede atual",
+                        Text(if (banner) stringResource(R.string.profile_banner_current) else stringResource(R.string.profile_wallpaper_current),
                             style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         Box(Modifier.fillMaxWidth().height(if (banner) 112.dp else 160.dp)
@@ -119,7 +123,7 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                     }
                 }
                 item {
-                    Text(if (banner) "Escolher banner" else "Escolher papel de parede",
+                    Text(if (banner) stringResource(R.string.profile_banner_choose) else stringResource(R.string.profile_wallpaper_choose),
                         style = MaterialTheme.typography.titleMedium)
                 }
                 items(arts.chunked(columns), key = { it.first().id }) { row ->
@@ -127,10 +131,10 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                         row.forEach { art ->
                             Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
                                 .clickable(enabled = !busy) { selectedId = art.id }) {
-                                AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = art.title,
+                                AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = localizedArtTitle(art),
                                     modifier = Modifier.fillMaxWidth().aspectRatio(if (banner) 2f else 9f / 16f)
                                         .clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
-                                Text(art.title, style = MaterialTheme.typography.labelSmall,
+                                Text(localizedArtTitle(art), style = MaterialTheme.typography.labelSmall,
                                     modifier = Modifier.padding(top = 5.dp, bottom = 4.dp), maxLines = 2)
                             }
                         }
@@ -142,8 +146,8 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
     }
     if (confirmRemove) {
         AlertDialog(onDismissRequest = { confirmRemove = false },
-            title = { Text(if (banner) "Remover banner?" else "Remover papel de parede?") },
-            text = { Text("O aplicativo voltará ao fundo padrão nesta opção.") },
+            title = { Text(if (banner) stringResource(R.string.profile_banner_remove_question) else stringResource(R.string.profile_wallpaper_remove_question)) },
+            text = { Text(stringResource(R.string.tail_wallpaper_default)) },
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     confirmRemove = false
@@ -152,11 +156,40 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                     scope.launch {
                         try { store.save(ReiAnixWallpaper()) }
                         catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) { error = "Não foi possível remover a arte." }
+                        catch (_: Exception) { error = context.getString(R.string.profile_art_remove_error) }
                         finally { busy = false }
                     }
-                }) { Text("Remover") }
+                }) { Text(stringResource(R.string.extra_remove)) }
             },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancelar") } })
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.locale_cancel)) } })
     }
+}
+
+
+@Composable
+private fun localizedArtTitle(art: PersonalArt): String = when (art.id) {
+    "samurai_rubro_cinematico" -> stringResource(R.string.art_samurai_rubro_cinematico)
+    "fuji_sakura_torii" -> stringResource(R.string.art_fuji_sakura_torii)
+    "oceano_azul" -> stringResource(R.string.art_oceano_azul)
+    "chuva_neon" -> stringResource(R.string.art_chuva_neon)
+    "cidade_dourada" -> stringResource(R.string.art_cidade_dourada)
+    "montanha_nevada" -> stringResource(R.string.art_montanha_nevada)
+    "quarto_gamer" -> stringResource(R.string.art_quarto_gamer)
+    "ruinas_submersas" -> stringResource(R.string.art_ruinas_submersas)
+    "sakura_lunar" -> stringResource(R.string.art_sakura_lunar)
+    "samurai_lua_rubra" -> stringResource(R.string.art_samurai_lua_rubra)
+    "ruas_neon_violeta" -> stringResource(R.string.art_ruas_neon_violeta)
+    "eclipse_dourado" -> stringResource(R.string.art_eclipse_dourado)
+    "costa_estelar_turquesa" -> stringResource(R.string.art_costa_estelar_turquesa)
+    "cidade_chuvosa_violeta" -> stringResource(R.string.art_cidade_chuvosa_violeta)
+    "cafe_chuvoso" -> stringResource(R.string.art_cafe_chuvoso)
+    "caminho_sakura" -> stringResource(R.string.art_caminho_sakura)
+    "costa_ao_entardecer" -> stringResource(R.string.art_costa_ao_entardecer)
+    "crepusculo_urbano" -> stringResource(R.string.art_crepusculo_urbano)
+    "magia_violeta" -> stringResource(R.string.art_magia_violeta)
+    "viajante_lunar" -> stringResource(R.string.art_viajante_lunar)
+    "samurai_escarlate" -> stringResource(R.string.art_samurai_escarlate)
+    "toquio_violeta" -> stringResource(R.string.art_toquio_violeta)
+    "manga_lunar" -> stringResource(R.string.art_manga_lunar)
+    else -> art.title
 }
