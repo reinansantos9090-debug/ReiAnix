@@ -1,4 +1,5 @@
 <resources>
+  <string name="locale_section">语言</string>
   <string name="locale_title">语言</string>
   <string name="locale_cancel">取消</string>
   <string name="nav_home">首页</string>

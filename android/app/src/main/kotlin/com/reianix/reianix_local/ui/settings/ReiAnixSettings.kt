@@ -590,6 +590,9 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                 )
             }
             if (category == "Geral") {
+                item(key = "section:app-language") {
+                    SettingsSectionLabel(stringResource(R.string.locale_section))
+                }
                 item(key = "settings:language") { ReiAnixAppLanguageRow() }
             }
             item(key = "operation-error") {

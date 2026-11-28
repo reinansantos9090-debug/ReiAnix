@@ -1,4 +1,5 @@
 <resources>
+  <string name="locale_section">언어</string>
   <string name="locale_title">언어</string>
   <string name="locale_cancel">취소</string>
   <string name="nav_home">홈</string>

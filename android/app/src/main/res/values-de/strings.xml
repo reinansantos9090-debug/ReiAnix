@@ -1,4 +1,5 @@
 <resources>
+  <string name="locale_section">Sprache</string>
   <string name="locale_title">Sprache</string>
   <string name="locale_cancel">Abbrechen</string>
   <string name="nav_home">Startseite</string>
