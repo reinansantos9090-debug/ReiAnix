@@ -1211,7 +1211,7 @@ private fun LibrarySourceSummaryCard(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 ReiAnixBadge(
-                    text = stringResource(if (sourceAvailable) R.string.common_offline else R.string.flow_source_unavailable),
+                    text = stringResource(if (sourceAvailable) R.string.native_offline else R.string.flow_source_unavailable),
                     tone = if (sourceAvailable) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning,
                 )
             }

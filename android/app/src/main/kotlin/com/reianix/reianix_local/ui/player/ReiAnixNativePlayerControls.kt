@@ -1024,7 +1024,7 @@ fun ReiAnixNativePlayerBottomControls(
                             icon = Icons.Filled.AspectRatio,
                             label = stringResource(R.string.ui_aspect),
                             showLabel = !landscape,
-                            contentDescription = stringResource(R.string.flow_aspect_current, state.aspectLabel),
+                            contentDescription = stringResource(R.string.flow_aspect_current, com.reianix.reianix_local.ui.settings.localizedSettingChoice(state.aspectLabel)),
                             // Normalize the wider rectangular artwork in portrait only.
                             // Keep the same centered 48dp hit target and weighted slot.
                             iconVisualScale = (if (fiveShortcuts) 0.88f else 1f) *
