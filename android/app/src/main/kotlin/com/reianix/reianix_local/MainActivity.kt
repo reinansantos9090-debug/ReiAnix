@@ -692,7 +692,7 @@ class MainActivity : ComponentActivity() {
             completeComposeSettingsStorageAction(
                 requestId,
                 "SUCCESS",
-                message = "Permissão de acesso aos vídeos confirmada.",
+                message = getString(R.string.storage_video_permission_ok),
             )
             nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.COMPLETED)
             scanMediaStore(requestId)
@@ -700,7 +700,7 @@ class MainActivity : ComponentActivity() {
             completeComposeSettingsStorageAction(
                 requestId,
                 "ERROR",
-                error = "A permissão de acesso aos vídeos foi negada.",
+                error = getString(R.string.storage_video_permission_denied),
             )
             nativeRequestState.markOperationState(requestId, "request_media_access", NativeRequestState.OperationState.FAILED)
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
@@ -731,7 +731,7 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "CANCELLED", "CANCELLED",
-                        message = "Exportação cancelada.",
+                        message = getString(R.string.storage_export_cancelled),
                     )
                 }
                 return@settingsExportResult
@@ -740,7 +740,7 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = "Outra operação de arquivo de configurações está em andamento.",
+                        error = getString(R.string.storage_settings_file_busy),
                     )
                 }
                 return@settingsExportResult
@@ -759,14 +759,14 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "SUCCESS", "SUCCESS",
-                            message = "Configurações exportadas.",
+                            message = getString(R.string.storage_settings_exported),
                         )
                     }
                 } catch (cancelled: CancellationException) {
                     withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "CANCELLED", "CANCELLED",
-                            error = "A exportação de configurações foi cancelada.",
+                            error = getString(R.string.storage_settings_export_cancelled),
                         )
                     }
                     throw cancelled
@@ -775,7 +775,7 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "ERROR", "ERROR",
-                            error = "Não foi possível exportar as configurações.",
+                            error = getString(R.string.storage_settings_export_failed),
                         )
                     }
                 } finally {
@@ -798,7 +798,7 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "CANCELLED", "CANCELLED",
-                        message = "Importação cancelada.",
+                        message = getString(R.string.storage_import_cancelled),
                     )
                 }
                 return@settingsImportResult
@@ -807,7 +807,7 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = "Outra operação de arquivo de configurações está em andamento.",
+                        error = getString(R.string.storage_settings_file_busy),
                     )
                 }
                 return@settingsImportResult
@@ -871,14 +871,14 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "SUCCESS", "SUCCESS",
-                            message = "Configurações importadas: ${result.imported}.",
+                            message = getString(R.string.storage_settings_imported, result.imported),
                         )
                     }
                 } catch (cancelled: CancellationException) {
                     withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action, "CANCELLED", "CANCELLED",
-                            error = "A importação de configurações foi cancelada.",
+                            error = getString(R.string.storage_settings_import_cancelled),
                         )
                     }
                     throw cancelled
@@ -1027,7 +1027,7 @@ class MainActivity : ComponentActivity() {
                             correlationId,
                             stage = "picker_result_watchdog",
                             code = "RESULT_CALLBACK_TIMEOUT",
-                            message = "O Android voltou do seletor, mas o ReiAnix não recebeu o resultado da pasta. Toque em ESCOLHER PASTA para tentar novamente.",
+                            message = getString(R.string.storage_picker_no_result),
                         )
                     } else {
                         safPickerWatchdogHandler.postDelayed(
@@ -1074,7 +1074,7 @@ class MainActivity : ComponentActivity() {
                 .apply()
             _nativeStorageOnboardingState.value = NativeStorageOnboardingState(
                 phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
-                message = "Seleção de pasta cancelada. A biblioteca não foi alterada; você pode tentar novamente.",
+                message = getString(R.string.storage_folder_cancelled_preserve),
             )
             // If this was an attempt to add/replace a source while another valid
             // root already existed, cancellation must not obscure that working root.
@@ -1082,7 +1082,7 @@ class MainActivity : ComponentActivity() {
             completeComposeSettingsStorageAction(
                 requestId,
                 "CANCELLED",
-                message = "Seleção de pasta cancelada.",
+                message = getString(R.string.storage_folder_cancelled),
             )
             Log.i(tag, "SAF selection cancelled resultCode=" + result.resultCode)
             NativeMailbox.write(this, JSONObject().put("type", "saf_cancelled")
@@ -1170,7 +1170,7 @@ class MainActivity : ComponentActivity() {
                 completeComposeSettingsStorageAction(
                     requestId,
                     "SUCCESS",
-                    message = "Pasta adicionada à biblioteca.",
+                    message = getString(R.string.storage_folder_added),
                 )
                 val payload = JSONObject(selectedIdentity.toString())
                     .put("treeUri", configuredReference).put("granted", true).put("selected", true)
@@ -1445,7 +1445,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(
                     requestId, action!!, "ERROR", "ERROR",
-                    error = "A base canônica exige Recovery Mode. A operação foi bloqueada para preservar os dados; use a restauração de recuperação.",
+                    error = getString(R.string.storage_recovery_required),
                 )
             }
             return
@@ -1454,7 +1454,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 writeSettingsFileActionResult(
                     requestId, action!!, "ERROR", "ERROR",
-                    error = "Outra operação nativa de configurações está em andamento.",
+                    error = getString(R.string.storage_settings_busy),
                 )
             }
             return
@@ -1509,7 +1509,7 @@ class MainActivity : ComponentActivity() {
                     withContext(NonCancellable + Dispatchers.IO) {
                         writeSettingsFileActionResult(
                             requestId, action!!, "CANCELLED", "CANCELLED",
-                            error = "A operação nativa foi cancelada.",
+                            error = getString(R.string.storage_native_cancelled),
                         )
                     }
                     throw cancelled
@@ -1595,13 +1595,13 @@ class MainActivity : ComponentActivity() {
         if (action != "backup_create" || requestId.isNullOrBlank()) return
         if (uri == null) {
             lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Exportação de backup cancelada.")
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = getString(R.string.storage_backup_export_cancelled))
             }
             return
         }
         if (settingsFileProcessing) {
             lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = getString(R.string.storage_file_busy))
             }
             return
         }
@@ -1619,17 +1619,17 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 withContext(Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = "Backup ReiAnix criado e validado.")
+                    writeSettingsFileActionResult(requestId, action, "SUCCESS", "SUCCESS", message = getString(R.string.storage_backup_created))
                 }
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A exportação de backup foi cancelada.")
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = getString(R.string.storage_backup_cancelled))
                 }
                 throw cancelled
             } catch (error: Exception) {
                 Log.e(tag, "NATIVE_BACKUP_EXPORT_FAILED requestId=" + requestId, error)
                 withContext(Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: "Não foi possível criar o backup.")
+                    writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = error.message?.takeIf { it.isNotBlank() } ?: getString(R.string.storage_backup_create_failed))
                 }
             } finally {
                 archive?.delete()
@@ -1688,7 +1688,7 @@ class MainActivity : ComponentActivity() {
                 withContext(NonCancellable + Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "CANCELLED", "CANCELLED",
-                        error = "A busca pelo backup local foi cancelada.",
+                        error = getString(R.string.storage_backup_search_cancelled),
                     )
                 }
                 throw cancelled
@@ -1720,13 +1720,13 @@ class MainActivity : ComponentActivity() {
         if ((action != "backup_restore" && action != "backup_recovery_restore") || requestId.isNullOrBlank()) return
         if (uri == null) {
             lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = "Restauração cancelada.")
+                writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", message = getString(R.string.storage_restore_cancelled))
             }
             return
         }
         if (settingsFileProcessing) {
             lifecycleScope.launch(Dispatchers.IO) {
-                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = "Outra operação de arquivo está em andamento.")
+                writeSettingsFileActionResult(requestId, action, "ERROR", "ERROR", error = getString(R.string.storage_file_busy))
             }
             return
         }
@@ -1770,7 +1770,7 @@ class MainActivity : ComponentActivity() {
                 withContext(NonCancellable + Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "CANCELLED", "CANCELLED",
-                        error = "A seleção ou restauração do backup foi cancelada.",
+                        error = getString(R.string.storage_backup_restore_cancelled),
                     )
                 }
                 throw cancelled
@@ -1804,33 +1804,22 @@ class MainActivity : ComponentActivity() {
         val manifest = preview.manifest
         val counts = preview.counts
         val details = buildString {
-            append("Formato: ")
-            append(manifest.optString("format", "desconhecido"))
-            append(" v")
-            append(manifest.optInt("format_version", -1))
-            append("\nSchema: ")
-            append(manifest.optInt("schema_version", -1))
-            append("\nVersão que criou o backup: ")
-            append(manifest.optString("app_version", "não informada"))
-            append("\nAnimes: ")
-            append(counts.optLong("anime", 0L))
-            append(" • episódios: ")
-            append(counts.optLong("episodes", 0L))
-            append("\nFavoritos: ")
-            append(counts.optLong("favorites", 0L))
-            append(" • com progresso/histórico: ")
-            append(counts.optLong("progress", 0L))
+            append(getString(R.string.storage_backup_format, manifest.optString("format", getString(R.string.storage_unknown)), manifest.optInt("format_version", -1)))
+            append("\n")
+            append(getString(R.string.storage_backup_schema, manifest.optInt("schema_version", -1)))
+            append("\n")
+            append(getString(R.string.storage_backup_app_version, manifest.optString("app_version", getString(R.string.storage_not_reported))))
+            append("\n")
+            append(getString(R.string.storage_backup_anime_episodes, counts.optLong("anime", 0L), counts.optLong("episodes", 0L)))
+            append("\n")
+            append(getString(R.string.storage_backup_favorites_progress, counts.optLong("favorites", 0L), counts.optLong("progress", 0L)))
             append("\n\n")
-            if (isRecoveryRestoreAction(action)) {
-                append("O banco atual requer recuperação. Uma cópia bruta do SQLite e dos arquivos auxiliares disponíveis " +
-                    "será preservada antes de promover o banco validado. ")
-            } else {
-                append("Os dados lógicos incluídos serão aplicados ao catálogo SQLite em uma transação, depois de criar " +
-                    "um backup ZIP de segurança pré-restauração. ")
-            }
-            append("Vídeos externos, permissões SAF/MediaStore e sessão Google não são incluídos nem recriados.")
+            append(getString(if (isRecoveryRestoreAction(action)) R.string.storage_backup_recovery_info else R.string.storage_backup_restore_info))
+            append(" ")
+            append(getString(R.string.storage_backup_excluded))
             if (preview.warnings.isNotEmpty()) {
-                append("\n\nAvisos de validação:")
+                append("\n\n")
+                append(getString(R.string.storage_validation_warnings))
                 preview.warnings.forEach { warning ->
                     append("\n• ")
                     append(warning)
@@ -1849,9 +1838,9 @@ class MainActivity : ComponentActivity() {
                             "CANCELLED",
                             "CANCELLED",
                             message = if (isRecoveryRestoreAction(action)) {
-                                "A recuperação foi cancelada antes de substituir o banco."
+                                getString(R.string.storage_restore_before_database)
                             } else {
-                                "A restauração foi cancelada antes de alterar a biblioteca."
+                                getString(R.string.storage_restore_before_library)
                             },
                         )
                     }
@@ -1865,15 +1854,15 @@ class MainActivity : ComponentActivity() {
         android.app.AlertDialog.Builder(this)
             .setTitle(
                 if (isRecoveryRestoreAction(action)) {
-                    "Confirmar recuperação da biblioteca"
+                    getString(R.string.storage_confirm_recovery)
                 } else {
-                    "Confirmar restauração do backup"
+                    getString(R.string.storage_confirm_restore)
                 },
             )
             .setMessage(details)
-            .setNegativeButton("Cancelar") { _, _ -> finishCancelled() }
+            .setNegativeButton(getString(R.string.locale_cancel)) { _, _ -> finishCancelled() }
             .setPositiveButton(
-                if (isRecoveryRestoreAction(action)) "Recuperar biblioteca" else "Restaurar backup",
+                if (isRecoveryRestoreAction(action)) getString(R.string.storage_recover_library) else getString(R.string.pref_restore_backup),
             ) { _, _ ->
                 if (decisionHandled.compareAndSet(false, true)) {
                     completeNativeBackupRestore(inputCopy, action, requestId)
@@ -1959,7 +1948,7 @@ class MainActivity : ComponentActivity() {
                 withContext(NonCancellable + Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "CANCELLED", "CANCELLED",
-                        error = "A restauração foi cancelada.",
+                        error = getString(R.string.storage_restore_was_cancelled),
                     )
                 }
                 throw cancelled
@@ -2000,7 +1989,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = "Executando verificação nativa.")
+                    writeSettingsFileActionResult(requestId, action, "RUNNING", "RUNNING", message = getString(R.string.storage_native_check))
                 }
                 when (action) {
                     "backup_integrity" -> {
@@ -2011,8 +2000,7 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) {
                             writeSettingsFileActionResult(
                                 requestId, action, "SUCCESS", "SUCCESS",
-                                message = "SQLite íntegro; schema " + report.schemaVersion +
-                                    "; violações de foreign key: " + report.foreignKeyViolations + ".",
+                                message = getString(R.string.storage_sqlite_ok, report.schemaVersion.toString(), report.foreignKeyViolations.toString()),
                             )
                         }
                     }
@@ -2024,8 +2012,7 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) {
                             writeSettingsFileActionResult(
                                 requestId, action, "SUCCESS", "SUCCESS",
-                                message = "Reconciliação concluída. Referências atualizadas: " + updated +
-                                    ". URIs SAF/MediaStore permanecem sob o scanner nativo.",
+                                message = getString(R.string.storage_reconcile_ok, updated.toString()),
                             )
                         }
                     }
@@ -2036,8 +2023,7 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) {
                             writeSettingsFileActionResult(
                                 requestId, action, "SUCCESS", "SUCCESS",
-                                message = "Snapshot bruto de segurança criado: " + snapshot.name +
-                                    ". Ele preserva bytes/sidecars para recuperação, mas não é um ZIP de backup restaurável.",
+                                message = getString(R.string.storage_snapshot_created, snapshot.name),
                             )
                         }
                     }
@@ -2045,7 +2031,7 @@ class MainActivity : ComponentActivity() {
                 }
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
-                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = "A operação foi cancelada.")
+                    writeSettingsFileActionResult(requestId, action, "CANCELLED", "CANCELLED", error = getString(R.string.storage_operation_cancelled))
                 }
                 throw cancelled
             } catch (error: Exception) {
@@ -2993,7 +2979,7 @@ class MainActivity : ComponentActivity() {
                     completeComposeSettingsStorageAction(
                         requestId,
                         "SUCCESS",
-                        message = "Estado das permissões de armazenamento atualizado.",
+                        message = getString(R.string.storage_permissions_updated),
                     )
                     nativeRequestState.markOperationState(requestId, action, NativeRequestState.OperationState.COMPLETED)
 
@@ -3561,7 +3547,7 @@ class MainActivity : ComponentActivity() {
         completeComposeSettingsStorageAction(
             pendingMediaRequestId,
             "SUCCESS",
-            message = "Permissão de acesso aos vídeos confirmada.",
+            message = getString(R.string.storage_video_permission_ok),
         )
         nativeRequestState.markOperationState(pendingMediaRequestId, "request_media_access", NativeRequestState.OperationState.COMPLETED)
             Log.i(tag, "Media access already present; continuing directly to scan access=" + currentAccess)
@@ -3583,11 +3569,11 @@ class MainActivity : ComponentActivity() {
             completeComposeSettingsStorageAction(
                 pendingMediaRequestId,
                 "ERROR",
-                error = "Este Android não disponibiliza permissão de leitura de vídeos.",
+                error = getString(R.string.storage_video_permission_unavailable),
             )
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
                 .put("requestId", pendingMediaRequestId ?: "")
-                .put("message", "Este Android não disponibiliza permissão de leitura de vídeos.")
+                .put("message", getString(R.string.storage_video_permission_unavailable))
                 .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)))
             return
         }
@@ -3606,13 +3592,13 @@ class MainActivity : ComponentActivity() {
             completeComposeSettingsStorageAction(
                 pendingMediaRequestId,
                 "ERROR",
-                error = "Não foi possível abrir a solicitação de permissão para vídeos.",
+                error = getString(R.string.storage_video_permission_request_failed),
             )
             nativeRequestState.markOperationState(pendingMediaRequestId, "request_media_access", NativeRequestState.OperationState.FAILED)
             pendingMediaRequestId = null
             Log.e(tag, "Media permission launcher failed", exception)
             NativeMailbox.write(this, JSONObject().put("type", "mediastore_error")
-                .put("message", "Não foi possível abrir a solicitação de permissão para vídeos.")
+                .put("message", getString(R.string.storage_video_permission_request_failed))
                 .put("payload", JSONObject().put("source", MediaStoreScanner.SOURCE)))
         }
     }
@@ -3732,7 +3718,7 @@ class MainActivity : ComponentActivity() {
         if (previous.phase != NativeStorageOnboardingState.PHASE_READY) {
             _nativeStorageOnboardingState.value = previous.copy(
                 phase = NativeStorageOnboardingState.PHASE_CHECKING,
-                message = "Verificando o acesso à pasta da biblioteca…",
+                message = getString(R.string.storage_folder_checking),
                 error = null,
             )
         }
@@ -3749,7 +3735,7 @@ class MainActivity : ComponentActivity() {
                     if (roots.isEmpty()) {
                         NativeStorageOnboardingState(
                             phase = NativeStorageOnboardingState.PHASE_NEEDS_FOLDER,
-                            message = "Selecione uma pasta para criar sua biblioteca. A permissão de mídia ou o acesso amplo não substitui uma pasta SAF configurada.",
+                            message = getString(R.string.storage_folder_saf_needed),
                             dismissed = wasDismissed,
                         )
                     } else {
@@ -3780,20 +3766,20 @@ class MainActivity : ComponentActivity() {
                             )
                             revoked -> NativeStorageOnboardingState(
                                 phase = NativeStorageOnboardingState.PHASE_ERROR,
-                                message = "A pasta configurada não está mais autorizada. Selecione novamente a pasta para recuperar o acesso; os dados da biblioteca foram preservados.",
-                                error = "A concessão SAF foi revogada ou a URI configurada deixou de ser válida.",
+                                message = getString(R.string.storage_folder_revoked),
+                                error = getString(R.string.storage_saf_revoked),
                                 dismissed = wasDismissed,
                             )
                             providerUnavailable -> NativeStorageOnboardingState(
                                 phase = NativeStorageOnboardingState.PHASE_ERROR,
-                                message = "A pasta configurada existe, mas o Android não conseguiu abri-la agora. Verifique o provedor ou escolha novamente a pasta.",
-                                error = "O provedor de documentos está indisponível ou não conseguiu consultar a raiz.",
+                                message = getString(R.string.storage_folder_provider_unavailable),
+                                error = getString(R.string.storage_provider_unavailable),
                                 dismissed = wasDismissed,
                             )
                             else -> NativeStorageOnboardingState(
                                 phase = NativeStorageOnboardingState.PHASE_ERROR,
-                                message = "Não foi possível validar a pasta configurada. Tente novamente ou escolha outra pasta; os dados existentes foram preservados.",
-                                error = "A validação da fonte SAF não produziu um estado de acesso utilizável.",
+                                message = getString(R.string.storage_folder_validation_failed),
+                                error = getString(R.string.storage_saf_validation_failed),
                                 dismissed = wasDismissed,
                             )
                         }
@@ -3805,8 +3791,8 @@ class MainActivity : ComponentActivity() {
                 Log.w(tag, "Native storage onboarding validation failed origin=" + origin, exception)
                 NativeStorageOnboardingState(
                     phase = NativeStorageOnboardingState.PHASE_ERROR,
-                    message = "Não foi possível verificar o acesso ao armazenamento. Tente novamente em Storage; os dados existentes foram preservados.",
-                    error = "A verificação nativa da configuração de armazenamento falhou.",
+                    message = getString(R.string.storage_storage_check_failed),
+                    error = getString(R.string.storage_storage_validation_failed),
                     dismissed = wasDismissed,
                 )
             }
@@ -4362,7 +4348,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Log.e(tag, "SAF permission was released but canonical source removal failed", exception)
                         publishReleaseError(
-                            message = "A permissão foi liberada, mas a pasta não pôde ser removida da biblioteca.",
+                            message = getString(R.string.storage_folder_remove_failed),
                             code = "SQLITE_SOURCE_REMOVAL_FAILED",
                             stage = "sqlite_remove",
                             permissionReleased = true,
@@ -4379,7 +4365,7 @@ class MainActivity : ComponentActivity() {
         } catch (exception: Exception) {
             Log.e(tag, "Failed to release SAF permission", exception)
             publishReleaseError(
-                message = "Não foi possível liberar a permissão desta pasta.",
+                message = getString(R.string.storage_folder_permission_release_failed),
                 code = "PERSISTED_PERMISSION_RELEASE_FAILED",
                 stage = "permission_release",
                 permissionReleased = false,
@@ -4801,7 +4787,7 @@ class MainActivity : ComponentActivity() {
             .apply()
         _nativeStorageOnboardingState.value = NativeStorageOnboardingState(
             phase = NativeStorageOnboardingState.PHASE_FOLDER_PICKER_OPEN,
-            message = "Escolha a pasta da biblioteca na tela do Android.",
+            message = getString(R.string.storage_android_choose_folder),
         )
         safPickerStartedAtMs = System.currentTimeMillis()
         safPickerFocusLost = false
@@ -4927,7 +4913,7 @@ class MainActivity : ComponentActivity() {
                     if (signedInProfile == null) {
                         if (result.cancelled) {
                             terminalState = NativeRequestState.OperationState.CANCELLED
-                            val message = "Login Google cancelado."
+                            val message = getString(R.string.storage_google_cancelled)
                             withContext(Dispatchers.IO) {
                                 writeSettingsFileActionResult(
                                     requestId, action, "CANCELLED", "CANCELLED", message = message,
@@ -4973,7 +4959,7 @@ class MainActivity : ComponentActivity() {
                 terminalState = NativeRequestState.OperationState.CANCELLED
                 withContext(NonCancellable + Dispatchers.IO) {
                     writeSettingsFileActionResult(
-                        requestId, action, "CANCELLED", "CANCELLED", error = "A operação da conta foi cancelada.",
+                        requestId, action, "CANCELLED", "CANCELLED", error = getString(R.string.storage_account_cancelled),
                     )
                 }
                 throw cancelled
@@ -4985,7 +4971,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     writeSettingsFileActionResult(
                         requestId, action, "ERROR", "ERROR",
-                        error = error.message?.takeIf { it.isNotBlank() } ?: "A operação da conta não foi concluída.",
+                        error = error.message?.takeIf { it.isNotBlank() } ?: getString(R.string.storage_account_failed),
                     )
                 }
 

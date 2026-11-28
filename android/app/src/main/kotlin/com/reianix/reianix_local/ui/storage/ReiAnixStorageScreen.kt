@@ -209,7 +209,7 @@ private fun ReiAnixLibraryFoldersSection(
                     }
                 }
                 items(configuredSafSources, key = { it.reference }) { source ->
-                    val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
+                    val name = friendlySourceName(source.name).ifBlank { stringResource(R.string.storage_library_folder) }
                     Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -399,7 +399,7 @@ private fun SafSourceCard(
     val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
     val available = state == "available"
     val stateLabel = safStateLabel(state)
-    val actionLabel = if (available) "Alterar pasta" else "Reautorizar"
+    val actionLabel = stringResource(if (available) R.string.storage_change_folder else R.string.storage_reauthorize)
 
     ReiAnixSettingsSurface(
         modifier = Modifier
@@ -437,9 +437,9 @@ private fun SafSourceCard(
                     com.reianix.reianix_local.ui.ReiAnixSourceUnavailableState(
                         title = stateLabel,
                         message = when (state) {
-                            "revoked" -> "A autorização desta pasta não está mais disponível no Android."
-                            "unavailable" -> "O provedor desta pasta está indisponível no momento."
-                            else -> "Não foi possível confirmar o acesso desta pasta."
+                            "revoked" -> stringResource(R.string.storage_folder_permission_missing)
+                            "unavailable" -> stringResource(R.string.storage_folder_provider_now)
+                            else -> stringResource(R.string.storage_folder_access_unknown)
                         },
                         actionLabel = null,
                         onAction = null,

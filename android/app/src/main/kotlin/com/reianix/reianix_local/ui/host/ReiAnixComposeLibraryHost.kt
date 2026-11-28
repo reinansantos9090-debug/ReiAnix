@@ -526,7 +526,7 @@ class ReiAnixComposeLibraryHost(
                         storage = {
                             ReiAnixStorageRoute(
                                 viewModel = libraryViewModel,
-                                title = "Pasta da biblioteca",
+                                title = androidx.compose.ui.res.stringResource(com.reianix.reianix_local.R.string.storage_library_folder),
                                 onBack = {
                                     if (!navController.popBackStack()) {
                                         handleBack()
