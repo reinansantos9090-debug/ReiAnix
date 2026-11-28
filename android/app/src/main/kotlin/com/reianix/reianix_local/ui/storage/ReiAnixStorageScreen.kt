@@ -196,16 +196,16 @@ private fun ReiAnixLibraryFoldersSection(
         Box(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
                 item(key = "folders-header") {
-                    SettingsHeader("Pastas", "", onBack)
+                    SettingsHeader(stringResource(R.string.settings_folders), "", onBack)
                 }
                 if (showFolderLoading) {
                     item(key = "folders-loading") {
-                        ReiAnixLoadingState("Verificando armazenamento", "Consultando as pastas da biblioteca…")
+                        ReiAnixLoadingState(stringResource(R.string.final_storage_check), stringResource(R.string.final_storage_folders_read))
                     }
                 }
                 if (storage.safSelectionPending) {
                     item(key = "folders-selecting") {
-                        ReiAnixLoadingState("Seleção de pasta em andamento", "Aguardando o seletor de pastas do Android…")
+                        ReiAnixLoadingState(stringResource(R.string.final_storage_selecting), stringResource(R.string.final_storage_wait_picker))
                     }
                 }
                 items(configuredSafSources, key = { it.reference }) { source ->
@@ -248,15 +248,15 @@ private fun ReiAnixLibraryFoldersSection(
     }
 
     pendingRemoval?.let { source ->
-        val sourceName = friendlySourceName(source.name).ifBlank { "esta pasta" }
+        val sourceName = friendlySourceName(source.name)
+        val removalDescription = stringResource(R.string.final_storage_remove_a11y, sourceName)
         AlertDialog(
             onDismissRequest = { pendingRemoval = null },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             title = { Text(stringResource(R.string.extra_storage_remove_question)) },
             text = {
                 Text(
-                    "“$sourceName” será removida somente da configuração da biblioteca. "
-                        + "A permissão Android dessa pasta também será liberada. Nenhum arquivo físico será apagado.",
+                    stringResource(R.string.final_storage_remove_confirm, sourceName),
                 )
             },
             confirmButton = {
@@ -268,7 +268,7 @@ private fun ReiAnixLibraryFoldersSection(
                     },
                     enabled = !removeBusy && !selectionBusy,
                     modifier = Modifier.semantics {
-                        contentDescription = "Confirmar remoção de $sourceName"
+                        contentDescription = removalDescription
                     },
                 )
             },
@@ -312,7 +312,7 @@ private fun NativeSqliteFoldersSection(
             ReiAnixNativeFoldersStatus.READY -> ReiAnixSettingsSurface(modifier = Modifier.fillMaxWidth()) {
                 Column(verticalArrangement = Arrangement.spacedBy(ReiAnixTokens.Spacing.sm)) {
                     Text(
-                        text = "${state.folders.size} registro(s) de pasta no SQLite",
+                        text = stringResource(R.string.final_storage_record_count, state.folders.size),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -396,7 +396,7 @@ private fun SafSourceCard(
     onReauthorize: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val name = friendlySourceName(source.name).ifBlank { "Pasta da biblioteca" }
+    val name = friendlySourceName(source.name).ifBlank { stringResource(R.string.storage_library_folder) }
     val available = state == "available"
     val stateLabel = safStateLabel(state)
     val actionLabel = stringResource(if (available) R.string.storage_change_folder else R.string.storage_reauthorize)
@@ -536,7 +536,7 @@ private fun ConfiguredSourceCard(
     state: String,
     onAction: (() -> Unit)?,
 ) {
-    val name = friendlySourceName(source.name).ifBlank { "Fonte local" }
+    val name = friendlySourceName(source.name).ifBlank { stringResource(R.string.extra_storage_local_folder) }
     val stateLabel = genericSourceStateLabel(state)
     val available = state in setOf("available", "full", "partial", "granted")
 
@@ -646,6 +646,7 @@ private fun persistedGrantMessage(count: Int): String =
         "Existem $count permissões de pasta já salvas no Android, mas nenhuma foi configurada na biblioteca."
     }
 
+@Composable
 private fun friendlySourceName(raw: String): String {
     val value = raw.trim()
     return if (
@@ -653,48 +654,52 @@ private fun friendlySourceName(raw: String): String {
         value.startsWith("content://", ignoreCase = true) ||
         value.startsWith("file://", ignoreCase = true)
     ) {
-        "Pasta da biblioteca"
+        stringResource(R.string.storage_library_folder)
     } else {
         value
     }
 }
 
+@Composable
 private fun safStateLabel(state: String): String = when (state.lowercase()) {
-    "available", "granted", "full" -> "Acesso concedido"
-    "revoked" -> "Acesso perdido"
-    "unavailable", "error" -> "Acesso indisponível"
-    "partial" -> "Acesso parcial"
-    "unknown" -> "Verificando acesso"
-    else -> "Acesso necessário"
+    "available", "granted", "full" -> stringResource(R.string.final_access_granted)
+    "revoked" -> stringResource(R.string.final_access_lost)
+    "unavailable", "error" -> stringResource(R.string.final_access_unavailable)
+    "partial" -> stringResource(R.string.final_access_partial)
+    "unknown" -> stringResource(R.string.final_access_checking)
+    else -> stringResource(R.string.final_access_required)
 }
 
+@Composable
 private fun genericSourceStateLabel(state: String): String = when (state.lowercase()) {
-    "available", "granted", "full" -> "Acesso concedido"
-    "partial" -> "Acesso parcial"
-    "revoked" -> "Acesso perdido"
-    "unavailable", "error" -> "Acesso indisponível"
-    "denied" -> "Acesso necessário"
-    else -> "Estado desconhecido"
+    "available", "granted", "full" -> stringResource(R.string.final_access_granted)
+    "partial" -> stringResource(R.string.final_access_partial)
+    "revoked" -> stringResource(R.string.final_access_lost)
+    "unavailable", "error" -> stringResource(R.string.final_access_unavailable)
+    "denied" -> stringResource(R.string.final_access_required)
+    else -> stringResource(R.string.final_access_unknown)
 }
 
+@Composable
 private fun mediaAccessLabel(state: String): String = when (state) {
-    "full" -> "Acesso concedido"
-    "partial" -> "Acesso parcial"
-    else -> "Acesso necessário"
+    "full" -> stringResource(R.string.final_access_granted)
+    "partial" -> stringResource(R.string.final_access_partial)
+    else -> stringResource(R.string.final_access_required)
 }
 
 private fun accessBadgeTone(state: String, successState: String): ReiAnixBadgeTone =
     if (state == successState) ReiAnixBadgeTone.Success else ReiAnixBadgeTone.Warning
 
+@Composable
 private fun scanStateLabel(state: String, inProgress: Boolean): String = when {
-    inProgress -> "Atualizando a biblioteca…"
-    state.equals("COMPLETED", ignoreCase = true) -> "Biblioteca atualizada"
+    inProgress -> stringResource(R.string.flow_library_refreshing)
+    state.equals("COMPLETED", ignoreCase = true) -> stringResource(R.string.final_scan_updated)
     state.equals("EMPTY", ignoreCase = true) || state.equals("EMPTY_COMPLETE", ignoreCase = true) ->
-        "A fonte está acessível e não contém vídeos reconhecidos"
-    state.equals("PARTIAL", ignoreCase = true) -> "Atualização parcial; o catálogo confirmado foi preservado"
-    state.equals("FAILED", ignoreCase = true) -> "Não foi possível concluir a atualização"
-    state.equals("CANCELLED", ignoreCase = true) -> "Atualização cancelada"
-    state.equals("WAITING_FOR_MEDIASTORE", ignoreCase = true) -> "Aguardando o MediaStore concluir a indexação"
-    state.equals("VOLUME_UNAVAILABLE", ignoreCase = true) -> "Uma fonte de mídia está indisponível"
-    else -> "Nenhuma atualização em andamento"
+        stringResource(R.string.final_scan_empty)
+    state.equals("PARTIAL", ignoreCase = true) -> stringResource(R.string.final_scan_partial)
+    state.equals("FAILED", ignoreCase = true) -> stringResource(R.string.final_scan_failed)
+    state.equals("CANCELLED", ignoreCase = true) -> stringResource(R.string.final_scan_cancelled)
+    state.equals("WAITING_FOR_MEDIASTORE", ignoreCase = true) -> stringResource(R.string.final_scan_media_wait)
+    state.equals("VOLUME_UNAVAILABLE", ignoreCase = true) -> stringResource(R.string.final_scan_volume)
+    else -> stringResource(R.string.final_scan_idle)
 }

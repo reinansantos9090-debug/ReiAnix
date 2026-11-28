@@ -43,6 +43,7 @@ internal fun localizedUiLabel(label: String): String = when (label) {
     "Gênero" -> stringResource(R.string.common_genre)
     "Estado" -> stringResource(R.string.common_status)
     "Rótulos" -> stringResource(R.string.common_labels)
+    "Etiqueta" -> stringResource(R.string.final_library_tag)
     "Quero assistir" -> stringResource(R.string.common_to_watch)
     "Em pausa" -> stringResource(R.string.common_on_hold)
     "Abandonado" -> stringResource(R.string.common_dropped)

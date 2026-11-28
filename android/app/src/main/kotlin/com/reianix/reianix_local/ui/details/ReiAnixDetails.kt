@@ -281,7 +281,7 @@ fun ReiAnixDetailsRoute(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    deletionError = error.message ?: "Não foi possível confirmar a exclusão."
+                    deletionError = error.message ?: repairContext.getString(R.string.final_details_confirm_delete)
                 } finally {
                     pendingDeleteId = null
                     pendingDeletePath = null
@@ -324,7 +324,7 @@ fun ReiAnixDetailsRoute(
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
-                        deletionError = error.message ?: "Não foi possível excluir o episódio."
+                        deletionError = error.message ?: repairContext.getString(R.string.final_details_delete_failed)
                     } finally {
                         if (!awaitingSystemConsent) {
                             pendingDeleteId = null
@@ -876,11 +876,12 @@ internal fun DetailsOverflowActions(
     onIdentifyOrCancel: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val pinStateLabel = stringResource(if (pinned) R.string.final_details_pinned else R.string.final_details_unpinned)
     val running = traceMoeStatus == ReiAnixTraceMoeIdentificationStatus.RUNNING
     val identifyLabel = when (traceMoeStatus) {
-        ReiAnixTraceMoeIdentificationStatus.RUNNING -> "Cancelar identificação"
-        ReiAnixTraceMoeIdentificationStatus.IDLE -> "Identificar capa"
-        ReiAnixTraceMoeIdentificationStatus.SUCCESS -> "Identificar novamente"
+        ReiAnixTraceMoeIdentificationStatus.RUNNING -> stringResource(R.string.final_details_cancel_id)
+        ReiAnixTraceMoeIdentificationStatus.IDLE -> stringResource(R.string.final_details_identify)
+        ReiAnixTraceMoeIdentificationStatus.SUCCESS -> stringResource(R.string.final_details_identify_again)
         ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
         ReiAnixTraceMoeIdentificationStatus.FAILED,
         ReiAnixTraceMoeIdentificationStatus.CANCELLED -> stringResource(R.string.ui_retry)
@@ -915,7 +916,7 @@ internal fun DetailsOverflowActions(
                 },
                 modifier = Modifier.testTag("details-pin").semantics {
                     selected = pinned
-                    stateDescription = if (pinned) "Fixado" else "Não fixado"
+                    stateDescription = pinStateLabel
                 },
                 enabled = pinEnabled,
                 onClick = {
@@ -994,6 +995,8 @@ private fun DetailsHero(
     onIdentifyWithTraceMoe: (Long) -> Unit,
     onCancelTraceMoe: (Long) -> Unit,
 ) {
+    val context = LocalContext.current
+    val favoriteStateLabel = stringResource(if (anime.favorite) R.string.final_details_favorite else R.string.final_details_not_favorite)
     var pinSaving by remember(anime.id) { mutableStateOf(false) }
     var showNoteEditor by rememberSaveable(anime.id) { mutableStateOf(false) }
     var actionError by rememberSaveable(anime.id) { mutableStateOf<String?>(null) }
@@ -1011,21 +1014,20 @@ private fun DetailsHero(
 
     val localizedStatus = anime.status?.trim()?.takeIf { it.isNotBlank() }?.let { statusLabel(it) }
     val localizedFormat = anime.format?.trim()?.takeIf { it.isNotBlank() }?.let { formatLabel(it) }
+    val localEpisodeLabel = anime.episodeCount?.takeIf { it > 0 }?.let { stringResource(R.string.final_details_local_label, localizedEpisodeCount(it)) }
+    val expectedEpisodeLabel = anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { stringResource(R.string.final_details_expected, it) }
+    val seasonCountLabel = anime.seasons.size.takeIf { it > 0 }?.let { stringResource(R.string.final_details_seasons, it) }
+    val scoreLabel = anime.score?.let { stringResource(R.string.final_details_score, formatScore(it)) }
+    val durationLabel = anime.durationMinutes?.takeIf { it > 0 }?.let { stringResource(R.string.final_details_duration, it) }
     val metadata = buildList {
         anime.year?.let { add(it.toString()) }
         localizedStatus?.let { add(it) }
         localizedFormat?.let { add(it) }
-        anime.episodeCount?.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "Biblioteca: 1 episódio local" else "Biblioteca: $count episódios locais")
-        }
-        anime.announcedEpisodeCount?.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "AniList: 1 episódio esperado" else "AniList: $count episódios esperados")
-        }
-        anime.seasons.size.takeIf { it > 0 }?.let { count ->
-            add(if (count == 1) "1 temporada" else "$count temporadas")
-        }
-        anime.score?.let { add("Nota " + formatScore(it)) }
-        anime.durationMinutes?.takeIf { it > 0 }?.let { add("$it min/ep") }
+        localEpisodeLabel?.let(::add)
+        expectedEpisodeLabel?.let(::add)
+        seasonCountLabel?.let(::add)
+        scoreLabel?.let(::add)
+        durationLabel?.let(::add)
     }.joinToString(" • ")
 
     val hasMarathonContent = anime.seasons.any { it.episodes.isNotEmpty() }
@@ -1071,7 +1073,7 @@ private fun DetailsHero(
                     )
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
                 navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
-                navigationContentDescription = "Voltar",
+                navigationContentDescription = stringResource(R.string.ui_back),
                 onNavigationClick = onBack,
                 actions = {
                     if (onManualAniList != null) {
@@ -1100,7 +1102,7 @@ private fun DetailsHero(
                                         throw cancelled
                                     } catch (failure: Exception) {
                                         actionError = failure.message?.takeIf(String::isNotBlank)
-                                            ?: "Não foi possível fixar ou desafixar o anime."
+                                            ?: context.getString(R.string.final_details_pin_error)
                                     } finally {
                                         pinSaving = false
                                     }
@@ -1211,7 +1213,7 @@ private fun DetailsHero(
                 onClick = { onToggleFavorite(anime.id) },
                 active = anime.favorite,
                 modifier = Modifier.weight(1f).testTag("details-quick-favorite").semantics {
-                    stateDescription = if (anime.favorite) "Favoritado" else "Não favoritado"
+                    stateDescription = favoriteStateLabel
                 },
             )
             ReiAnixDetailsQuickAction(
@@ -1283,7 +1285,7 @@ private fun DetailsHero(
         val isTraceMoeRunning = traceMoeState.status == ReiAnixTraceMoeIdentificationStatus.RUNNING
         val identifyFeedback = when (traceMoeState.status) {
             ReiAnixTraceMoeIdentificationStatus.RUNNING ->
-                traceMoeState.message ?: "Preparando a próxima thumbnail..."
+                traceMoeState.message ?: stringResource(R.string.final_details_next_thumbnail)
             ReiAnixTraceMoeIdentificationStatus.SUCCESS,
             ReiAnixTraceMoeIdentificationStatus.NO_MATCH,
             ReiAnixTraceMoeIdentificationStatus.FAILED,
@@ -1323,7 +1325,7 @@ private fun DetailsHero(
                                     .plus(anime.mediaFiles.asSequence())
                                     .firstOrNull { it.id == traceMoeState.currentEpisodeId }
                                     ?.artwork?.sourceRevisions.orEmpty(),
-                                contentDescription = traceMoeState.currentEpisodeLabel ?: "Thumbnail em análise",
+                                contentDescription = traceMoeState.currentEpisodeLabel ?: stringResource(R.string.final_details_thumb_check),
                                 modifier = Modifier.fillMaxSize(),
                                 identity = "${anime.stableKey}:trace-moe:${traceMoeState.currentEpisodeId}",
                             )
@@ -1429,7 +1431,7 @@ private fun DetailsHero(
                                         showTagsEditor = false
                                     } catch (failure: Exception) {
                                         tagsError = failure.message?.takeIf(String::isNotBlank)
-                                            ?: "Não foi possível salvar as tags."
+                                            ?: context.getString(R.string.final_details_tags_error)
                                     } finally {
                                         tagsSaving = false
                                     }
@@ -1548,7 +1550,7 @@ private fun DetailsSeasonsSection(
                     text = stringResource(R.string.ui_see_seasons),
                     onClick = onViewEpisodes,
                     modifier = Modifier.semantics {
-                        contentDescription = "Ver todos os episódios"
+                        contentDescription = stringResource(R.string.ui_see_episodes)
                     },
                 )
             }
@@ -1592,6 +1594,7 @@ private fun DetailsSeasonCard(
     val title = season.title.ifBlank {
         season.number?.let { stringResource(R.string.flow_season_number, it) } ?: stringResource(R.string.ui_season)
     }
+    val selectionLabel = stringResource(if (selected) R.string.nav_selected else R.string.nav_not_selected)
     val episodeCountText = episodeCountLabel(season.episodes.size)
     val subtitle = buildString {
         season.number?.let { append(it) }
@@ -1607,7 +1610,7 @@ private fun DetailsSeasonCard(
                 role = Role.RadioButton
                 this.selected = selected
                 contentDescription = title + ", " + episodeCountText
-                stateDescription = if (selected) "Selecionada" else "Não selecionada"
+                stateDescription = selectionLabel
             },
         shape = ReiAnixTokens.Shapes.card,
         color = if (selected) {
@@ -1737,13 +1740,15 @@ private fun DetailsEpisodeItem(
     var typeMenuExpanded by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
     var identificationSaving by rememberSaveable(episode.stableKey) { mutableStateOf(false) }
     var identificationError by rememberSaveable(episode.stableKey) { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val episodeActionsLabel = stringResource(R.string.final_details_ep_actions, episode.displayTitle)
     val editScope = rememberCoroutineScope()
 
     ReiAnixEpisodeCard(episode = episode, showThumbnail = showThumbnail, isCurrent = isCurrent, isNext = isNext,
         modifier = Modifier.padding(horizontal = LocalReiAnixResponsiveMetrics.current.horizontalPadding, vertical = ReiAnixTokens.Spacing.xs),
         onPlay = { onWatch(episode.id) }, trailingContent = {
             Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.semantics { contentDescription = "Ações do episódio " + episode.displayTitle }) {
+                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.semantics { contentDescription = episodeActionsLabel }) {
                     Icon(imageVector = Icons.Filled.MoreVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -1847,9 +1852,9 @@ private fun DetailsEpisodeItem(
                             val numberValue = if (numberInput.isBlank()) null else numberInput.trim().toDoubleOrNull()
                             when {
                                 seasonInput.isNotBlank() && (seasonValue == null || seasonValue < 0) ->
-                                    identificationError = "Temporada inválida."
+                                    identificationError = context.getString(R.string.final_details_invalid_season)
                                 numberInput.isNotBlank() && (numberValue == null || !numberValue.isFinite() || numberValue < 0.0) ->
-                                    identificationError = "Número do episódio inválido."
+                                    identificationError = context.getString(R.string.final_details_invalid_episode)
                                 else -> {
                                     identificationSaving = true
                                     identificationError = null
@@ -1865,7 +1870,7 @@ private fun DetailsEpisodeItem(
                                             showIdentificationEditor = false
                                         } catch (failure: Exception) {
                                             identificationError = failure.message?.takeIf(String::isNotBlank)
-                                                ?: "Não foi possível salvar a identificação."
+                                                ?: context.getString(R.string.final_details_id_save_error)
                                         } finally {
                                             identificationSaving = false
                                         }

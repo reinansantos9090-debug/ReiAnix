@@ -38,11 +38,11 @@ internal enum class ReiAnixLegalDocument(val title: String, val asset: String, v
 @Composable
 internal fun ReiAnixLegalDocumentScreen(document: ReiAnixLegalDocument, onBack: () -> Unit) {
     val context = LocalContext.current
-    val paragraphs = remember(document) {
+    val paragraphs = remember(document, context) {
         runCatching {
             context.assets.open(document.asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
                 .trim().split("\n\n").filter { it.isNotBlank() }
-        }.getOrElse { listOf("Não foi possível ler o documento incluído no aplicativo.") }
+        }.getOrElse { listOf(context.getString(R.string.final_legal_read_error)) }
     }
     var openFailed by remember(document) { mutableStateOf(false) }
     ReiAnixSettingsRoot {
@@ -57,7 +57,7 @@ internal fun ReiAnixLegalDocumentScreen(document: ReiAnixLegalDocument, onBack: 
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item(key = "legal:header") {
-                    SettingsHeader(title = document.title, subtitle = "", onBack = onBack)
+                    SettingsHeader(title = stringResource(if (document == ReiAnixLegalDocument.PRIVACY) R.string.final_legal_privacy else R.string.final_legal_terms), subtitle = "", onBack = onBack)
                 }
                 items(paragraphs) { paragraph ->
                     if (paragraph.startsWith("# ")) {

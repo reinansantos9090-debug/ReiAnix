@@ -77,7 +77,7 @@ internal fun ReiAnixProtectedBackupScreen(onBack: () -> Unit) {
                         }
                         require(count == file.length() && java.security.MessageDigest.isEqual(expected.digest(), actual.digest()))
                     }
-                    message = if (encrypt) "Backup protegido salvo." else "ZIP recuperado. Use Restaurar backup para importá-lo."
+                    message = if (encrypt) context.getString(R.string.final_protected_saved) else context.getString(R.string.final_protected_zip)
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { message = context.getString(R.string.tail_backup_save_failed) }
                 finally { file.delete(); busy = false }

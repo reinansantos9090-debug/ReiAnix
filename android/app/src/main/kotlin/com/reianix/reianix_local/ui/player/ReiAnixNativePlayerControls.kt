@@ -836,6 +836,8 @@ fun ReiAnixNativePlayerBottomControls(
                         }
                     }
                 }
+                val progressDescription = stringResource(R.string.final_player_progress)
+                val progressState = if (duration > 0L) stringResource(R.string.common_timeline_progress, PlayerTimeFormatter.format(displayPosition), PlayerTimeFormatter.format(duration)) else stringResource(R.string.common_duration_unavailable)
                 Slider(
                     value = sliderFraction,
                     onValueChange = {
@@ -884,13 +886,8 @@ fun ReiAnixNativePlayerBottomControls(
                             }
                         }
                         .semantics {
-                            contentDescription = "Barra de progresso do vídeo"
-                            stateDescription = if (duration > 0L) {
-                                PlayerTimeFormatter.format(displayPosition) +
-                                    " de " + PlayerTimeFormatter.format(duration)
-                            } else {
-                                "Duração indisponível"
-                            }
+                            contentDescription = progressDescription
+                            stateDescription = progressState
                         },
                     colors = SliderDefaults.colors(
                         thumbColor = ReiAnixTokens.Colors.primary,

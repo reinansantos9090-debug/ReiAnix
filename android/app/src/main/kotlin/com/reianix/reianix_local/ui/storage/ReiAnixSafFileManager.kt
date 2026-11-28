@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.storage
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 
 import com.reianix.reianix_local.ui.theme.reiAnixScreenBackground
 
@@ -34,6 +35,7 @@ import java.util.Date
 
 @Composable
 fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var roots by remember { mutableStateOf(emptyList<Uri>()) }
     var currentText by rememberSaveable { mutableStateOf<String?>(null) }
@@ -67,7 +69,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
     LaunchedEffect(Unit) {
         roots = viewModel.authorizedSafTreeUris()
         if (currentText == null) currentText = roots.firstOrNull()?.toString()
-        if (roots.isEmpty()) error = "Nenhuma pasta SAF persistida disponível. Adicione uma pasta pela opção de armazenamento."
+        if (roots.isEmpty()) error = context.getString(R.string.final_saf_no_root)
     }
     LaunchedEffect(currentText) {
         val uri = currentText?.let(Uri::parse) ?: return@LaunchedEffect
@@ -84,9 +86,9 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
         when (result) {
             is SafFileOperations.Result.Success -> {
                 notice = if (result.catalogReconciliationQueued) {
-                    "$operation confirmada pelo provedor; reconciliação canônica enfileirada. A identidade só será considerada atualizada após o processamento do catálogo."
+                    context.getString(R.string.final_saf_reconcile, operation)
                 } else {
-                    "$operation concluída no armazenamento. A atualização do catálogo foi solicitada; a preservação de histórico e progresso ainda não foi confirmada."
+                    context.getString(R.string.final_saf_done, operation)
                 }
                 error = null
                 // Rename/move publish a durable identity-change event first. The
@@ -96,7 +98,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
             }
             is SafFileOperations.Result.Failure -> {
                 notice = null
-                error = result.message + if (result.recoverable) " O estado é ambíguo; verifique a pasta antes de repetir a operação." else ""
+                error = result.message + if (result.recoverable) " " + context.getString(R.string.final_saf_ambiguous) else ""
                 if (result.recoverable) {
                     // The provider may have mutated storage before confirmation or mailbox failure.
                     // Refresh for recovery, but do not present the catalog as reconciled.
@@ -123,10 +125,10 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                     else onBack()
                 }) { Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.ui_back)) }
                 Column(Modifier.weight(1f)) {
-                    Text(if (movingTarget == null) "Gerenciar arquivos" else "Mover: ${movingTarget?.name}", style = MaterialTheme.typography.titleLarge)
+                    Text(if (movingTarget == null) stringResource(R.string.final_saf_manage) else stringResource(R.string.final_saf_move_named, movingTarget?.name.orEmpty()), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        if (movingTarget == null) "Arquivos e pastas das fontes SAF autorizadas"
-                        else "Navegue até o destino e confirme. A identidade do catálogo pode mudar; a preservação do histórico/progresso não é garantida.",
+                        if (movingTarget == null) stringResource(R.string.final_saf_sources)
+                        else stringResource(R.string.final_saf_move_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -145,7 +147,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                                 val result = viewModel.moveSafItem(source.uri, destination)
                                 busy = false
                                 movingTarget = null
-                                finish(result, "Movimentação")
+                                finish(result, context.getString(R.string.final_saf_move))
                             }
                         }
                     }) { Text(stringResource(R.string.tail_move_here)) }
@@ -191,7 +193,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
                                 }.joinToString(" • ")
                                 if (metadata.isNotEmpty()) Text(metadata, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            IconButton(enabled = !busy, onClick = { actionTarget = item }) { Icon(Icons.Default.MoreVert, contentDescription = "Ações para ${item.name}") }
+                            IconButton(enabled = !busy, onClick = { actionTarget = item }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.final_saf_actions, item.name)) }
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
@@ -210,7 +212,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
             scope.launch {
                 val result = viewModel.createSafDirectory(parent, createName)
                 busy = false; createDialog = false; createName = ""
-                finish(result, "Criação de pasta")
+                finish(result, context.getString(R.string.final_saf_create))
             }
         }) { Text(stringResource(R.string.tail_create)) } },
         dismissButton = { TextButton(onClick = { createDialog = false }) { Text(stringResource(R.string.locale_cancel)) } },
@@ -234,7 +236,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
             scope.launch {
                 val result = viewModel.renameSafItem(target.uri, renameName)
                 busy = false; renameTarget = null
-                finish(result, "Renomeação")
+                finish(result, context.getString(R.string.final_saf_rename))
             }
         }) { Text(stringResource(R.string.more_rename)) } },
         dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(stringResource(R.string.locale_cancel)) } },
@@ -243,7 +245,7 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
     actionTarget?.let { target -> AlertDialog(
         onDismissRequest = { actionTarget = null },
         title = { Text(target.name) },
-        text = { Text(if (target.isDirectory) "Pasta" else target.mimeType ?: "Tipo não informado") },
+        text = { Text(if (target.isDirectory) stringResource(R.string.final_saf_folder) else target.mimeType ?: stringResource(R.string.final_saf_unknown_type)) },
         confirmButton = { TextButton(onClick = { actionTarget = null; renameTarget = target; renameName = target.name }) {
             Icon(Icons.Default.Edit, contentDescription = null); Text(stringResource(R.string.more_rename))
         } },
@@ -259,14 +261,14 @@ fun ReiAnixSafFileManagerRoute(viewModel: ReiAnixLibraryViewModel, onBack: () ->
 
     deleteTarget?.let { target -> AlertDialog(
         onDismissRequest = { if (!busy) deleteTarget = null },
-        title = { Text("Excluir ${if (target.isDirectory) "pasta" else "arquivo"}?") },
-        text = { Text("Esta ação é destrutiva. Confirme que ${target.name} é o item correto. O catálogo não será considerado reconciliado apenas pelo retorno do provedor.") },
+        title = { Text(stringResource(if (target.isDirectory) R.string.final_saf_delete_folder else R.string.final_saf_delete_file)) },
+        text = { Text(stringResource(R.string.final_saf_delete_warning, target.name)) },
         confirmButton = { TextButton(enabled = !busy, onClick = {
             busy = true
             scope.launch {
                 val result = viewModel.deleteSafItem(target.uri)
                 busy = false; deleteTarget = null
-                finish(result, "Exclusão")
+                finish(result, context.getString(R.string.final_saf_delete))
             }
         }) { Text(stringResource(R.string.ui_delete)) } },
         dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.locale_cancel)) } },
