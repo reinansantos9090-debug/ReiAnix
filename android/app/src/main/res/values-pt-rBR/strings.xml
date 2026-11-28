@@ -1288,4 +1288,7 @@
     <string name="license_footnote">A lista gerada complementa os créditos locais. Consulte separadamente os avisos que não aparecem nos pacotes das bibliotecas. Os arquivos de licença originais também estão disponíveis no repositório.</string>
     <string name="license_read_error">Não foi possível ler o texto da licença incluído no APK.</string>
     <string name="license_notice_read_error">Não foi possível ler os avisos de atribuição incluídos no APK.</string>
+    <string name="about_version">Versão %1$s</string>
+    <string name="about_playback_engine">Reprodução: Media3 / NativePlayer.</string>
+    <string name="about_storage_engine">Armazenamento: MediaStore, SAF e leitores nativos de mídia.</string>
 </resources>

@@ -1288,4 +1288,7 @@
     <string name="license_footnote">Сформированный список дополняет сведения об авторах. Уведомления, отсутствующие в пакетах библиотек, следует искать отдельно. Оригиналы файлов лицензий также доступны в репозитории.</string>
     <string name="license_read_error">Не удалось прочитать текст лицензии, включённый в APK.</string>
     <string name="license_notice_read_error">Не удалось прочитать уведомления об авторстве, включённые в APK.</string>
+    <string name="about_version">Версия %1$s</string>
+    <string name="about_playback_engine">Воспроизведение: Media3 / NativePlayer.</string>
+    <string name="about_storage_engine">Хранилище: MediaStore, SAF и встроенное сканирование медиафайлов.</string>
 </resources>

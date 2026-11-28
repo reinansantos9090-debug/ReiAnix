@@ -863,17 +863,17 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    text = "Versão ${BuildConfig.VERSION_NAME}",
+                                    text = stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    text = "Player: Media3 / NativePlayer existente.",
+                                    text = stringResource(R.string.about_playback_engine),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    text = "Armazenamento: MediaStore / SAF / scanners nativos existentes.",
+                                    text = stringResource(R.string.about_storage_engine),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

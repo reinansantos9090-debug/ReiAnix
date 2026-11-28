@@ -1288,4 +1288,7 @@
     <string name="license_footnote">自動生成された一覧は、同梱のクレジットを補足するものです。ライブラリのパッケージに含まれていない通知は、別途ご確認ください。元のライセンスファイルはリポジトリでも確認できます。</string>
     <string name="license_read_error">APKに含まれるライセンス文書を読み込めませんでした。</string>
     <string name="license_notice_read_error">APKに含まれる著作権表示を読み込めませんでした。</string>
+    <string name="about_version">バージョン %1$s</string>
+    <string name="about_playback_engine">再生：Media3 / NativePlayer。</string>
+    <string name="about_storage_engine">ストレージ：MediaStore、SAF、ネイティブのメディアスキャン。</string>
 </resources>

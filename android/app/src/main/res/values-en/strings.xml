@@ -1288,4 +1288,7 @@
     <string name="license_footnote">The generated list supplements the included credits. Check separately for notices missing from the library packages. The original license files are also available in the repository.</string>
     <string name="license_read_error">Could not read the license text included in the APK.</string>
     <string name="license_notice_read_error">Could not read the attribution notices included in the APK.</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_playback_engine">Playback: Media3 / NativePlayer.</string>
+    <string name="about_storage_engine">Storage: MediaStore, SAF, and native media scanners.</string>
 </resources>

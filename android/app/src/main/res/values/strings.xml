@@ -1310,4 +1310,7 @@
     <string name="license_attribution_aosp" translatable="false">Android Open Source Project</string>
     <string name="license_attribution_coil" translatable="false">Coil Contributors</string>
     <string name="license_attribution_google_sans" translatable="false">Copyright 2025 The Google Sans Project Authors</string>
+    <string name="about_version">Versão %1$s</string>
+    <string name="about_playback_engine">Reprodução: Media3 / NativePlayer.</string>
+    <string name="about_storage_engine">Armazenamento: MediaStore, SAF e leitores nativos de mídia.</string>
 </resources>
