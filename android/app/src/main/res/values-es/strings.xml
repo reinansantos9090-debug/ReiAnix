@@ -178,4 +178,8 @@
     <string name="ui_my_list_hint">Añade títulos a Mi lista para encontrarlos aquí.</string>
     <string name="ui_my_list_partial_error">Mi lista se cargó con un error</string>
     <string name="ui_retry">Reintentar</string>
+    <string name="release_channel">Nuevos episodios de anime</string>
+    <string name="release_title">Nuevo episodio: %1$s</string>
+    <string name="release_text">Se estrenó el episodio %1$d. Consulta las opciones oficiales.</string>
+    <string name="release_big_text">Se estrenó el episodio %1$d de %2$s. La disponibilidad en Brasil puede variar.</string>
 </resources>

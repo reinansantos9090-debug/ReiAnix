@@ -182,12 +182,13 @@ class ReiAnixReleaseWorker(context: Context, params: WorkerParameters) :
             }
         }
         if (isStopped) return Result.retry()
+        val localized = com.reianix.reianix_local.ui.settings.ReiAnixAppLocales.localizedContext(context)
         val nm = context.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
             nm.createNotificationChannel(
                 NotificationChannel(
                     ReiAnixReleaseMonitor.CHANNEL_ID,
-                    "Novos episódios de animes",
+                    localized.getString(R.string.release_channel),
                     NotificationManager.IMPORTANCE_DEFAULT,
                 )
             )
@@ -213,11 +214,10 @@ class ReiAnixReleaseWorker(context: Context, params: WorkerParameters) :
             )
             val notification = NotificationCompat.Builder(context, ReiAnixReleaseMonitor.CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_reianix_notification)
-                .setContentTitle("Novo episódio: " + title)
-                .setContentText("Episódio " + airing.episode + " estreou. Veja as opções oficiais.")
+                .setContentTitle(localized.getString(R.string.release_title, title))
+                .setContentText(localized.getString(R.string.release_text, airing.episode))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(
-                    "O episódio " + airing.episode + " de " + title +
-                        " estreou. A disponibilidade no Brasil pode variar."
+                    localized.getString(R.string.release_big_text, airing.episode, title)
                 ))
                 .setContentIntent(pending)
                 .setAutoCancel(true)

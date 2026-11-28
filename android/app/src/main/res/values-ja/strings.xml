@@ -178,4 +178,8 @@
     <string name="ui_my_list_hint">マイリストにタイトルを追加するとここに表示されます。</string>
     <string name="ui_my_list_partial_error">マイリストの読み込みでエラーが発生しました</string>
     <string name="ui_retry">再試行</string>
+    <string name="release_channel">アニメの新着エピソード</string>
+    <string name="release_title">新着エピソード：%1$s</string>
+    <string name="release_text">第%1$d話が公開されました。公式の視聴方法をご確認ください。</string>
+    <string name="release_big_text">%2$sの第%1$d話が公開されました。ブラジルでの配信状況は異なる場合があります。</string>
 </resources>

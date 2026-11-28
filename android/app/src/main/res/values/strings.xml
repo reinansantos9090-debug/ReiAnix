@@ -183,4 +183,8 @@
     <string name="ui_my_list_hint">Adicione títulos à Minha Lista para encontrá-los aqui.</string>
     <string name="ui_my_list_partial_error">Minha Lista carregada com erro</string>
     <string name="ui_retry">Tentar novamente</string>
+    <string name="release_channel">Novos episódios de animes</string>
+    <string name="release_title">Novo episódio: %1$s</string>
+    <string name="release_text">Episódio %1$d estreou. Veja as opções oficiais.</string>
+    <string name="release_big_text">O episódio %1$d de %2$s estreou. A disponibilidade no Brasil pode variar.</string>
 </resources>

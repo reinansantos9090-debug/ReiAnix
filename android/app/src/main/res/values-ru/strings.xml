@@ -178,4 +178,8 @@
     <string name="ui_my_list_hint">Добавьте названия в список, чтобы видеть их здесь.</string>
     <string name="ui_my_list_partial_error">Список загружен с ошибкой</string>
     <string name="ui_retry">Повторить</string>
+    <string name="release_channel">Новые серии аниме</string>
+    <string name="release_title">Новая серия: %1$s</string>
+    <string name="release_text">Вышла серия %1$d. Посмотрите официальные варианты.</string>
+    <string name="release_big_text">Вышла серия %1$d аниме %2$s. Доступность в Бразилии может различаться.</string>
 </resources>

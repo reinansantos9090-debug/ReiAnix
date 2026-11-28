@@ -4,14 +4,18 @@ Idiomas: pt-BR (fallback), en, es, ru, ja. Usar recursos Android e stringResourc
 apenas na apresentação; não traduzir IDs, chaves de persistência, contratos,
 nomes de arquivos ou valores de navegação.
 
-Esta etapa cobre a navegação inferior, boas-vindas e categorias/estados de
-carregamento da tela de ajustes. O seletor utiliza LocaleManager do Android 13+;
-no Android 7–12, os recursos seguem o idioma do sistema. Ainda não há seletor
-manual nessas versões. Não há dependência de tradução em rede.
+Recursos migrados: navegação inferior, boas-vindas, categorias/estados de
+ajustes, principais rótulos de Home, biblioteca, busca, detalhes, Minha Lista,
+controles e menu do player e notificações de lançamento.
 
-Antes de liberar os idiomas, migrar e revisar todas as demais telas, player,
-notificações, diálogos, erros dinâmicos, pluralização, acessibilidade e busca
-de ajustes; implementar seleção manual compatível com API 24–32; verificar
-tamanhos de texto, persistência e preservação dos fluxos existentes.
-Sinopses de fontes externas são tratadas separadamente.
-PR em rascunho; não considerar a tradução completa.
+Android 13+ utiliza LocaleManager; API 24–32 usa um override persistido
+de idioma e contexto de configuração nas Activities, inclusive no player.
+A notificação de lançamento usa o contexto localizado. A seleção manual
+recria a Activity. Não altera a configuração global nem os dados da biblioteca.
+A compatibilidade ainda precisa ser validada em dispositivos e por build.
+
+Pendente: auditoria e migração de textos restantes (inclusive opções de
+ajustes, perfil, listas, armazenamento, diálogos, erros dinâmicos,
+acessibilidade, busca de ajustes, notificações adicionais e pluralização),
+revisão de traduções, layout e lifecycle. Sinopses externas são separadas.
+PR em rascunho: não considerar a tradução completa.
