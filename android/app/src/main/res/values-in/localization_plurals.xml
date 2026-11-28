@@ -1,0 +1,8 @@
+<resources>
+    <plurals name="flow_episode_count">
+        <item quantity="other">%1$d episode</item>
+    </plurals>
+    <plurals name="flow_search_titles">
+        <item quantity="other">Masukkan judul anime untuk mencari di antara %1$d judul lokal.</item>
+    </plurals>
+</resources>

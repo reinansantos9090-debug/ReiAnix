@@ -1,0 +1,10 @@
+<resources>
+    <plurals name="flow_episode_count">
+        <item quantity="one">%1$d episode</item>
+        <item quantity="other">%1$d episoder</item>
+    </plurals>
+    <plurals name="flow_search_titles">
+        <item quantity="one">Skriv inn en animetittel for å søke i %1$d lokal tittel.</item>
+        <item quantity="other">Skriv inn en animetittel for å søke i %1$d lokale titler.</item>
+    </plurals>
+</resources>

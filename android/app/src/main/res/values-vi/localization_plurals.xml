@@ -1,0 +1,8 @@
+<resources>
+    <plurals name="flow_episode_count">
+        <item quantity="other">%1$d tập</item>
+    </plurals>
+    <plurals name="flow_search_titles">
+        <item quantity="other">Nhập tên anime để tìm trong %1$d tựa có trên thiết bị.</item>
+    </plurals>
+</resources>
