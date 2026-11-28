@@ -3,6 +3,7 @@ package com.reianix.reianix_local.ui.collector
 import com.reianix.reianix_local.R
 
 import androidx.compose.ui.res.stringResource
+import com.reianix.reianix_local.ui.localizedGenreLabel
 
 import com.reianix.reianix_local.ui.motion.reiAnixScreenFade
 import com.reianix.reianix_local.ui.theme.reiAnixContentBackground
@@ -339,9 +340,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                     ),
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(title.title, fontWeight = FontWeight.SemiBold)
+                        Text(localizedJourneyTitle(title.id, title.title), fontWeight = FontWeight.SemiBold)
                         Text(
-                            title.condition,
+                            localizedJourneyCondition(title.id, title.title, title.condition),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -388,9 +389,9 @@ internal fun ReiAnixCollectorJourneyScreen(
                                 style = MaterialTheme.typography.titleMedium,
                             )
                             Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-                                Text(achievement.title, fontWeight = FontWeight.SemiBold)
+                                Text(localizedAchievementTitle(achievement.id, achievement.title), fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    achievement.description,
+                                    localizedAchievementDescription(achievement.id, achievement.title, achievement.description),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -410,7 +411,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            achievement.category + if (achievement.unlocked) " · Desbloqueada" else " · Em progresso",
+                            localizedJourneyCategory(achievement.category) + " · " + stringResource(if (achievement.unlocked) R.string.journey_unlocked else R.string.journey_in_progress),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -433,7 +434,7 @@ internal fun ReiAnixCollectorJourneyScreen(
                             Text(journey.xpIntoLevel.toString() + " / " + (journey.xpIntoLevel + journey.xpToNext) + " XP", style = MaterialTheme.typography.labelSmall)
                             Text(stringResource(R.string.more_next_level), style = MaterialTheme.typography.labelSmall)
                         }
-                        Text(stringResource(R.string.finish_journey_title_value, journey.activeTitleLabel ?: stringResource(R.string.finish_journey_no_title)),
+                        Text(stringResource(R.string.finish_journey_title_value, journey.activeTitleLabel?.let { localizedJourneyTitle(journey.activeTitle ?: "", it) } ?: stringResource(R.string.finish_journey_no_title)),
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -513,4 +514,85 @@ private fun JourneySummaryCard(icon: ImageVector, value: String, label: String, 
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+
+// Localize presentation only; achievement IDs, criteria and saved titles are unchanged.
+@Composable
+private fun localizedAchievementTitle(id: String, original: String): String = when (id) {
+    "first_episode" -> stringResource(R.string.journey_achievement_first_episode)
+    "anime_1" -> stringResource(R.string.journey_achievement_anime_1)
+    "library_10" -> stringResource(R.string.journey_achievement_library_10)
+    "library_50" -> stringResource(R.string.journey_achievement_library_50)
+    "genres_5" -> stringResource(R.string.journey_achievement_genres_5)
+    "decades_3" -> stringResource(R.string.journey_achievement_decades_3)
+    "formats_2" -> stringResource(R.string.journey_achievement_formats_2)
+    "active_7" -> stringResource(R.string.journey_achievement_active_7)
+    "active_30" -> stringResource(R.string.journey_achievement_active_30)
+    "active_14" -> stringResource(R.string.journey_achievement_active_14)
+    "marathon_10" -> stringResource(R.string.journey_achievement_marathon_10)
+    else -> when {
+        id.startsWith("episodes_") -> stringResource(R.string.journey_number_episodes, id.removePrefix("episodes_"))
+        id.startsWith("anime_") -> stringResource(R.string.journey_number_animes, id.removePrefix("anime_"))
+        id.startsWith("content_") -> stringResource(R.string.journey_number_hours, id.removePrefix("content_").removeSuffix("h"))
+        id.startsWith("decade_") -> stringResource(R.string.journey_decade, id.removePrefix("decade_"))
+        id.startsWith("genre_") -> stringResource(R.string.journey_genre_explorer, localizedGenreLabel(original.removePrefix("Explorador de ")))
+        else -> original
+    }
+}
+
+@Composable
+private fun localizedAchievementDescription(id: String, originalTitle: String, original: String): String = when (id) {
+    "first_episode" -> stringResource(R.string.journey_achievement_first_episode_desc)
+    "anime_1" -> stringResource(R.string.journey_achievement_anime_1_desc)
+    "library_10" -> stringResource(R.string.journey_achievement_library_10_desc)
+    "library_50" -> stringResource(R.string.journey_achievement_library_50_desc)
+    "genres_5" -> stringResource(R.string.journey_achievement_genres_5_desc)
+    "decades_3" -> stringResource(R.string.journey_achievement_decades_3_desc)
+    "formats_2" -> stringResource(R.string.journey_achievement_formats_2_desc)
+    "active_7" -> stringResource(R.string.journey_achievement_active_7_desc)
+    "active_30" -> stringResource(R.string.journey_achievement_active_30_desc)
+    "active_14" -> stringResource(R.string.journey_achievement_active_14_desc)
+    "marathon_10" -> stringResource(R.string.journey_achievement_marathon_10_desc)
+    else -> when {
+        id.startsWith("episodes_") -> stringResource(R.string.journey_number_episodes_desc, id.removePrefix("episodes_"))
+        id.startsWith("anime_") -> stringResource(R.string.journey_number_animes_desc, id.removePrefix("anime_"))
+        id.startsWith("content_") -> stringResource(R.string.journey_number_hours_desc, id.removePrefix("content_").removeSuffix("h"))
+        id.startsWith("decade_") -> stringResource(R.string.journey_decade_desc, id.removePrefix("decade_"))
+        id.startsWith("genre_") -> stringResource(R.string.journey_genre_explorer_desc, localizedGenreLabel(originalTitle.removePrefix("Explorador de ")))
+        else -> original
+    }
+}
+
+@Composable
+private fun localizedJourneyTitle(id: String, original: String): String = when (id) {
+    "collector_beginner" -> stringResource(R.string.journey_title_beginner)
+    "collector" -> stringResource(R.string.journey_achievement_library_10)
+    "temporal_explorer" -> stringResource(R.string.journey_achievement_decades_3)
+    "genre_explorer" -> stringResource(R.string.journey_achievement_genres_5)
+    "marathon_local" -> stringResource(R.string.journey_title_marathon)
+    "veteran" -> stringResource(R.string.journey_title_veteran)
+    "master" -> stringResource(R.string.journey_title_master)
+    else -> if (id.startsWith("genre_")) stringResource(R.string.journey_genre_explorer, localizedGenreLabel(original.removePrefix("Explorador de "))) else original
+}
+
+@Composable
+private fun localizedJourneyCondition(id: String, title: String, original: String): String = when (id) {
+    "collector_beginner" -> stringResource(R.string.journey_episode_done, "1")
+    "collector" -> stringResource(R.string.journey_episode_done, "10")
+    "temporal_explorer" -> stringResource(R.string.journey_decades_done)
+    "genre_explorer" -> stringResource(R.string.journey_genres_done)
+    "marathon_local" -> stringResource(R.string.journey_achievement_marathon_10_desc)
+    "veteran" -> stringResource(R.string.journey_episode_done, "100")
+    "master" -> stringResource(R.string.journey_episode_done, "300")
+    else -> if (id.startsWith("genre_")) stringResource(R.string.journey_genre_explorer_desc, localizedGenreLabel(title.removePrefix("Explorador de "))) else original
+}
+
+@Composable
+private fun localizedJourneyCategory(category: String): String = when (category) {
+    "Consumo" -> stringResource(R.string.journey_category_0)
+    "Coleção" -> stringResource(R.string.journey_category_1)
+    "Exploração" -> stringResource(R.string.journey_category_2)
+    "Atividade" -> stringResource(R.string.journey_category_3)
+    else -> category
 }

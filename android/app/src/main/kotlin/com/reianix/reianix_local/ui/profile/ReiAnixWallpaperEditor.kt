@@ -94,11 +94,11 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 val ratio = if (banner) 3f else 9f / 16f
                 val width = minOf(maxWidth, maxHeight * ratio)
-                AsyncImage(model = ReiAnixArtPack.model(selected), contentDescription = selected.title,
+                AsyncImage(model = ReiAnixArtPack.model(selected), contentDescription = localizedArtTitle(selected),
                     modifier = Modifier.size(width, width / ratio).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Crop)
             }
-            Text(selected.title, modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
+            Text(localizedArtTitle(selected), modifier = Modifier.align(Alignment.CenterHorizontally).padding(8.dp),
                 style = MaterialTheme.typography.titleMedium)
             Button(onClick = { selectArt(selected) }, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp)) {
@@ -131,10 +131,10 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
                         row.forEach { art ->
                             Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
                                 .clickable(enabled = !busy) { selectedId = art.id }) {
-                                AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = art.title,
+                                AsyncImage(model = ReiAnixArtPack.model(art), contentDescription = localizedArtTitle(art),
                                     modifier = Modifier.fillMaxWidth().aspectRatio(if (banner) 2f else 9f / 16f)
                                         .clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
-                                Text(art.title, style = MaterialTheme.typography.labelSmall,
+                                Text(localizedArtTitle(art), style = MaterialTheme.typography.labelSmall,
                                     modifier = Modifier.padding(top = 5.dp, bottom = 4.dp), maxLines = 2)
                             }
                         }
@@ -163,4 +163,33 @@ internal fun ReiAnixWallpaperEditor(onBack: () -> Unit, banner: Boolean = false)
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.locale_cancel)) } })
     }
+}
+
+
+@Composable
+private fun localizedArtTitle(art: PersonalArt): String = when (art.id) {
+    "samurai_rubro_cinematico" -> stringResource(R.string.art_samurai_rubro_cinematico)
+    "fuji_sakura_torii" -> stringResource(R.string.art_fuji_sakura_torii)
+    "oceano_azul" -> stringResource(R.string.art_oceano_azul)
+    "chuva_neon" -> stringResource(R.string.art_chuva_neon)
+    "cidade_dourada" -> stringResource(R.string.art_cidade_dourada)
+    "montanha_nevada" -> stringResource(R.string.art_montanha_nevada)
+    "quarto_gamer" -> stringResource(R.string.art_quarto_gamer)
+    "ruinas_submersas" -> stringResource(R.string.art_ruinas_submersas)
+    "sakura_lunar" -> stringResource(R.string.art_sakura_lunar)
+    "samurai_lua_rubra" -> stringResource(R.string.art_samurai_lua_rubra)
+    "ruas_neon_violeta" -> stringResource(R.string.art_ruas_neon_violeta)
+    "eclipse_dourado" -> stringResource(R.string.art_eclipse_dourado)
+    "costa_estelar_turquesa" -> stringResource(R.string.art_costa_estelar_turquesa)
+    "cidade_chuvosa_violeta" -> stringResource(R.string.art_cidade_chuvosa_violeta)
+    "cafe_chuvoso" -> stringResource(R.string.art_cafe_chuvoso)
+    "caminho_sakura" -> stringResource(R.string.art_caminho_sakura)
+    "costa_ao_entardecer" -> stringResource(R.string.art_costa_ao_entardecer)
+    "crepusculo_urbano" -> stringResource(R.string.art_crepusculo_urbano)
+    "magia_violeta" -> stringResource(R.string.art_magia_violeta)
+    "viajante_lunar" -> stringResource(R.string.art_viajante_lunar)
+    "samurai_escarlate" -> stringResource(R.string.art_samurai_escarlate)
+    "toquio_violeta" -> stringResource(R.string.art_toquio_violeta)
+    "manga_lunar" -> stringResource(R.string.art_manga_lunar)
+    else -> art.title
 }

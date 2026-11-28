@@ -751,7 +751,7 @@ internal fun ProfileCustomization(
                             ProfileAvatar(profile, store, 148.dp)
                         }
                         Text(
-                            "Escolha a moldura da foto do perfil.",
+                            stringResource(R.string.frame_choose_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -778,9 +778,9 @@ internal fun ProfileCustomization(
                             ) {
                                 ProfileAvatar(profile.copy(frame = option.id), store, 58.dp)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(option.title, style = MaterialTheme.typography.bodyLarge)
+                                    Text(localizedFrameTitle(option), style = MaterialTheme.typography.bodyLarge)
                                     Text(
-                                        option.description,
+                                        localizedFrameDescription(option),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -1023,4 +1023,27 @@ private fun ProfileScenes(viewModel: ReiAnixLibraryViewModel, onBack: () -> Unit
             }) { Text(stringResource(R.string.ui_delete)) } },
             dismissButton = { TextButton(onClick = { delete = null }) { Text(stringResource(R.string.locale_cancel)) } })
     }
+}
+
+
+@Composable
+private fun localizedFrameTitle(option: ProfileFrameOption): String = when (option.id) {
+    "none" -> stringResource(R.string.frame_none)
+    "neon" -> stringResource(R.string.frame_neon)
+    "sakura" -> stringResource(R.string.frame_sakura)
+    "gold" -> stringResource(R.string.frame_gold)
+    "galaxy" -> stringResource(R.string.frame_galaxy)
+    "white" -> stringResource(R.string.frame_white)
+    else -> option.title
+}
+
+@Composable
+private fun localizedFrameDescription(option: ProfileFrameOption): String = when (option.id) {
+    "none" -> stringResource(R.string.frame_none_desc)
+    "neon" -> stringResource(R.string.frame_neon_desc)
+    "sakura" -> stringResource(R.string.frame_sakura_desc)
+    "gold" -> stringResource(R.string.frame_gold_desc)
+    "galaxy" -> stringResource(R.string.frame_galaxy_desc)
+    "white" -> stringResource(R.string.frame_white_desc)
+    else -> option.description
 }
