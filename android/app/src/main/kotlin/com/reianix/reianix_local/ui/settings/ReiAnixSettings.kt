@@ -513,39 +513,39 @@ private fun ReiAnixComposeSettingsCategoryScreen(
         pendingConfirmationAction?.let { action ->
             val (title, message, confirmLabel) = when (action) {
                 "clear_anilist_cache" -> Triple(
-                    "Limpar cache de capas?",
-                    "Capas persistentes, progresso, favoritos e arquivos originais serão preservados. Miniaturas temporárias podem ser regeneradas.",
-                    "Limpar",
+                    stringResource(R.string.choice_clear_cache_question),
+                    stringResource(R.string.choice_clear_cache_message),
+                    stringResource(R.string.ui_clear),
                 )
                 "reset_all_settings" -> Triple(
-                    "Restaurar todas as configurações?",
-                    "Somente as preferências do ReiAnix serão restauradas. Biblioteca, consumo, metadata manual, artwork, arquivos e permissões permanecem intactos.",
-                    "Restaurar",
+                    stringResource(R.string.choice_reset_all_question),
+                    stringResource(R.string.choice_reset_all_message),
+                    stringResource(R.string.pref_reset),
                 )
                 "reset_player" -> Triple(
-                    "Restaurar configurações do Player?",
-                    "Somente as preferências do Player voltarão aos valores padrão. A biblioteca, o progresso salvo e as demais configurações serão preservados.",
-                    "Restaurar",
+                    stringResource(R.string.choice_reset_player_question),
+                    stringResource(R.string.choice_reset_player_message),
+                    stringResource(R.string.pref_reset),
                 )
                 "backup_restore" -> Triple(
-                    "Restaurar backup?",
-                    "O BackupService existente validará o arquivo antes de alterar o estado lógico local.",
-                    "Continuar",
+                    stringResource(R.string.choice_restore_question),
+                    stringResource(R.string.choice_restore_message),
+                    stringResource(R.string.choice_continue),
                 )
                 "settings_import" -> Triple(
-                    "Importar configurações?",
-                    "As preferências atuais podem ser substituídas pelos valores do arquivo selecionado.",
-                    "Importar",
+                    stringResource(R.string.choice_import_question),
+                    stringResource(R.string.choice_import_message),
+                    stringResource(R.string.choice_import),
                 )
                 "backup_reconcile" -> Triple(
-                    "Reconciliar arquivos?",
-                    "Verifica e atualiza o estado de disponibilidade dos episódios. Arquivos e progresso não serão apagados.",
-                    "Reconciliar",
+                    stringResource(R.string.choice_reconcile_question),
+                    stringResource(R.string.choice_reconcile_message),
+                    stringResource(R.string.choice_reconcile),
                 )
                 else -> Triple(
-                    "Confirmar ação",
-                    "Confirme para continuar.",
-                    "Confirmar",
+                    stringResource(R.string.choice_confirm_action),
+                    stringResource(R.string.choice_confirm_message),
+                    stringResource(R.string.choice_confirm),
                 )
             }
             AlertDialog(
@@ -635,7 +635,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
             } else {
                 settingsPageSections(category).forEach { section ->
                     if (section != "Sobre") {
-                        item(key = "section:$section") { SettingsSectionLabel(settingsSectionTitle(section)) }
+                        item(key = "section:$section") { SettingsSectionLabel(localizedSettingsCategory(settingsSectionTitle(section))) }
                     }
                     when (section) {
                 "Biblioteca" -> {
@@ -840,7 +840,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                             modifier = Modifier.padding(horizontal = ReiAnixTokens.Spacing.lg),
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
-                        SettingsSectionLabel(settingsSectionTitle(section))
+                        SettingsSectionLabel(localizedSettingsCategory(settingsSectionTitle(section)))
                     }
                     item(key = "about:app") {
                         ReiAnixSettingsSurface(
@@ -1124,7 +1124,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "player.max_audio_channels",
                             title = stringResource(R.string.pref_max_audio),
-                            description = "Limita a seleção de áudio sem criar um mixer ou decoder alternativo.",
+                            description = stringResource(R.string.choice_max_audio_desc),
                             selectedValue = state.settings["player.max_audio_channels"],
                             choices = maxAudioChannelsChoices,
                             onSelected = { onUpdateSetting("player.max_audio_channels", it) },
@@ -1134,7 +1134,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         LanguageSettingRow(
                             keyName = "audio.preferred_language",
                             title = stringResource(R.string.pref_audio_language),
-                            description = "Use uma tag BCP-47 como pt-BR, en ou ja. O Media3 usa fallback seguro se não existir.",
+                            description = stringResource(R.string.choice_audio_language_desc),
                             selectedValue = state.settings["audio.preferred_language"].orEmpty(),
                             onSave = { onUpdateSetting("audio.preferred_language", it) },
                         )
@@ -1143,7 +1143,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         LanguageSettingRow(
                             keyName = "audio.preferred_subtitle_language",
                             title = stringResource(R.string.pref_subtitle_language),
-                            description = "Use uma tag BCP-47. A seleção ocorre somente entre tracks existentes no arquivo.",
+                            description = stringResource(R.string.choice_subtitle_language_desc),
                             selectedValue = state.settings["audio.preferred_subtitle_language"].orEmpty(),
                             onSave = { onUpdateSetting("audio.preferred_subtitle_language", it) },
                         )
@@ -1152,7 +1152,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "audio.subtitle_scale",
                             title = stringResource(R.string.pref_subtitle_scale),
-                            description = "Aplica o tamanho relativo usando o SubtitleView do Media3.",
+                            description = stringResource(R.string.choice_subtitle_scale_desc),
                             selectedValue = state.settings["audio.subtitle_scale"],
                             choices = subtitleScaleChoices,
                             onSelected = { onUpdateSetting("audio.subtitle_scale", it) },
@@ -1162,7 +1162,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "audio.subtitle_bottom_padding",
                             title = stringResource(R.string.pref_subtitle_margin),
-                            description = "Controla a margem inferior quando a cue não especifica uma linha fixa.",
+                            description = stringResource(R.string.choice_subtitle_margin_desc),
                             selectedValue = state.settings["audio.subtitle_bottom_padding"],
                             choices = subtitlePaddingChoices,
                             onSelected = { onUpdateSetting("audio.subtitle_bottom_padding", it) },
@@ -1172,7 +1172,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "audio.subtitle_color",
                             title = stringResource(R.string.pref_subtitle_color),
-                            description = "Personaliza o texto das legendas selecionáveis.",
+                            description = stringResource(R.string.choice_subtitle_color_desc),
                             selectedValue = state.settings["audio.subtitle_color"],
                             choices = listOf(SettingChoice("system", "Sistema"), SettingChoice("white", "Branco"),
                                 SettingChoice("yellow", "Amarelo"), SettingChoice("cyan", "Ciano")),
@@ -1183,7 +1183,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "audio.subtitle_font",
                             title = stringResource(R.string.pref_subtitle_font),
-                            description = "Altera as legendas de texto, não as que fazem parte do vídeo.",
+                            description = stringResource(R.string.choice_subtitle_font_desc),
                             selectedValue = state.settings["audio.subtitle_font"],
                             choices = listOf(SettingChoice("system", "Sistema"), SettingChoice("sans", "Sem serifa"),
                                 SettingChoice("serif", "Serifada"), SettingChoice("mono", "Monoespaçada")),
@@ -1194,7 +1194,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         BooleanSettingRow(
                             keyName = "audio.subtitle_embedded_style",
                             title = stringResource(R.string.pref_subtitle_style),
-                            description = "Permite que o estilo declarado pela própria faixa seja aplicado.",
+                            description = stringResource(R.string.choice_subtitle_style_desc),
                             checked = state.settings["audio.subtitle_embedded_style"] == "true",
                             onCheckedChange = { onUpdateSetting("audio.subtitle_embedded_style", it.toString()) },
                         )
@@ -1203,7 +1203,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "audio.subtitles",
                             title = stringResource(R.string.ui_subtitles),
-                            description = "Automático respeita as preferências do arquivo; Sempre tenta selecionar uma legenda; Nunca desativa a track de texto.",
+                            description = stringResource(R.string.choice_subtitle_mode_desc),
                             selectedValue = state.settings["audio.subtitles"],
                             choices = subtitleModeChoices,
                             onSelected = { onUpdateSetting("audio.subtitles", it) },
@@ -1215,7 +1215,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "player.immersive",
                             title = stringResource(R.string.pref_immersive),
-                            description = "Controla as barras do sistema somente no player.",
+                            description = stringResource(R.string.choice_player_immersive_desc),
                             selectedValue = state.settings["player.immersive"],
                             choices = immersiveChoices,
                             onSelected = { onUpdateSetting("player.immersive", it) },
@@ -1225,7 +1225,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         ChoiceSettingRow(
                             keyName = "player.rotation",
                             title = stringResource(R.string.pref_rotation),
-                            description = "Define a orientação do player sem forçar o aplicativo inteiro.",
+                            description = stringResource(R.string.choice_rotation_desc),
                             selectedValue = state.settings["player.rotation"],
                             choices = rotationChoices,
                             onSelected = { onUpdateSetting("player.rotation", it) },
@@ -1235,7 +1235,7 @@ private fun ReiAnixComposeSettingsCategoryScreen(
                         BooleanSettingRow(
                             keyName = "player.pip",
                             title = "Picture-in-Picture",
-                            description = "Permite PiP quando suportado pelo Android.",
+                            description = stringResource(R.string.choice_pip_desc),
                             checked = state.settings["player.pip"] == "true",
                             onCheckedChange = { onUpdateSetting("player.pip", it.toString()) },
                         )
@@ -1475,7 +1475,7 @@ fun SettingsHeader(
         title = title,
         subtitle = null,
         navigationIcon = Icons.Filled.ArrowBack,
-        navigationContentDescription = backContentDescription,
+        navigationContentDescription = if (backContentDescription == "Voltar das configurações") stringResource(R.string.choice_back_settings) else backContentDescription,
         onNavigationClick = onBack,
         modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         titleStyle = MaterialTheme.typography.titleLarge,
@@ -1529,12 +1529,13 @@ private fun BooleanSettingRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val checkedLabel = stringResource(if (checked) R.string.choice_enabled else R.string.choice_disabled)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
                 contentDescription = if (description.isBlank()) title else title + ". " + description
-                stateDescription = if (checked) "Ativado" else "Desativado"
+                stateDescription = checkedLabel
             },
     ) {
         Row(
@@ -1641,9 +1642,10 @@ private fun ChoiceSettingRow(
     var dialogOpen by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    val selectedLabel = choices.firstOrNull { it.value == selectedValue }?.label
+    val selectedLabel = choices.firstOrNull { it.value == selectedValue }?.let { localizedSettingChoice(it.label) }
         ?: selectedValue?.ifBlank { null }
-        ?: "Selecionar"
+        ?: stringResource(R.string.choice_select)
+    val currentLabel = stringResource(R.string.choice_current, selectedLabel)
 
     if (dialogOpen) {
         AlertDialog(
@@ -1661,6 +1663,8 @@ private fun ChoiceSettingRow(
                         key = { choice -> keyName + ":" + choice.value },
                     ) { choice ->
                         val selected = choice.value == selectedValue
+                        val localizedLabel = localizedSettingChoice(choice.label)
+                        val selectedState = stringResource(if (selected) R.string.nav_selected else R.string.nav_not_selected)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1673,8 +1677,8 @@ private fun ChoiceSettingRow(
                                     role = Role.RadioButton,
                                 )
                                 .semantics {
-                                    contentDescription = title + ": " + choice.label
-                                    stateDescription = if (selected) "Selecionado" else "Não selecionado"
+                                    contentDescription = title + ": " + localizedLabel
+                                    stateDescription = selectedState
                                 }
                                 .heightIn(min = ReiAnixTokens.Dimensions.touchTarget),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1685,7 +1689,7 @@ private fun ChoiceSettingRow(
                                 onClick = null,
                             )
                             Text(
-                                text = choice.label,
+                                text = localizedLabel,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
@@ -1709,7 +1713,7 @@ private fun ChoiceSettingRow(
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
                 contentDescription = if (description.isBlank()) title else title + ". " + description
-                stateDescription = "Atual: " + selectedLabel
+                stateDescription = currentLabel
             },
     ) {
         Row(

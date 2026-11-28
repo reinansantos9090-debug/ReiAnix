@@ -35,6 +35,21 @@ internal fun localizedSettingsCategory(value: String): String = when (value) {
     "Contas e Avançado" -> stringResource(R.string.settings_accounts)
     "Pastas" -> stringResource(R.string.settings_folders)
     "Sobre" -> stringResource(R.string.settings_about)
+    "Comportamento" -> stringResource(R.string.choice_behavior)
+    "Organização da biblioteca" -> stringResource(R.string.choice_library_organization)
+    "Cache" -> stringResource(R.string.choice_cache)
+    "Informações do ReiAnix" -> stringResource(R.string.choice_app_info)
+    "Restaurar preferências" -> stringResource(R.string.choice_reset_prefs)
+    "Home e Biblioteca" -> stringResource(R.string.choice_home_library)
+    "Reprodução" -> stringResource(R.string.choice_playback)
+    "Vídeo e qualidade" -> stringResource(R.string.choice_video_quality)
+    "Controles e gestos" -> stringResource(R.string.choice_controls_gestures)
+    "Áudio e legendas" -> stringResource(R.string.choice_audio_subtitles)
+    "Tela e Picture-in-Picture" -> stringResource(R.string.choice_display_pip)
+    "Configurações locais" -> stringResource(R.string.choice_local_settings)
+    "Backup e restauração" -> stringResource(R.string.choice_backup_restore)
+    "Biblioteca" -> stringResource(R.string.nav_library)
+    "Tema" -> stringResource(R.string.pref_theme)
     else -> value
 }
 
@@ -128,4 +143,40 @@ private fun SettingsLanguageRowContent(label: String, summary: String, onClick: 
             }
         }
     }
+}
+
+@Composable
+internal fun localizedSettingChoice(value: String): String = when (value) {
+    "Sistema" -> stringResource(R.string.choice_system)
+    "Claro" -> stringResource(R.string.choice_light)
+    "Escuro" -> stringResource(R.string.choice_dark)
+    "Pequeno" -> stringResource(R.string.choice_small)
+    "Médio" -> stringResource(R.string.choice_medium)
+    "Grande" -> stringResource(R.string.choice_large)
+    "Ajustar" -> stringResource(R.string.choice_fit)
+    "Esticar" -> stringResource(R.string.choice_stretch)
+    "Sempre" -> stringResource(R.string.choice_always)
+    "Somente em paisagem" -> stringResource(R.string.choice_landscape_only)
+    "Nunca" -> stringResource(R.string.choice_never)
+    "Automática" -> stringResource(R.string.choice_automatic_f)
+    "Automático" -> stringResource(R.string.choice_automatic)
+    "Retrato" -> stringResource(R.string.choice_portrait)
+    "Paisagem" -> stringResource(R.string.choice_landscape)
+    "2 canais" -> stringResource(R.string.choice_two_channels)
+    "8% (padrão)" -> stringResource(R.string.choice_default_margin)
+    "Mais recentes" -> stringResource(R.string.choice_recent)
+    "Nome A–Z" -> stringResource(R.string.choice_name_asc)
+    "Nome Z–A" -> stringResource(R.string.choice_name_desc)
+    "Assistidos recentemente" -> stringResource(R.string.choice_watched_recent)
+    "Tudo" -> stringResource(R.string.choice_all)
+    "Reprodutor interno" -> stringResource(R.string.choice_internal)
+    "Reprodutor externo" -> stringResource(R.string.choice_external)
+    "Branco" -> stringResource(R.string.choice_white)
+    "Amarelo" -> stringResource(R.string.choice_yellow)
+    "Ciano" -> stringResource(R.string.choice_cyan)
+    "Sem serifa" -> stringResource(R.string.choice_sans)
+    "Serifada" -> stringResource(R.string.choice_serif)
+    "Monoespaçada" -> stringResource(R.string.choice_mono)
+    "Selecionar" -> stringResource(R.string.choice_select)
+    else -> value
 }
