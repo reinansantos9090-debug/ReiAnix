@@ -1,0 +1,6 @@
+<resources>
+    <plurals name="aux_saved_scenes">
+        <item quantity="one">%1$d lagret scene</item>
+        <item quantity="other">%1$d lagrede scener</item>
+    </plurals>
+</resources>

@@ -1,0 +1,5 @@
+<resources>
+    <plurals name="aux_saved_scenes">
+        <item quantity="other">%1$d cảnh đã lưu</item>
+    </plurals>
+</resources>

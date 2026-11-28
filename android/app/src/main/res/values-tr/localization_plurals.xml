@@ -1,0 +1,8 @@
+<resources>
+    <plurals name="flow_episode_count">
+        <item quantity="other">%1$d bölüm</item>
+    </plurals>
+    <plurals name="flow_search_titles">
+        <item quantity="other">%1$d yerel başlıkta aramak için anime adını yazın.</item>
+    </plurals>
+</resources>

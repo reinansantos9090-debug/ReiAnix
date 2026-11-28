@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Video</string>
+    <string name="local_video_section">Videolar</string>
+    <string name="local_video_label">Yerel video</string>
+    <string name="local_video_actions">%1$s için video işlemleri</string>
+    <string name="local_video_delete">Video silinsin mi?</string>
+    <string name="local_video_delete_warning">“%1$s” dosyası cihazdan kalıcı olarak silinecek. Arşivdeki kaydı ve izleme ilerlemesi de kaldırılacak. Bu işlem geri alınamaz.</string>
+    <plurals name="local_video_count">
+        <item quantity="other">%d video</item>
+    </plurals>
+</resources>

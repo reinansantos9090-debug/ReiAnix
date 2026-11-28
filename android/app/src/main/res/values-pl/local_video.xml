@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Wideo</string>
+    <string name="local_video_section">Filmy</string>
+    <string name="local_video_label">Lokalny film</string>
+    <string name="local_video_actions">Działania dla filmu %1$s</string>
+    <string name="local_video_delete">Usunąć film?</string>
+    <string name="local_video_delete_warning">Plik „%1$s” zostanie trwale usunięty z urządzenia. Wpis w bibliotece i postęp odtwarzania również zostaną usunięte. Tej czynności nie można cofnąć.</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d film</item>
+        <item quantity="few">%d filmy</item>
+        <item quantity="many">%d filmów</item>
+        <item quantity="other">%d filmu</item>
+    </plurals>
+</resources>

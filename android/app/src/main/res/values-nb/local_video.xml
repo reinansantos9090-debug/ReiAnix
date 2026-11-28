@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Video</string>
+    <string name="local_video_section">Videoer</string>
+    <string name="local_video_label">Lokal video</string>
+    <string name="local_video_actions">Videohandlinger for %1$s</string>
+    <string name="local_video_delete">Slette videoen?</string>
+    <string name="local_video_delete_warning">Filen «%1$s» blir slettet permanent fra enheten. Oppføringen i biblioteket og avspillingsfremdriften fjernes også. Handlingen kan ikke angres.</string>
+    <plurals name="local_video_count">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%d videoer</item>
+    </plurals>
+</resources>

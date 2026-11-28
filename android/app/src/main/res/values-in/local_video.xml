@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="local_video_badge">Video</string>
+    <string name="local_video_section">Video</string>
+    <string name="local_video_label">Video lokal</string>
+    <string name="local_video_actions">Tindakan video untuk %1$s</string>
+    <string name="local_video_delete">Hapus video?</string>
+    <string name="local_video_delete_warning">File “%1$s” akan dihapus secara permanen dari perangkat. Entri di koleksi dan progres pemutaran juga akan dihapus. Tindakan ini tidak dapat dibatalkan.</string>
+    <plurals name="local_video_count">
+        <item quantity="other">%d video</item>
+    </plurals>
+</resources>

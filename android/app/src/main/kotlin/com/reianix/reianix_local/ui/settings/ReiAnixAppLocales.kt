@@ -15,7 +15,10 @@ internal object ReiAnixAppLocales {
     private const val PREFS = "reianix_app_locale"
     private const val KEY = "language_tag"
     private const val DEFAULT_LOCALE = "pt-BR"
-    val supported = listOf("pt-BR", "en", "es", "ru", "ja", "de", "ko", "zh-Hans", "it", "fr")
+    val supported = listOf(
+        "pt-BR", "en", "es", "ru", "ja", "de", "ko", "zh-Hans", "it", "fr",
+        "id", "pl", "tr", "vi", "nb",
+    )
 
     fun selected(context: Context): String =
         if (Build.VERSION.SDK_INT >= 33) {
@@ -35,7 +38,7 @@ internal object ReiAnixAppLocales {
         val locale = Locale.forLanguageTag(tag.orEmpty())
         val canonicalTag = locale.toLanguageTag()
         return canonicalTag.takeIf { it in supported }
-            ?: supported.firstOrNull { it.substringBefore('-') == locale.language }
+            ?: supported.firstOrNull { Locale.forLanguageTag(it).language == locale.language }
             ?: DEFAULT_LOCALE
     }
 

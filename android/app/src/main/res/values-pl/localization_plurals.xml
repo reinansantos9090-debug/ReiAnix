@@ -1,0 +1,14 @@
+<resources>
+    <plurals name="flow_episode_count">
+        <item quantity="one">%1$d odcinek</item>
+        <item quantity="few">%1$d odcinki</item>
+        <item quantity="many">%1$d odcinków</item>
+        <item quantity="other">%1$d odcinka</item>
+    </plurals>
+    <plurals name="flow_search_titles">
+        <item quantity="one">Wpisz tytuł anime, aby przeszukać %1$d lokalny tytuł.</item>
+        <item quantity="few">Wpisz tytuł anime, aby przeszukać %1$d lokalne tytuły.</item>
+        <item quantity="many">Wpisz tytuł anime, aby przeszukać %1$d lokalnych tytułów.</item>
+        <item quantity="other">Wpisz tytuł anime, aby przeszukać %1$d lokalnego tytułu.</item>
+    </plurals>
+</resources>
